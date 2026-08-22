@@ -1,0 +1,164 @@
+@import 'tailwindcss';
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Typography scale (matches react/src/styles/typography.ts + Ant Design tokens) */
+:root {
+  --docu-text-caption: 0.75rem; /* 12px */
+  --docu-text-body: 0.875rem; /* 14px */
+  --docu-text-body-lg: 1rem; /* 16px */
+  --docu-text-title: 1.125rem; /* 18px */
+}
+
+/* Ant Design tree — match sidebar file explorer */
+.docu-file-tree-panel {
+  margin-inline: -1rem; /* cancel sidebar px-4 so scrollbar sits on the edge */
+}
+
+.docu-file-tree {
+  padding-left: 1rem;
+  padding-right: 0.75rem;
+}
+
+.docu-file-tree .ant-tree {
+  background: transparent;
+  font-size: var(--docu-text-body-lg);
+  width: 100%;
+}
+
+.docu-file-tree .ant-tree-list,
+.docu-file-tree .ant-tree-list-holder,
+.docu-file-tree .ant-tree-list-holder-inner {
+  width: 100% !important;
+}
+
+.docu-file-tree .ant-tree-treenode {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  overflow: hidden;
+  padding: 0.25rem 0.5rem;
+  margin-bottom: 0.0625rem;
+  border-radius: 0.5rem;
+  transition: background-color 0.15s ease;
+  cursor: pointer;
+}
+
+.docu-file-tree .ant-tree-treenode:hover {
+  background-color: #f3f4f6;
+}
+
+.docu-file-tree .ant-tree-treenode.ant-tree-treenode-selected {
+  background-color: rgb(229 231 235 / 0.7);
+}
+
+.docu-file-tree .ant-tree-node-content-wrapper.ant-tree-node-selected {
+  background: transparent !important;
+}
+
+.docu-file-tree .ant-tree-node-content-wrapper {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0 !important;
+  line-height: 1.5;
+  background: transparent !important;
+  border-radius: 0;
+}
+
+.docu-file-tree .ant-tree-node-content-wrapper:hover,
+.docu-file-tree .ant-tree-node-content-wrapper.ant-tree-node-selected {
+  background: transparent !important;
+}
+
+.docu-file-tree .ant-tree-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.docu-file-tree .ant-tree-switcher {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  flex-shrink: 0;
+  margin-right: 0.25rem;
+  background: transparent !important;
+}
+
+.docu-file-tree .ant-tree-switcher:hover {
+  background: transparent !important;
+}
+
+.docu-file-tree .ant-tree-indent-unit {
+  width: 12px;
+}
+
+/* Bottom fade for scrollable sidebar sections */
+.docu-fade-bottom::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2rem;
+  pointer-events: none;
+  background: linear-gradient(to top, #f9fafb 0%, transparent 100%);
+}
+
+.docu-sidebar.ant-layout-sider {
+  height: 100vh;
+  border-inline-end: none !important;
+}
+
+.docu-sidebar-resizing .ant-layout-sider,
+.docu-sidebar-resizing.docu-sidebar-wrapper {
+  transition: none !important;
+}
+
+.docu-sidebar .ant-layout-sider-children {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.docu-thinking-shimmer {
+  background: linear-gradient(
+    90deg,
+    #9ca3af 0%,
+    #9ca3af 35%,
+    #e5e7eb 50%,
+    #9ca3af 65%,
+    #9ca3af 100%
+  );
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: docu-thinking-shimmer 1.6s ease-in-out infinite;
+}
+
+@keyframes docu-thinking-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
