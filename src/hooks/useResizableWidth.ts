@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-const DEFAULT_MIN = 200
-const DEFAULT_MAX = 420
-const DEFAULT_WIDTH = 260
+const DEFAULT_MIN = 240
+const DEFAULT_MAX = 480
+const DEFAULT_WIDTH = 280
 
 /** Width of the drag strip sitting outside the sidebar panel. */
 export const RESIZE_HANDLE_WIDTH = 16

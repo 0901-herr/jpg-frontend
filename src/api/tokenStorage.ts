@@ -24,5 +24,6 @@ export function getAccessToken(): string | null {
 }
 
 export function isTokenExpired(session: AuthSession): boolean {
+  if (session.expiresAt == null) return false
   return Date.now() >= session.expiresAt - 30_000
 }

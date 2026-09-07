@@ -1,18 +1,31 @@
 export interface Source {
   index: number
   filename: string
+  documentId?: string
+  docRef?: string
+  page?: number
+  url?: string
+  snippet?: string
+  /** Display line e.g. "Page 2" */
   reference?: string
+}
+
+export interface CoverageInfo {
+  total_files?: number
+  ready_files?: number
+  indexing_files?: number
+  failed_files?: number
 }
 
 export interface ChatMessage {
   id: string
   role: 'user' | 'assistant'
   content: string
-  /** Inline file tags shown after assistant text */
   fileTags?: string[]
   sources?: Source[]
-  status?: 'thinking' | 'complete'
+  status?: 'thinking' | 'streaming' | 'complete'
   thinkingSeconds?: number
+  coverage?: CoverageInfo
 }
 
 export interface ChatSession {

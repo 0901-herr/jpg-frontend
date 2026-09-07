@@ -1,15 +1,24 @@
-import { Layout } from 'antd'
+import { CommentOutlined } from '@ant-design/icons'
+import { Layout, message } from 'antd'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { validateQueryScope } from '../api/browse'
+import { ApiError } from '../api/http'
+import type { Citation } from '../api/types/query'
 import { useSendQuery } from '../hooks/mutations/useSendQuery'
-import { useDocuments } from '../hooks/queries/useDocuments'
+import type { DocumentsLoadedEvent } from '../hooks/useBrowseTree'
+import { useBrowseTree } from '../hooks/useBrowseTree'
+import { useDocumentSelection } from '../hooks/useDocumentSelection'
 import { useResizableWidth } from '../hooks/useResizableWidth'
 import { type, typeColor } from '../styles/typography'
-import { parseDocumentMentions } from '../utils/documentMentions'
-import type { ChatMessage, ChatSession } from '../types'
-import type { DocumentItem } from '../api/types/documents'
+import { citationsToSources, mergeCitations } from '../utils/citations'
+import { isCitationDemoEnabled, isCitationLoadingDemoEnabled } from '../config/demo'
+import {
+  createCitationDemoSession,
+  createCitationLoadingDemoSession,
+} from '../mock/citationDemoChat'
+import type { ChatMessage, ChatSession, CoverageInfo } from '../types'
 import ChatInput from './ChatInput'
 import ChatMessageItem from './ChatMessage'
-import DocumentPreview from './DocumentPreview'
 import Sidebar from './Sidebar'
 import SidebarResizeHandle from './SidebarResizeHandle'
 
@@ -35,15 +44,32 @@ function createEmptySession(): ChatSession {
   }
 }
 
+function createInitialSession(): ChatSession {
+  if (isCitationLoadingDemoEnabled()) return createCitationLoadingDemoSession()
+  if (isCitationDemoEnabled()) return createCitationDemoSession()
+  return createEmptySession()
+}
+
 export default function AppLayout() {
-  const initialSessionRef = useRef<ChatSession>(createEmptySession())
+  const initialSessionRef = useRef<ChatSession>(createInitialSession())
   const [sessions, setSessions] = useState<ChatSession[]>([initialSessionRef.current])
   const [activeChatId, setActiveChatId] = useState(initialSessionRef.current.id)
-  const [previewDocument, setPreviewDocument] = useState<DocumentItem | null>(null)
-  const { width: sidebarWidth, isResizing, startResize, sidebarRef } = useResizableWidth()
+  const [inputBlockedReason, setInputBlockedReason] = useState<string | undefined>()
+  const { width: sidebarWidth, isResizing, startResize, sidebarRef } = useResizableWidth(280)
   const sendQuery = useSendQuery()
-  const { documents } = useDocuments()
+  const selection = useDocumentSelection()
+
+  const handleDocumentsLoaded = useCallback(
+    ({ documents, page }: DocumentsLoadedEvent) => {
+      selection.registerDocuments(documents)
+      selection.selectAllSelectable(documents, { replace: page === 0 })
+    },
+    [selection.registerDocuments, selection.selectAllSelectable],
+  )
+
+  const browse = useBrowseTree(handleDocumentsLoaded)
   const abortControllerRef = useRef<AbortController | null>(null)
+  const streamingCitationsRef = useRef<Citation[]>([])
 
   useEffect(() => {
     if (sessions.length === 0) {
@@ -64,21 +90,17 @@ export default function AppLayout() {
   )
 
   const handleNewChat = useCallback(() => {
-    setPreviewDocument(null)
     const newChat = createEmptySession()
     setSessions((prev) => [newChat, ...prev])
     setActiveChatId(newChat.id)
   }, [])
 
   const handleSelectChat = useCallback((chatId: string) => {
-    setPreviewDocument(null)
     setActiveChatId(chatId)
   }, [])
 
   const handleRenameChat = useCallback((chatId: string, title: string) => {
-    setSessions((prev) =>
-      prev.map((s) => (s.id === chatId ? { ...s, title } : s)),
-    )
+    setSessions((prev) => prev.map((s) => (s.id === chatId ? { ...s, title } : s)))
   }, [])
 
   const handleDeleteChat = useCallback(
@@ -103,47 +125,31 @@ export default function AppLayout() {
     abortControllerRef.current?.abort()
   }, [])
 
+  const updateAssistantMessage = useCallback(
+    (chatId: string, updater: (msg: ChatMessage) => ChatMessage) => {
+      setSessions((prev) =>
+        prev.map((s) => {
+          if (s.id !== chatId) return s
+          const messages = [...s.messages]
+          const lastIdx = messages.length - 1
+          if (lastIdx < 0 || messages[lastIdx].role !== 'assistant') return s
+          messages[lastIdx] = updater(messages[lastIdx])
+          return { ...s, messages }
+        }),
+      )
+    },
+    [],
+  )
+
   const handleSend = useCallback(
     async (text: string) => {
-      const parsed = parseDocumentMentions(text, documents)
-
-      if (parsed.ambiguousMention) {
-        const clarifyMsg: ChatMessage = {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content: `Multiple documents match "@${parsed.ambiguousMention}". Use the full filename, e.g. @Outpatient.pdf`,
-          status: 'complete',
-        }
-        setSessions((prev) =>
-          prev.map((s) =>
-            s.id === activeChatId
-              ? { ...s, messages: [...s.messages, { id: crypto.randomUUID(), role: 'user', content: text }, clarifyMsg] }
-              : s,
-          ),
-        )
+      const selectedDocs = [...selection.selectedIds]
+      if (selectedDocs.length === 0) {
+        message.warning('Select at least one document before asking a question.')
         return
       }
 
-      if (parsed.unknownMention) {
-        const clarifyMsg: ChatMessage = {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content: `I couldn't find a document matching "@${parsed.unknownMention}". Type @ to see available files.`,
-          status: 'complete',
-        }
-        setSessions((prev) =>
-          prev.map((s) =>
-            s.id === activeChatId
-              ? { ...s, messages: [...s.messages, { id: crypto.randomUUID(), role: 'user', content: text }, clarifyMsg] }
-              : s,
-          ),
-        )
-        return
-      }
-
-      const queryText =
-        parsed.query ||
-        (parsed.documentId ? 'What are the key details in this document?' : text)
+      setInputBlockedReason(undefined)
 
       abortControllerRef.current?.abort()
       const controller = new AbortController()
@@ -152,14 +158,67 @@ export default function AppLayout() {
 
       const elapsedSeconds = () => Math.max(1, Math.round((Date.now() - startedAt) / 1000))
 
+      let scopeDocuments = selectedDocs
+
+      try {
+        const scope = await validateQueryScope(selectedDocs, controller.signal)
+        if (controller.signal.aborted) return
+
+        const deniedCount = selectedDocs.length - scope.accessible_document_ids.length
+        if (deniedCount > 0) {
+          selection.trimSelection(scope.accessible_document_ids)
+          message.warning(
+            `${deniedCount} selected ${deniedCount === 1 ? 'document was' : 'documents were'} removed — you don't have access.`,
+          )
+        }
+
+        scopeDocuments = scope.accessible_document_ids
+
+        if (scopeDocuments.length === 0) {
+          const reason =
+            scope.failed_files > 0
+              ? 'None of the selected documents are ready to query (failed or not indexed).'
+              : 'No accessible documents in your selection.'
+          setInputBlockedReason(reason)
+          message.error(reason)
+          return
+        }
+
+        if (scope.ready_files === 0 && scope.indexing_files > 0) {
+          const reason = 'Documents still indexing — please wait until at least one is ready.'
+          setInputBlockedReason(reason)
+          message.warning(reason)
+          return
+        }
+
+        if (scope.ready_files === 0) {
+          const reason = 'No ready documents in your selection.'
+          setInputBlockedReason(reason)
+          message.error(reason)
+          return
+        }
+
+        if (scope.indexing_files > 0) {
+          message.info(
+            `${scope.indexing_files} selected ${scope.indexing_files === 1 ? 'document is' : 'documents are'} still indexing — answers may be incomplete.`,
+          )
+        }
+      } catch (err) {
+        if (controller.signal.aborted) return
+        const detail = err instanceof ApiError ? err.detail ?? err.message : 'Validation failed'
+        message.error(detail)
+        return
+      }
+
       const userMsg: ChatMessage = {
         id: crypto.randomUUID(),
         role: 'user',
         content: text,
       }
 
+      const assistantId = crypto.randomUUID()
       const thinkingMsg: ChatMessage = {
-        id: crypto.randomUUID(),
+        id: assistantId,
         role: 'assistant',
         content: '',
         status: 'thinking',
@@ -173,13 +232,44 @@ export default function AppLayout() {
         ),
       )
 
+      streamingCitationsRef.current = []
+      let coverage: CoverageInfo | undefined
+
       try {
         const response = await sendQuery.mutateAsync({
           chatId: activeChatId,
-          message: queryText,
-          sessionId: activeChatId,
+          message: text,
+          documents: scopeDocuments,
           signal: controller.signal,
-          documentId: parsed.documentId,
+          callbacks: {
+            onCoverage: (c) => {
+              coverage = c
+              updateAssistantMessage(activeChatId, (msg) => ({
+                ...msg,
+                status: msg.content ? 'streaming' : 'thinking',
+                coverage: c,
+              }))
+            },
+            onAnswer: (delta) => {
+              updateAssistantMessage(activeChatId, (msg) => ({
+                ...msg,
+                status: 'streaming',
+                content: msg.content + delta,
+                coverage: coverage ?? msg.coverage,
+              }))
+            },
+            onCitations: (batch) => {
+              streamingCitationsRef.current = mergeCitations(
+                streamingCitationsRef.current,
+                batch,
+              )
+              const citations = streamingCitationsRef.current
+              updateAssistantMessage(activeChatId, (msg) => ({
+                ...msg,
+                sources: citationsToSources(citations),
+              }))
+            },
+          },
         })
 
         if (controller.signal.aborted) return
@@ -188,10 +278,10 @@ export default function AppLayout() {
           id: response.messageId,
           role: 'assistant',
           content: response.content,
-          fileTags: response.fileTags,
           sources: response.sources,
           status: 'complete',
           thinkingSeconds: response.thinkingSeconds,
+          coverage: response.coverage ?? coverage,
         }
 
         setSessions((prev) =>
@@ -199,7 +289,7 @@ export default function AppLayout() {
             s.id === activeChatId
               ? {
                   ...s,
-                  title: s.messages.length <= 2 ? queryText.slice(0, 40) : s.title,
+                  title: s.messages.length <= 2 ? text.slice(0, 40) : s.title,
                   messages: [...s.messages.slice(0, -1), assistantMsg],
                 }
               : s,
@@ -207,21 +297,12 @@ export default function AppLayout() {
         )
       } catch (err) {
         if (controller.signal.aborted) {
-          const stoppedMsg: ChatMessage = {
-            id: crypto.randomUUID(),
-            role: 'assistant',
-            content: 'Response stopped.',
+          updateAssistantMessage(activeChatId, (msg) => ({
+            ...msg,
+            content: msg.content || 'Response stopped.',
             status: 'complete',
             thinkingSeconds: elapsedSeconds(),
-          }
-
-          setSessions((prev) =>
-            prev.map((s) =>
-              s.id === activeChatId
-                ? { ...s, messages: [...s.messages.slice(0, -1), stoppedMsg] }
-                : s,
-            ),
-          )
+          }))
           return
         }
 
@@ -248,7 +329,7 @@ export default function AppLayout() {
         }
       }
     },
-    [activeChatId, documents, sendQuery],
+    [activeChatId, selection, sendQuery, updateAssistantMessage],
   )
 
   return (
@@ -265,51 +346,56 @@ export default function AppLayout() {
             width={sidebarWidth}
             sessions={sessions}
             activeChatId={activeChatId}
-            selectedDocumentId={previewDocument?.doc_id ?? null}
+            browse={browse}
+            selection={selection}
             onSelectChat={handleSelectChat}
             onRenameChat={handleRenameChat}
             onDeleteChat={handleDeleteChat}
             onNewChat={handleNewChat}
-            onSelectDocument={setPreviewDocument}
           />
         </div>
         <SidebarResizeHandle onPointerDown={startResize} isResizing={isResizing} />
       </div>
-      <Layout className="!bg-white">
+      <Layout className="!bg-[var(--docu-bg-app)]">
         <Content className="flex flex-col h-full min-h-0">
-          {previewDocument ? (
-            <DocumentPreview document={previewDocument} />
-          ) : (
-            <>
-              <div className="flex-1 overflow-y-auto px-8 pt-8 min-h-0">
-                <div className="max-w-3xl mx-auto space-y-0">
-                  {messagePairs.length === 0 ? (
-                    <p className={`${typeColor.muted} ${type.body} text-center mt-20`}>
-                      Ask a question about your documents
-                    </p>
-                  ) : (
-                    messagePairs.map((pair, idx) => (
-                      <div key={pair.user.id}>
-                        <ChatMessageItem message={pair.user} />
-                        {pair.assistant && (
-                          <ChatMessageItem
-                            message={pair.assistant}
-                            showDivider={idx < messagePairs.length - 1}
-                          />
-                        )}
-                      </div>
-                    ))
-                  )}
+          <div className="flex-1 overflow-y-auto px-6 pt-6 pb-4 min-h-0">
+            <div className="max-w-3xl mx-auto space-y-0">
+              {messagePairs.length === 0 ? (
+                <div className="flex flex-col items-center justify-center text-center mt-24 px-4">
+                  <div className="w-12 h-12 rounded-xl bg-zinc-100 flex items-center justify-center mb-4">
+                    <CommentOutlined className="text-xl text-zinc-400" />
+                  </div>
+                  <p className={`${typeColor.secondary} ${type.body} font-medium mb-1`}>
+                    Start a conversation
+                  </p>
+                  <p className={`${typeColor.muted} ${type.caption}`}>
+                    Select documents in the sidebar, then ask a question
+                  </p>
                 </div>
-              </div>
-              <ChatInput
-                documents={documents}
-                onSend={handleSend}
-                onStop={handleStop}
-                isResponding={sendQuery.isPending}
-              />
-            </>
-          )}
+              ) : (
+                messagePairs.map((pair, idx) => (
+                  <div key={pair.user.id}>
+                    <ChatMessageItem message={pair.user} />
+                    {pair.assistant && (
+                      <ChatMessageItem
+                        message={pair.assistant}
+                        showDivider={idx < messagePairs.length - 1}
+                      />
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+          <ChatInput
+            selectedCount={selection.selectedCount}
+            onClearSelection={selection.clearSelection}
+            onSend={handleSend}
+            onStop={handleStop}
+            isResponding={sendQuery.isPending}
+            disabled={browse.sessionExpired}
+            disabledReason={inputBlockedReason}
+          />
         </Content>
       </Layout>
     </Layout>

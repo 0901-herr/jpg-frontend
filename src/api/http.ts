@@ -1,5 +1,3 @@
-import { clearStoredAuth, getAccessToken, getStoredAuth, setStoredAuth } from './tokenStorage'
-import type { AuthSession } from './types/auth'
 import { AUTH_BYPASS } from '../config/auth'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
@@ -25,59 +23,31 @@ interface RequestOptions extends Omit<RequestInit, 'body'> {
   auth?: boolean
 }
 
-let refreshPromise: Promise<AuthSession | null> | null = null
+type SessionExpiredHandler = () => void
+let onSessionExpired: SessionExpiredHandler | null = null
 
-async function refreshSession(refreshToken: string): Promise<AuthSession | null> {
-  const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refresh_token: refreshToken }),
-  })
-
-  if (!response.ok) {
-    clearStoredAuth()
-    return null
-  }
-
-  const data = (await response.json()) as {
-    access_token: string
-    refresh_token: string
-    expires_in: number
-  }
-
-  const existing = getStoredAuth()
-  if (!existing) return null
-
-  const session: AuthSession = {
-    ...existing,
-    accessToken: data.access_token,
-    refreshToken: data.refresh_token,
-    expiresAt: Date.now() + data.expires_in * 1000,
-  }
-  setStoredAuth(session)
-  return session
+export function setSessionExpiredHandler(handler: SessionExpiredHandler | null) {
+  onSessionExpired = handler
 }
 
-async function getValidAccessToken(): Promise<string | null> {
-  const session = getStoredAuth()
-  if (!session) return null
-
-  if (!isSessionExpired(session)) {
-    return session.accessToken
-  }
-
-  if (!refreshPromise) {
-    refreshPromise = refreshSession(session.refreshToken).finally(() => {
-      refreshPromise = null
-    })
-  }
-
-  const refreshed = await refreshPromise
-  return refreshed?.accessToken ?? null
+function resolveCredentials(auth: boolean): RequestCredentials | undefined {
+  if (!auth || AUTH_BYPASS) return 'same-origin'
+  return 'include'
 }
 
-function isSessionExpired(session: AuthSession): boolean {
-  return Date.now() >= session.expiresAt - 30_000
+async function parseErrorDetail(response: Response): Promise<string | undefined> {
+  try {
+    const errorBody = (await response.json()) as { detail?: string }
+    return typeof errorBody.detail === 'string' ? errorBody.detail : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function handleUnauthorized(auth: boolean) {
+  if (auth && !AUTH_BYPASS) {
+    onSessionExpired?.()
+  }
 }
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -88,31 +58,19 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     headers.set('Content-Type', 'application/json')
   }
 
-  if (auth && !AUTH_BYPASS) {
-    const token = await getValidAccessToken()
-    if (token) {
-      headers.set('Authorization', `Bearer ${token}`)
-    }
-  }
-
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers,
+    credentials: resolveCredentials(auth),
     body: body !== undefined ? JSON.stringify(body) : undefined,
   })
 
-  if (response.status === 401 && auth && !AUTH_BYPASS) {
-    clearStoredAuth()
+  if (response.status === 401) {
+    handleUnauthorized(auth)
   }
 
   if (!response.ok) {
-    let detail: string | undefined
-    try {
-      const errorBody = (await response.json()) as { detail?: string }
-      detail = typeof errorBody.detail === 'string' ? errorBody.detail : undefined
-    } catch {
-      // ignore parse errors
-    }
+    const detail = await parseErrorDetail(response)
     throw new ApiError(detail ?? response.statusText, response.status, detail)
   }
 
@@ -124,36 +82,24 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 }
 
 export async function apiFetchBlob(path: string, auth = true): Promise<Blob> {
-  const headers = new Headers()
-  if (auth && !AUTH_BYPASS) {
-    const token = await getValidAccessToken()
-    if (token) {
-      headers.set('Authorization', `Bearer ${token}`)
-    }
-  }
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    credentials: resolveCredentials(auth),
+  })
 
-  const response = await fetch(`${API_BASE_URL}${path}`, { headers })
-
-  if (response.status === 401 && auth && !AUTH_BYPASS) {
-    clearStoredAuth()
+  if (response.status === 401) {
+    handleUnauthorized(auth)
   }
 
   if (!response.ok) {
-    let detail: string | undefined
-    try {
-      const errorBody = (await response.json()) as { detail?: string }
-      detail = typeof errorBody.detail === 'string' ? errorBody.detail : undefined
-    } catch {
-      // ignore parse errors
-    }
+    const detail = await parseErrorDetail(response)
     throw new ApiError(detail ?? response.statusText, response.status, detail)
   }
 
   return response.blob()
 }
 
-export async function apiGet<T>(path: string, auth = true): Promise<T> {
-  return apiRequest<T>(path, { method: 'GET', auth })
+export async function apiGet<T>(path: string, auth = true, signal?: AbortSignal): Promise<T> {
+  return apiRequest<T>(path, { method: 'GET', auth, signal })
 }
 
 export async function apiPost<T>(
@@ -165,4 +111,120 @@ export async function apiPost<T>(
   return apiRequest<T>(path, { method: 'POST', body, auth, signal })
 }
 
-export { getAccessToken, getStoredAuth, setStoredAuth, clearStoredAuth }
+export interface SseEvent {
+  event: string
+  data: unknown
+}
+
+export interface ApiStreamResponse {
+  response: Response
+  coverageFromHeaders: {
+    total?: number
+    ready?: number
+    indexing?: number
+  }
+}
+
+/** POST request that returns the raw Response for SSE consumption. */
+export async function apiPostStream(
+  path: string,
+  body: unknown,
+  auth = true,
+  signal?: AbortSignal,
+): Promise<ApiStreamResponse> {
+  const headers = new Headers({ 'Content-Type': 'application/json', Accept: 'text/event-stream' })
+
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'POST',
+    headers,
+    credentials: resolveCredentials(auth),
+    body: JSON.stringify(body),
+    signal,
+  })
+
+  if (response.status === 401) {
+    handleUnauthorized(auth)
+  }
+
+  if (!response.ok) {
+    const detail = await parseErrorDetail(response)
+    throw new ApiError(detail ?? response.statusText, response.status, detail)
+  }
+
+  const parseHeaderInt = (name: string) => {
+    const raw = response.headers.get(name)
+    if (!raw) return undefined
+    const n = Number.parseInt(raw, 10)
+    return Number.isFinite(n) ? n : undefined
+  }
+
+  return {
+    response,
+    coverageFromHeaders: {
+      total: parseHeaderInt('X-Coverage-Total'),
+      ready: parseHeaderInt('X-Coverage-Ready'),
+      indexing: parseHeaderInt('X-Coverage-Indexing'),
+    },
+  }
+}
+
+/** Parse SSE stream from a fetch Response body. */
+export async function consumeSseStream(
+  response: Response,
+  onEvent: (event: SseEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const reader = response.body?.getReader()
+  if (!reader) throw new ApiError('Empty response body', 500)
+
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let currentEvent = 'message'
+
+  const dispatchBlock = (block: string) => {
+    const lines = block.split('\n')
+    let eventType = currentEvent
+    const dataLines: string[] = []
+
+    for (const line of lines) {
+      if (line.startsWith('event:')) {
+        eventType = line.slice(6).trim()
+      } else if (line.startsWith('data:')) {
+        dataLines.push(line.slice(5).trim())
+      }
+    }
+
+    if (dataLines.length === 0) return
+
+    const raw = dataLines.join('\n')
+    let parsed: unknown = raw
+    try {
+      parsed = JSON.parse(raw)
+    } catch {
+      // keep as string
+    }
+
+    onEvent({ event: eventType, data: parsed })
+    currentEvent = 'message'
+  }
+
+  while (true) {
+    if (signal?.aborted) {
+      await reader.cancel()
+      return
+    }
+
+    const { done, value } = await reader.read()
+    if (done) break
+
+    buffer += decoder.decode(value, { stream: true })
+    const blocks = buffer.split('\n\n')
+    buffer = blocks.pop() ?? ''
+
+    for (const block of blocks) {
+      if (block.trim()) dispatchBlock(block)
+    }
+  }
+
+  if (buffer.trim()) dispatchBlock(buffer)
+}

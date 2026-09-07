@@ -1,8 +1,9 @@
-import { EllipsisOutlined } from '@ant-design/icons'
+import { DeleteOutlined, EditOutlined, EllipsisOutlined } from '@ant-design/icons'
 import { Dropdown, Input, Modal } from 'antd'
 import type { InputRef, MenuProps } from 'antd'
 import { useEffect, useRef, useState } from 'react'
-import { type, typeColor } from '../styles/typography'
+import { sidebar, typeColor } from '../styles/typography'
+import { listRow, sidebarNav, surface } from '../styles/theme'
 import type { ChatSession } from '../types'
 
 interface ChatListItemProps {
@@ -21,6 +22,7 @@ export default function ChatListItem({
   onDelete,
 }: ChatListItemProps) {
   const [isEditing, setIsEditing] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
   const [draftTitle, setDraftTitle] = useState(chat.title)
   const inputRef = useRef<InputRef>(null)
 
@@ -65,15 +67,15 @@ export default function ChatListItem({
   }
 
   const menuItems: MenuProps['items'] = [
-    { key: 'rename', label: 'Rename' },
+    { key: 'rename', label: 'Rename', icon: <EditOutlined /> },
     { type: 'divider' },
-    { key: 'delete', label: 'Delete', danger: true },
+    { key: 'delete', label: 'Delete', danger: true, icon: <DeleteOutlined /> },
   ]
 
   return (
     <div
-      className={`docu-chat-row group flex items-center gap-0.5 rounded-lg transition-colors ${
-        isActive ? 'docu-chat-row-active bg-gray-200/70' : 'hover:bg-gray-100'
+      className={`group flex items-center gap-0.5 ${listRow} ${
+        isActive ? sidebarNav.active : sidebarNav.idle
       }`}
     >
       {isEditing ? (
@@ -91,15 +93,15 @@ export default function ChatListItem({
             }
           }}
           onClick={(e) => e.stopPropagation()}
-          className={`flex-1 min-w-0 mx-1 my-1 ${type.body}`}
+          className={`flex-1 min-w-0 mx-1 my-1 ${sidebar.body} !rounded-lg`}
           maxLength={80}
         />
       ) : (
         <button
           type="button"
           onClick={onSelect}
-          className={`flex-1 min-w-0 text-left px-3 py-2 ${type.body} truncate ${
-            isActive ? 'text-gray-900' : typeColor.secondary
+          className={`flex-1 min-w-0 text-left px-3 py-2 ${sidebar.body} truncate ${
+            isActive ? `${typeColor.primary} font-normal` : typeColor.secondary
           }`}
         >
           {chat.title}
@@ -111,16 +113,18 @@ export default function ChatListItem({
           menu={{ items: menuItems, onClick: handleMenuClick }}
           trigger={['click']}
           placement="bottomRight"
+          open={menuOpen}
+          onOpenChange={setMenuOpen}
         >
           <button
             type="button"
             aria-label="Chat options"
             onClick={(e) => e.stopPropagation()}
-            className={`docu-chat-menu-btn shrink-0 p-1.5 mr-1 rounded-md ${typeColor.muted} hover:text-gray-700 hover:bg-gray-200/80 opacity-0 group-hover:opacity-100 ${
-              isActive ? 'opacity-100' : ''
+            className={`shrink-0 px-3 py-2 rounded-lg ${typeColor.muted} hover:text-[#404040] ${surface.hover} transition-opacity ${
+              menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
             }`}
           >
-            <EllipsisOutlined className={type.caption} />
+            <EllipsisOutlined className={sidebar.caption} />
           </button>
         </Dropdown>
       )}

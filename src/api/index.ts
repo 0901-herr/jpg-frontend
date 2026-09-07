@@ -1,7 +1,23 @@
-export { verifyToken, devLogin, getCurrentUser, logout } from './auth'
+export { verifyToken, devLogin, getCurrentUser, logout, checkCookieSession } from './auth'
+export { fetchBrowseRoot, fetchFolderContents, validateQueryScope, fetchDocumentViewUrl } from './browse'
 export { browseDocuments } from './documents'
 export { ApiError, getApiBaseUrl } from './http'
-export { querySync, sendMessage } from './query'
-export type { AuthSession, CurrentUser } from './types/auth'
+export { sendMessage } from './query'
+export type { AuthSession, CurrentUser, LdHandoffResponse } from './types/auth'
+export type {
+  BrowseDocumentItem,
+  BrowseFolderContentsResponse,
+  BrowseFolderNode,
+  BrowseRootResponse,
+  IndexingStatus,
+  QueryScopeResponse,
+} from './types/browse'
 export type { DocumentItem, DocumentListResponse } from './types/documents'
-export type { Citation, QueryRequest, QueryResponse, SendMessageResponse } from './types/query'
+export type {
+  Citation,
+  CoverageEvent,
+  QueryRequest,
+  QueryResponse,
+  SendMessageRequest,
+  SendMessageResponse,
+} from './types/query'

@@ -1,5 +1,5 @@
 import { apiGet, apiPost } from './http'
-import { setStoredAuth } from './tokenStorage'
+import { clearStoredAuth, getStoredAuth, setStoredAuth } from './tokenStorage'
 import type {
   AuthSession,
   CurrentUser,
@@ -8,29 +8,34 @@ import type {
   VerifyTokenRequest,
 } from './types/auth'
 
-function toSession(tokens: TokenResponse, user: CurrentUser): AuthSession {
+function toSession(user: CurrentUser): AuthSession {
   return {
-    accessToken: tokens.access_token,
-    refreshToken: tokens.refresh_token,
     username: user.username || user.user_id,
     userId: user.user_id,
+  }
+}
+
+function toTokenSession(tokens: TokenResponse, user: CurrentUser): AuthSession {
+  return {
+    ...toSession(user),
+    accessToken: tokens.access_token,
+    refreshToken: tokens.refresh_token,
     expiresAt: Date.now() + tokens.expires_in * 1000,
   }
 }
 
-async function establishSession(tokens: TokenResponse): Promise<AuthSession> {
-  setStoredAuth({
-    accessToken: tokens.access_token,
-    refreshToken: tokens.refresh_token,
-    username: '',
-    userId: '',
-    expiresAt: Date.now() + tokens.expires_in * 1000,
-  })
-
-  const user = await getCurrentUser()
-  const session = toSession(tokens, user)
-  setStoredAuth(session)
-  return session
+/** Check cookie session via GET /auth/me. Returns null if unauthenticated. */
+export async function checkCookieSession(): Promise<AuthSession | null> {
+  try {
+    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL ?? '/api'}/auth/me`, {
+      credentials: 'include',
+    })
+    if (!response.ok) return null
+    const user = (await response.json()) as CurrentUser
+    return toSession(user)
+  } catch {
+    return null
+  }
 }
 
 /** Dev-only username/password login (POST /auth/login). */
@@ -40,7 +45,19 @@ export async function devLogin(username: string, password: string): Promise<Auth
     { username, password } satisfies DevLoginRequest,
     false,
   )
-  return establishSession(tokens)
+
+  setStoredAuth({
+    accessToken: tokens.access_token,
+    refreshToken: tokens.refresh_token,
+    username: '',
+    userId: '',
+    expiresAt: Date.now() + tokens.expires_in * 1000,
+  })
+
+  const user = await getCurrentUser()
+  const session = toTokenSession(tokens, user)
+  setStoredAuth(session)
+  return session
 }
 
 /** Exchange a LogicalDOC context token for JWT tokens, then fetch user profile. */
@@ -50,7 +67,19 @@ export async function verifyToken(contextToken: string): Promise<AuthSession> {
     { context_token: contextToken } satisfies VerifyTokenRequest,
     false,
   )
-  return establishSession(tokens)
+
+  setStoredAuth({
+    accessToken: tokens.access_token,
+    refreshToken: tokens.refresh_token,
+    username: '',
+    userId: '',
+    expiresAt: Date.now() + tokens.expires_in * 1000,
+  })
+
+  const user = await getCurrentUser()
+  const session = toTokenSession(tokens, user)
+  setStoredAuth(session)
+  return session
 }
 
 export async function getCurrentUser(): Promise<CurrentUser> {
@@ -62,5 +91,11 @@ export async function logout(): Promise<void> {
     await apiPost('/auth/logout')
   } catch {
     // clear local session even if backend call fails
+  } finally {
+    clearStoredAuth()
   }
+}
+
+export function getLocalSession(): AuthSession | null {
+  return getStoredAuth()
 }

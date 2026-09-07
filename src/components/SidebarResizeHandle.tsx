@@ -5,7 +5,7 @@ interface SidebarResizeHandleProps {
   isResizing: boolean
 }
 
-export default function SidebarResizeHandle({ onPointerDown, isResizing }: SidebarResizeHandleProps) {
+export default function SidebarResizeHandle({ onPointerDown }: SidebarResizeHandleProps) {
   return (
     <div
       role="separator"
@@ -13,13 +13,9 @@ export default function SidebarResizeHandle({ onPointerDown, isResizing }: Sideb
       aria-label="Resize sidebar"
       onPointerDown={onPointerDown}
       style={{ width: RESIZE_HANDLE_WIDTH }}
-      className="h-full shrink-0 pl-1 flex items-center cursor-col-resize touch-none group"
+      className="h-full shrink-0 cursor-col-resize touch-none bg-[var(--docu-bg-app)]"
     >
-      <div
-        className={`w-0.5 h-12 rounded-full transition-colors ${
-          isResizing ? 'bg-gray-400' : 'bg-gray-200 group-hover:bg-gray-300'
-        }`}
-      />
+      <div className="w-1 h-full" aria-hidden />
     </div>
   )
 }

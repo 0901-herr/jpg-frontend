@@ -1,73 +1,37 @@
-import { ArrowUpOutlined, FileOutlined } from '@ant-design/icons'
+import { ArrowUpOutlined, CloseOutlined, FileOutlined, StopOutlined } from '@ant-design/icons'
 import { Input } from 'antd'
-import type { TextAreaRef } from 'antd/es/input/TextArea'
-import { useMemo, useRef, useState } from 'react'
-import type { DocumentItem } from '../api/types/documents'
+import { useState } from 'react'
 import { type, typeColor } from '../styles/typography'
-import {
-  displayDocumentName,
-  filterDocumentsForMention,
-} from '../utils/documentMentions'
+import { radius, surface } from '../styles/theme'
 
 interface ChatInputProps {
-  documents: DocumentItem[]
+  selectedCount: number
+  onClearSelection: () => void
   onSend: (message: string) => void
   onStop: () => void
   isResponding?: boolean
+  disabled?: boolean
+  disabledReason?: string
 }
 
 export default function ChatInput({
-  documents,
+  selectedCount,
+  onClearSelection,
   onSend,
   onStop,
   isResponding = false,
+  disabled = false,
+  disabledReason,
 }: ChatInputProps) {
   const [value, setValue] = useState('')
-  const [mentionFilter, setMentionFilter] = useState<string | null>(null)
-  const textareaRef = useRef<TextAreaRef>(null)
 
-  const canSend = !isResponding && value.trim().length > 0
-
-  const mentionSuggestions = useMemo(
-    () =>
-      mentionFilter === null
-        ? []
-        : filterDocumentsForMention(documents, mentionFilter),
-    [documents, mentionFilter],
-  )
-
-  const updateMentionState = (text: string, cursor: number) => {
-    const before = text.slice(0, cursor)
-    const atMatch = before.match(/@("([^"]*)"|([^\s@]*))$/)
-    setMentionFilter(atMatch ? (atMatch[2] ?? atMatch[3] ?? '') : null)
-  }
+  const canSend = !isResponding && !disabled && value.trim().length > 0 && selectedCount > 0
 
   const handleSend = () => {
     const trimmed = value.trim()
-    if (!trimmed || isResponding) return
+    if (!trimmed || isResponding || disabled || selectedCount === 0) return
     onSend(trimmed)
     setValue('')
-    setMentionFilter(null)
-  }
-
-  const insertMention = (doc: DocumentItem) => {
-    const el = textareaRef.current?.resizableTextArea?.textArea
-    const cursor = el?.selectionStart ?? value.length
-    const before = value.slice(0, cursor)
-    const after = value.slice(cursor)
-    const name = displayDocumentName(doc)
-    const needsQuotes = name.includes(' ')
-    const mention = needsQuotes ? `@"${name}"` : `@${name}`
-    const nextBefore = before.replace(/@("([^"]*)"|([^\s@]*))$/, `${mention} `)
-    const next = `${nextBefore}${after}`
-    setValue(next)
-    setMentionFilter(null)
-    requestAnimationFrame(() => {
-      const input = textareaRef.current?.resizableTextArea?.textArea
-      input?.focus()
-      const pos = nextBefore.length
-      input?.setSelectionRange(pos, pos)
-    })
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -75,74 +39,77 @@ export default function ChatInput({
       e.preventDefault()
       handleSend()
     }
-    if (e.key === 'Escape' && mentionFilter !== null) {
-      e.preventDefault()
-      setMentionFilter(null)
-    }
   }
 
   return (
-    <div className="px-8 pb-6 pt-2">
-      <div className="relative max-w-3xl mx-auto">
-        {mentionFilter !== null && mentionSuggestions.length > 0 && (
+    <div className="px-6 pb-5 pt-0 bg-[var(--docu-bg-app)]">
+      <div className="max-w-3xl mx-auto docu-chat-input space-y-2">
+        {selectedCount > 0 && (
           <div
-            className="absolute left-0 right-14 bottom-full mb-2 rounded-xl border border-gray-200 bg-white shadow-lg overflow-hidden z-10"
-            role="listbox"
-            aria-label="Document suggestions"
+            className={`flex items-center justify-between gap-3 px-3 py-2 ${radius.md} ${surface.inset}`}
           >
-            {mentionSuggestions.map((doc) => (
-              <button
-                key={doc.doc_id}
-                type="button"
-                role="option"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => insertMention(doc)}
-                className={`w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 ${type.body} ${typeColor.secondary}`}
-              >
-                <FileOutlined className={`${type.caption} ${typeColor.muted} shrink-0`} />
-                <span className="truncate">{displayDocumentName(doc)}</span>
-              </button>
-            ))}
+            <span className={`inline-flex items-center gap-1.5 ${type.caption} ${typeColor.secondary}`}>
+              <FileOutlined className="text-zinc-400" />
+              {selectedCount} {selectedCount === 1 ? 'file' : 'files'} selected
+            </span>
+            <button
+              type="button"
+              onClick={onClearSelection}
+              className={`inline-flex items-center gap-1 ${type.caption} ${typeColor.muted} hover:text-zinc-600 transition-colors`}
+            >
+              <CloseOutlined className="text-[10px]" />
+              Clear
+            </button>
           </div>
         )}
 
-        <Input.TextArea
-          ref={textareaRef}
-          value={value}
-          onChange={(e) => {
-            setValue(e.target.value)
-            updateMentionState(e.target.value, e.target.selectionStart ?? e.target.value.length)
-          }}
-          onClick={(e) =>
-            updateMentionState(
-              value,
-              (e.target as HTMLTextAreaElement).selectionStart ?? value.length,
-            )
-          }
-          onKeyDown={handleKeyDown}
-          placeholder='Ask a question, or type @ to pick a document'
-          autoSize={{ minRows: 1, maxRows: 4 }}
-          className={`!rounded-2xl !py-3.5 !px-5 !pr-14 ${type.body} !border-gray-200 !shadow-none resize-none`}
-        />
-        <button
-          type="button"
-          onClick={isResponding ? onStop : handleSend}
-          disabled={!isResponding && !canSend}
-          className={`absolute right-3 bottom-2.5 w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
-            isResponding || canSend
-              ? 'bg-black hover:bg-gray-800'
-              : 'bg-gray-200 cursor-not-allowed'
-          }`}
-          aria-label={isResponding ? 'Stop response' : 'Send message'}
-        >
-          {isResponding ? (
-            <span className="block w-2.5 h-2.5 bg-white rounded-sm" aria-hidden />
-          ) : (
-            <ArrowUpOutlined
-              className={canSend ? `${type.caption} !text-white` : `${type.caption} !text-gray-400`}
-            />
-          )}
-        </button>
+        {disabledReason && (
+          <p className={`${type.caption} text-amber-700 px-1`}>{disabledReason}</p>
+        )}
+
+        <div className="docu-chat-composer flex items-stretch gap-2 px-4 py-2">
+          <Input.TextArea
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={
+              selectedCount > 0
+                ? 'Ask a question about the selected documents…'
+                : 'Select documents first…'
+            }
+            disabled={disabled || selectedCount === 0}
+            autoSize={{ minRows: 1, maxRows: 4 }}
+            variant="borderless"
+            className={`flex-1 !px-0 !py-2 ${type.body} !shadow-none resize-none !leading-6`}
+          />
+          <div className="flex items-center shrink-0">
+            <button
+              type="button"
+              onClick={isResponding ? onStop : handleSend}
+              disabled={!isResponding && !canSend}
+              className={`w-9 h-9 ${radius.full} flex items-center justify-center transition-colors ${
+                isResponding || canSend
+                  ? 'bg-[#0084ff] hover:bg-[#0077e6]'
+                  : 'bg-[#ececec] cursor-not-allowed'
+              }`}
+              aria-label={isResponding ? 'Stop response' : 'Send message'}
+            >
+              {isResponding ? (
+                <StopOutlined className="!text-white text-sm" />
+              ) : (
+                <ArrowUpOutlined
+                  className={canSend ? '!text-white text-sm' : '!text-[#8e8e8e] text-sm'}
+                />
+              )}
+            </button>
+          </div>
+        </div>
+
+        <p className={`${type.caption} ${typeColor.muted} px-1`}>
+          This chat is{' '}
+          <span className={typeColor.primary}>not context-aware</span>. Each question is a{' '}
+          <span className={typeColor.primary}>separate question</span>, not a follow-up.
+        </p>
       </div>
     </div>
   )

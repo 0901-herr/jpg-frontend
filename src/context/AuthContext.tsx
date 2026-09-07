@@ -1,16 +1,17 @@
-import { createContext, useCallback, useContext, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { devLogin, logout as apiLogout } from '../api/auth'
-import { clearStoredAuth, getStoredAuth } from '../api/tokenStorage'
+import { checkCookieSession, logout as apiLogout } from '../api/auth'
+import { setSessionExpiredHandler } from '../api/http'
+import { clearStoredAuth } from '../api/tokenStorage'
 import type { AuthSession } from '../api/types/auth'
 import { AUTH_BYPASS, DEV_USER } from '../config/auth'
-import { queryClient, queryKeys } from '../lib/queryClient'
+import { queryClient } from '../lib/queryClient'
 
 interface AuthContextValue {
   session: AuthSession | null
   isAuthenticated: boolean
   isLoading: boolean
-  login: (username: string, password: string) => Promise<void>
+  sessionExpired: boolean
   logout: () => Promise<void>
 }
 
@@ -18,11 +19,8 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 
 function bypassSession(): AuthSession {
   return {
-    accessToken: '',
-    refreshToken: '',
     username: DEV_USER.username,
     userId: DEV_USER.userId,
-    expiresAt: Number.MAX_SAFE_INTEGER,
   }
 }
 
@@ -32,18 +30,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearStoredAuth()
       return bypassSession()
     }
-    return getStoredAuth()
+    return null
   })
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(!AUTH_BYPASS)
+  const [sessionExpired, setSessionExpired] = useState(false)
 
-  const login = useCallback(async (username: string, password: string) => {
-    setIsLoading(true)
-    try {
-      const authSession = await devLogin(username, password)
-      setSession(authSession)
-      await queryClient.invalidateQueries({ queryKey: queryKeys.currentUser })
-    } finally {
+  useEffect(() => {
+    if (AUTH_BYPASS) return
+
+    setSessionExpiredHandler(() => {
+      clearStoredAuth()
+      setSession(null)
+      setSessionExpired(true)
+      queryClient.clear()
+    })
+
+    let cancelled = false
+    ;(async () => {
+      const cookieSession = await checkCookieSession()
+      if (cancelled) return
+      setSession(cookieSession)
       setIsLoading(false)
+    })()
+
+    return () => {
+      cancelled = true
+      setSessionExpiredHandler(null)
     }
   }, [])
 
@@ -55,6 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       clearStoredAuth()
       setSession(null)
+      setSessionExpired(false)
       queryClient.clear()
       setIsLoading(false)
     }
@@ -65,10 +78,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session: AUTH_BYPASS ? bypassSession() : session,
       isAuthenticated: AUTH_BYPASS || session !== null,
       isLoading,
-      login,
+      sessionExpired,
       logout,
     }),
-    [session, isLoading, login, logout],
+    [session, isLoading, sessionExpired, logout],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
