@@ -1,71 +1,118 @@
-# Docu Arch AI — Frontend
+# jpg-frontend — Docu Arch AI
 
-React + Vite + Ant Design + Tailwind CSS chat UI for jpg_logicaldoc_rag.
+React chat UI and admin ingestion dashboard for **jpg-adapter**.
 
-## Setup
+```
+LogicalDOC  →  jpg-adapter (:8001)  ←  Vite proxy (/api)  ←  this app (:3000)
+                      ↕
+                 RAG Engine
+```
+
+## Quick start
+
+**Prerequisites:** jpg-adapter running on **http://localhost:8001** (see [jpg-adapter docs/runbooks/LOCAL_DEV.md](../jpg-adapter/docs/runbooks/LOCAL_DEV.md)).
 
 ```bash
-cd react
+cp .env.example .env
 npm install
 npm run dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173).
+| Page | URL |
+|------|-----|
+| **AI Chat** | http://localhost:3000/chat |
+| **Admin — ingestion** | http://localhost:3000/admin/ingestion |
+| **Admin — activity log** | http://localhost:3000/admin/ingestion?tab=activity |
+
+Open **http://localhost:3000** — redirects to chat.
+
+---
+
+## Environment (`.env`)
+
+```env
+# Vite dev proxy sends /api → http://127.0.0.1:8001
+VITE_API_BASE_URL=/api
+
+# Skip login wall locally (adapter still needs a session for folder browse)
+VITE_AUTH_BYPASS=true
+```
+
+| Variable | Purpose |
+|----------|---------|
+| `VITE_API_BASE_URL` | API prefix (default `/api` — use proxy in dev) |
+| `VITE_AUTH_BYPASS=true` | Show chat UI without cookie login check (dev only) |
+| `VITE_ADMIN_API_KEY` | Optional — must match adapter `ADAPTER_QUERY_API_KEY` if set |
+
+**Chat session:** `VITE_AUTH_BYPASS` only bypasses the frontend login screen. Folder browse and queries still need an adapter `ai_session` cookie unless adapter has `AI_SESSION_DEV_BYPASS=true`.
+
+Get a session:
+
+- Open AI Chat from LogicalDOC (recommended), or
+- Visit a one-time exchange URL from adapter handoff — see [LD_CHAT_SETUP.md](../jpg-adapter/docs/ai-chat/LD_CHAT_SETUP.md)
+
+Use **`localhost`** everywhere (not `127.0.0.1`) for cookies.
+
+---
 
 ## Stack
 
 - **React 19** + TypeScript
-- **Vite** — dev server & build
-- **Ant Design** — Layout, Tree, Input, Avatar, Tag
-- **Tailwind CSS** — utility styling
+- **Vite** — dev server on port **3000**
+- **Ant Design** — admin tables, layout
+- **Tailwind CSS** — chat + admin styling
+- **TanStack Query** — data fetching, polling
 
-## API layer
+## Project layout
 
-Separate modules under `src/api/`:
-
-| File | Purpose |
-|------|---------|
-| `http.ts` | Base fetch client, auth headers, token refresh |
-| `auth.ts` | Login (`/auth/verify-token`), logout, `/auth/me` |
-| `query.ts` | Chat queries via `/query/sync` |
-| `documents.ts` | File browser via `/documents/browse` |
-| `types/` | TypeScript types matching backend schemas |
-
-[TanStack Query](https://tanstack.com/query) hooks in `src/hooks/`:
-
-- `useDocuments` — cached document list for sidebar tree
-- `useSendQuery` — mutation for sending chat messages
-- `useCurrentUser` — fetch authenticated user profile
-
-## Backend connection
-
-1. Start the API on port 8000
-2. Copy env file: `cp .env.example .env`
-3. Run the frontend: `npm run dev`
-
-Vite proxies `/api` → `http://localhost:8000` in development.
-
-### Login (dev)
-
-Dev-only username/password login is enabled when `ENVIRONMENT=development`:
-
-| Username | Password |
-|----------|----------|
-| `admin`  | `admin`  |
-
-Override via `DEV_LOGIN_USERNAME` / `DEV_LOGIN_PASSWORD` in the root `.env`.
-
-Production uses LogicalDOC context tokens via `/auth/verify-token`.
-
-### Env vars
-
-```env
-VITE_API_BASE_URL=/api
+```
+src/
+├── api/              # HTTP client, query SSE, admin endpoints
+├── components/       # Chat UI, sidebar, document picker
+├── components/admin/ # Ingestion dashboard, activity log, pipeline waterfall
+├── pages/admin/      # Admin routes
+├── hooks/            # useBrowseTree, useSendQuery, …
+└── utils/            # lifecycle labels, query progress, user-facing errors
 ```
 
+## Chat behaviour
 
-| Command         | Description          |
-|-----------------|----------------------|
-| `npm run dev`   | Start dev server     |
-| `npm run build` | Production build     |
+- Select documents in the **sidebar folder tree**, then ask a question.
+- While waiting: live **pipeline stages** from RAG (`Retrieving documents…`, etc.).
+- On failure: plain-language error in the thread (technical detail stays in adapter logs — `query_failed`).
+- **Stop** button uses a square icon; sends abort to cancel streaming.
+
+## Admin dashboard
+
+Polls adapter admin API every few seconds when open.
+
+| Tab | Shows |
+|-----|--------|
+| Overview | Counts, progress, bulk throughput |
+| Activity log | Timeline from document timestamps |
+| Documents | Search + filter |
+| Failures | Failed docs + retry |
+| Health | Adapter / dependency checks |
+| Sync | Reconciliation status |
+
+Requires Postgres populated by adapter ingestion.
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Dev server → http://localhost:3000 |
+| `npm run build` | Production build |
 | `npm run preview` | Preview production build |
+| `npm test` | Vitest unit tests |
+
+## Troubleshooting
+
+| Issue | Fix |
+|-------|-----|
+| "Sign in required" / session expired | New LD handoff link or enable dev bypass on adapter |
+| Empty folder tree | Check `/api/auth/me` — need valid `ai_session` |
+| Query errors | See adapter logs (`grep query_failed`); often RAG OOM on k3d |
+| Admin 401 | Set `VITE_ADMIN_API_KEY` if adapter requires query key |
+
+Full stack runbook: **[jpg-adapter/docs/runbooks/LOCAL_DEV.md](../jpg-adapter/docs/runbooks/LOCAL_DEV.md)**
