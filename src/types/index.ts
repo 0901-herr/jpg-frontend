@@ -23,7 +23,9 @@ export interface ChatMessage {
   content: string
   fileTags?: string[]
   sources?: Source[]
-  status?: 'thinking' | 'streaming' | 'complete'
+  status?: 'thinking' | 'streaming' | 'complete' | 'error'
+  /** Live pipeline stage while status is thinking (from RAG progress SSE). */
+  progressLabel?: string
   thinkingSeconds?: number
   coverage?: CoverageInfo
 }

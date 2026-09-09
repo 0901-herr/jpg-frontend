@@ -13,6 +13,11 @@ import {
   mergeCitations,
   parseCitationEvent,
 } from '../utils/citations'
+import {
+  QUERY_GENERIC_ERROR,
+  QUERY_INCOMPLETE_ERROR,
+  toUserFacingQueryError,
+} from '../utils/userFacingErrors'
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' ? (value as Record<string, unknown>) : null
@@ -47,8 +52,15 @@ function extractAnswerDelta(data: unknown): string {
 
 function extractErrorMessage(data: unknown): string {
   const obj = asRecord(data)
-  if (!obj) return typeof data === 'string' ? data : 'Query failed'
-  return readString(obj, 'message') ?? readString(obj, 'detail') ?? readString(obj, 'error') ?? 'Query failed'
+  if (!obj) {
+    return typeof data === 'string' ? toUserFacingQueryError(data) : QUERY_GENERIC_ERROR
+  }
+  const raw =
+    readString(obj, 'message') ??
+    readString(obj, 'detail') ??
+    readString(obj, 'error') ??
+    undefined
+  return toUserFacingQueryError(raw)
 }
 
 async function streamQuery(
@@ -75,49 +87,80 @@ async function streamQuery(
   let coverage: CoverageEvent | undefined
   let durationMs: number | undefined
   let streamError: string | null = null
+  let terminalEvent = false
 
-  await consumeSseStream(
-    response,
-    ({ event, data }) => {
-      switch (event) {
-        case 'coverage': {
-          coverage = parseCoverage(data)
-          callbacks.onCoverage?.(coverage)
-          break
-        }
-        case 'answer': {
-          const delta = extractAnswerDelta(data)
-          if (delta) {
-            content += delta
-            callbacks.onAnswer?.(delta)
+  try {
+    await consumeSseStream(
+      response,
+      ({ event, data }) => {
+        switch (event) {
+          case 'coverage': {
+            coverage = parseCoverage(data)
+            callbacks.onCoverage?.(coverage)
+            break
           }
-          break
-        }
-        case 'citation': {
-          const batch = parseCitationEvent(data)
-          if (batch.length > 0) {
-            citations = mergeCitations(citations, batch)
-            callbacks.onCitations?.(batch)
+          case 'progress': {
+            const obj = asRecord(data)
+            const stage = obj ? readString(obj, 'stage') : undefined
+            if (stage) callbacks.onProgress?.(stage)
+            break
           }
-          break
+          case 'route': {
+            const obj = asRecord(data)
+            const strategy =
+              (obj ? readString(obj, 'strategy') : undefined) ??
+              (obj ? readString(obj, 'query_type') : undefined)
+            if (strategy) callbacks.onRoute?.(strategy)
+            break
+          }
+          case 'answer': {
+            const delta = extractAnswerDelta(data)
+            if (delta) {
+              content += delta
+              callbacks.onAnswer?.(delta)
+            }
+            break
+          }
+          case 'citation': {
+            const batch = parseCitationEvent(data)
+            if (batch.length > 0) {
+              citations = mergeCitations(citations, batch)
+              callbacks.onCitations?.(batch)
+            }
+            break
+          }
+          case 'done': {
+            terminalEvent = true
+            const obj = asRecord(data)
+            durationMs = obj ? readNumber(obj, 'duration_ms') : undefined
+            callbacks.onDone?.({ duration_ms: durationMs })
+            break
+          }
+          case 'error': {
+            terminalEvent = true
+            streamError = extractErrorMessage(data)
+            callbacks.onError?.(streamError)
+            break
+          }
+          default:
+            break
         }
-        case 'done': {
-          const obj = asRecord(data)
-          durationMs = obj ? readNumber(obj, 'duration_ms') : undefined
-          callbacks.onDone?.({ duration_ms: durationMs })
-          break
-        }
-        case 'error': {
-          streamError = extractErrorMessage(data)
-          callbacks.onError?.(streamError)
-          break
-        }
-        default:
-          break
-      }
-    },
-    signal,
-  )
+      },
+      signal,
+    )
+  } catch (err) {
+    if (signal?.aborted) throw err
+    const message = toUserFacingQueryError(
+      err instanceof Error ? err.message : undefined,
+    )
+    callbacks.onError?.(message)
+    throw new Error(message)
+  }
+
+  if (!terminalEvent && !signal?.aborted) {
+    callbacks.onError?.(QUERY_INCOMPLETE_ERROR)
+    throw new Error(QUERY_INCOMPLETE_ERROR)
+  }
 
   if (streamError) {
     throw new Error(streamError)

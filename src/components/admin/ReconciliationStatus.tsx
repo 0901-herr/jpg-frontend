@@ -1,5 +1,6 @@
 import { Card, Descriptions, Tag, Typography } from 'antd'
 import type { IngestionOverview } from '../../api/types/admin'
+import { ADMIN_CARD_CLASS } from '../../config/adminStyles'
 import { formatDateTime } from '../../utils/lifecycle'
 
 const { Text } = Typography
@@ -12,7 +13,7 @@ export default function ReconciliationStatus({ overview }: ReconciliationStatusP
   const lastRun = overview.last_reconciliation_at
 
   return (
-    <Card title="Reconciliation" size="small" className="shadow-sm">
+    <Card title="Reconciliation" size="small" className={ADMIN_CARD_CLASS}>
       <Descriptions column={1} size="small">
         <Descriptions.Item label="Last run">{formatDateTime(lastRun)}</Descriptions.Item>
         <Descriptions.Item label="Status">

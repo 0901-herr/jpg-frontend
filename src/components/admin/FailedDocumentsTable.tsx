@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnsType } from 'antd/es/table'
 import { fetchAdminDocuments, fetchIngestionErrors, retryDocument, retryFailedDocuments } from '../../api/admin'
 import type { AdminDocumentSummary } from '../../api/types/admin'
+import { ADMIN_CARD_CLASS } from '../../config/adminStyles'
 import { adminQueryKeys } from '../../lib/adminQueryKeys'
 import { formatDateTime } from '../../utils/lifecycle'
 
@@ -85,7 +86,7 @@ export default function FailedDocumentsTable({ onSelect }: FailedDocumentsTableP
   return (
     <Card
       title={`Failed Documents (${totalFailed.toLocaleString()})`}
-      className="shadow-sm"
+      className={ADMIN_CARD_CLASS}
       extra={
         totalFailed > 0 ? (
           <Button
@@ -108,19 +109,22 @@ export default function FailedDocumentsTable({ onSelect }: FailedDocumentsTableP
             .join(' · ')}
         </div>
       )}
-      <Table
-        rowKey="source_document_id"
-        size="small"
-        columns={columns}
-        dataSource={data?.items ?? []}
-        loading={isLoading}
-        pagination={false}
-        locale={{ emptyText: 'No failed documents' }}
-        onRow={(record) => ({
-          onClick: () => onSelect(record),
-          className: 'cursor-pointer',
-        })}
-      />
+      <div className="min-w-0 overflow-x-auto">
+        <Table
+          rowKey="source_document_id"
+          size="small"
+          columns={columns}
+          dataSource={data?.items ?? []}
+          loading={isLoading}
+          pagination={false}
+          scroll={{ x: 720 }}
+          locale={{ emptyText: 'No failed documents' }}
+          onRow={(record) => ({
+            onClick: () => onSelect(record),
+            className: 'cursor-pointer',
+          })}
+        />
+      </div>
     </Card>
   )
 }

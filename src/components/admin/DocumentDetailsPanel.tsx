@@ -11,6 +11,7 @@ import {
   LIFECYCLE_LABELS,
 } from '../../utils/lifecycle'
 import DocumentStatusBadge from './DocumentStatusBadge'
+import IngestionPipelineWaterfall from './IngestionPipelineWaterfall'
 import type { LifecycleStatus } from '../../api/types/admin'
 
 const { Text, Paragraph } = Typography
@@ -76,12 +77,15 @@ export default function DocumentDetailsPanel({ docId, open, onClose }: DocumentD
       )}
       {data && (
         <div className="space-y-6">
-          <div>
-            <DocumentStatusBadge status={data.lifecycle_status} />
-            <Text type="secondary" className="block mt-2 text-sm">
-              {LIFECYCLE_HINTS[data.lifecycle_status as LifecycleStatus] ??
-                LIFECYCLE_LABELS[data.lifecycle_status as LifecycleStatus]}
-            </Text>
+          <div className="rounded-lg border border-gray-200 p-4">
+            <IngestionPipelineWaterfall status={data.lifecycle_status} doc={data} compact={false} />
+            <div className="mt-3 flex items-center gap-2">
+              <DocumentStatusBadge status={data.lifecycle_status} />
+              <Text type="secondary" className="text-sm">
+                {LIFECYCLE_HINTS[data.lifecycle_status as LifecycleStatus] ??
+                  LIFECYCLE_LABELS[data.lifecycle_status as LifecycleStatus]}
+              </Text>
+            </div>
             {isFetching && !isLoading && (
               <Text type="secondary" className="block text-xs mt-1">
                 Refreshing…

@@ -12,19 +12,24 @@ export default function AdminLayout() {
 
   return (
     <App>
-      <Layout className={`min-h-screen ${surface.page}`}>
-        <Sider width={220} theme="light" className="border-r border-[#ececec]">
-          <div className="px-4 py-5">
-            <Text strong className="text-base">
+      <Layout className={`h-screen overflow-hidden overflow-x-hidden ${surface.page}`}>
+        <Sider
+          width={240}
+          theme="light"
+          className="!bg-[#fafafa] border-r border-[#ececec] shrink-0"
+        >
+          <div className="px-5 py-6 border-b border-[#ececec]">
+            <Text strong className="text-lg tracking-tight">
               JPG Admin
             </Text>
             <Text type="secondary" className="block text-xs mt-1">
-              Ingestion operations
+              Operator console
             </Text>
           </div>
           <Menu
             mode="inline"
             selectedKeys={selected}
+            className="!bg-transparent !border-none px-2 pt-3"
             items={[
               {
                 key: 'ingestion',
@@ -33,19 +38,22 @@ export default function AdminLayout() {
               },
             ]}
           />
-          <div className="absolute bottom-4 left-4 right-4">
-            <Link to="/chat" className="text-sm text-[#0084ff]">
+          <div className="absolute bottom-5 left-5 right-5">
+            <Link
+              to="/chat"
+              className="text-sm text-[#0084ff] hover:text-[#0066cc] no-underline"
+            >
               ← Back to chat
             </Link>
           </div>
         </Sider>
-        <Layout>
-          <Header className="!bg-[#fefdfc] border-b border-[#ececec] px-6 flex items-center">
-            <Text type="secondary" className="text-sm">
+        <Layout className="min-w-0 flex flex-col">
+          <Header className="!bg-[#fefdfc] !h-14 border-b border-[#ececec] px-5 flex items-center shrink-0">
+            <Text type="secondary" className="text-sm truncate">
               Operator dashboard — not visible to hospital users
             </Text>
           </Header>
-          <Content className="p-6 max-w-7xl w-full mx-auto">
+          <Content className="flex-1 min-h-0 min-w-0 overflow-hidden">
             <Outlet />
           </Content>
         </Layout>

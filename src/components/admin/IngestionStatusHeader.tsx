@@ -5,6 +5,7 @@ const { Title, Text } = Typography
 
 interface IngestionStatusHeaderProps {
   overview: IngestionOverview
+  compact?: boolean
 }
 
 function overallColor(state: string): string {
@@ -14,15 +15,22 @@ function overallColor(state: string): string {
   return 'default'
 }
 
-export default function IngestionStatusHeader({ overview }: IngestionStatusHeaderProps) {
+export default function IngestionStatusHeader({
+  overview,
+  compact = false,
+}: IngestionStatusHeaderProps) {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <Title level={3} className="!mb-1">
+        <div className="min-w-0">
+          <Title level={compact ? 4 : 3} className="!mb-1">
             Ingestion Operations
           </Title>
-          <Text type="secondary">Administrator dashboard for LogicalDOC → RAG pipeline</Text>
+          {!compact && (
+            <Text type="secondary" className="block">
+              Administrator dashboard for LogicalDOC → RAG pipeline
+            </Text>
+          )}
         </div>
         <Space wrap>
           <Tag color={overallColor(overview.overall_state)} className="!text-sm !px-3 !py-1">

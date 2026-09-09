@@ -1,5 +1,6 @@
 import { Card, Col, Progress, Row, Statistic, Typography } from 'antd'
 import type { IngestionOverview } from '../../api/types/admin'
+import { ADMIN_CARD_CLASS } from '../../config/adminStyles'
 import { computeProgressLabel } from '../../utils/lifecycle'
 
 const { Text } = Typography
@@ -25,7 +26,7 @@ export default function ProgressSummary({ overview }: ProgressSummaryProps) {
   const queued = counts.discovered + counts.staged
 
   return (
-    <Card title="Bulk Ingestion Progress" className="shadow-sm">
+    <Card title="Bulk Ingestion Progress" className={ADMIN_CARD_CLASS}>
       <div className="mb-4 space-y-2">
         <Text>{progress.label}</Text>
         {progress.percent != null && (

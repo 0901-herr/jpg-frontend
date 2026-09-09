@@ -1,5 +1,6 @@
 import { Card, Col, Row, Statistic, Typography } from 'antd'
 import type { BulkProgressSnapshot } from '../../api/types/admin'
+import { ADMIN_CARD_CLASS } from '../../config/adminStyles'
 
 const { Text } = Typography
 
@@ -17,7 +18,7 @@ function formatEta(seconds: number | null | undefined): string {
 export default function ThroughputSummary({ bulk }: ThroughputSummaryProps) {
   if (!bulk || bulk.job_state === 'idle') {
     return (
-      <Card title="Throughput" size="small" className="shadow-sm">
+      <Card title="Throughput" size="small" className={ADMIN_CARD_CLASS}>
         <Text type="secondary">No active bulk job — throughput metrics unavailable</Text>
       </Card>
     )
@@ -26,7 +27,7 @@ export default function ThroughputSummary({ bulk }: ThroughputSummaryProps) {
   const rate = bulk.documents_per_second
 
   return (
-    <Card title="Throughput" size="small" className="shadow-sm">
+    <Card title="Throughput" size="small" className={ADMIN_CARD_CLASS}>
       <Row gutter={[16, 16]}>
         <Col span={8}>
           <Statistic

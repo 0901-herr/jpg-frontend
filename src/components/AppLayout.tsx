@@ -11,6 +11,7 @@ import { useDocumentSelection } from '../hooks/useDocumentSelection'
 import { useResizableWidth } from '../hooks/useResizableWidth'
 import { type, typeColor } from '../styles/typography'
 import { citationsToSources, mergeCitations } from '../utils/citations'
+import { formatProgressStage, formatRouteLabel } from '../utils/queryProgress'
 import { isCitationDemoEnabled, isCitationLoadingDemoEnabled } from '../config/demo'
 import {
   createCitationDemoSession,
@@ -250,12 +251,35 @@ export default function AppLayout() {
                 coverage: c,
               }))
             },
+            onProgress: (stage) => {
+              updateAssistantMessage(activeChatId, (msg) => ({
+                ...msg,
+                status: msg.content ? 'streaming' : 'thinking',
+                progressLabel: formatProgressStage(stage),
+              }))
+            },
+            onRoute: (strategy) => {
+              updateAssistantMessage(activeChatId, (msg) => ({
+                ...msg,
+                status: 'thinking',
+                progressLabel: formatRouteLabel(strategy),
+              }))
+            },
+            onError: (message) => {
+              updateAssistantMessage(activeChatId, (msg) => ({
+                ...msg,
+                status: 'error',
+                content: message,
+                progressLabel: undefined,
+              }))
+            },
             onAnswer: (delta) => {
               updateAssistantMessage(activeChatId, (msg) => ({
                 ...msg,
                 status: 'streaming',
                 content: msg.content + delta,
                 coverage: coverage ?? msg.coverage,
+                progressLabel: undefined,
               }))
             },
             onCitations: (batch) => {
@@ -308,21 +332,14 @@ export default function AppLayout() {
 
         const detail =
           err instanceof Error && err.message ? err.message : 'Request failed'
-        const errorMsg: ChatMessage = {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content: `Something went wrong: ${detail}`,
-          status: 'complete',
+        message.error(detail, 8)
+        updateAssistantMessage(activeChatId, (msg) => ({
+          ...msg,
+          content: detail,
+          status: 'error',
+          progressLabel: undefined,
           thinkingSeconds: elapsedSeconds(),
-        }
-
-        setSessions((prev) =>
-          prev.map((s) =>
-            s.id === activeChatId
-              ? { ...s, messages: [...s.messages.slice(0, -1), errorMsg] }
-              : s,
-          ),
-        )
+        }))
       } finally {
         if (abortControllerRef.current === controller) {
           abortControllerRef.current = null

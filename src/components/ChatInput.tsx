@@ -1,7 +1,7 @@
-import { ArrowUpOutlined, CloseOutlined, FileOutlined, StopOutlined } from '@ant-design/icons'
+import { ArrowUpOutlined, CloseOutlined, FileOutlined } from '@ant-design/icons'
 import { Input } from 'antd'
 import { useState } from 'react'
-import { type, typeColor } from '../styles/typography'
+import { sidebar, type, typeColor } from '../styles/typography'
 import { radius, surface } from '../styles/theme'
 
 interface ChatInputProps {
@@ -55,9 +55,9 @@ export default function ChatInput({
             <button
               type="button"
               onClick={onClearSelection}
-              className={`inline-flex items-center gap-1 ${type.caption} ${typeColor.muted} hover:text-zinc-600 transition-colors`}
+              className={`inline-flex items-center gap-1 ${sidebar.caption} ${typeColor.muted} hover:text-[#676767] transition-colors`}
             >
-              <CloseOutlined className="text-[10px]" />
+              <CloseOutlined className="text-xs text-inherit" />
               Clear
             </button>
           </div>
@@ -95,7 +95,7 @@ export default function ChatInput({
               aria-label={isResponding ? 'Stop response' : 'Send message'}
             >
               {isResponding ? (
-                <StopOutlined className="!text-white text-sm" />
+                <span className="block w-3 h-3 bg-white rounded-[2px]" aria-hidden />
               ) : (
                 <ArrowUpOutlined
                   className={canSend ? '!text-white text-sm' : '!text-[#8e8e8e] text-sm'}

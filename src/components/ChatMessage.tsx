@@ -8,7 +8,7 @@ import CitationList, { CitationLink } from './CitationList'
 
 const { Text } = Typography
 
-function ThinkingIndicator() {
+function ThinkingIndicator({ label }: { label?: string }) {
   const [elapsed, setElapsed] = useState(0)
 
   useEffect(() => {
@@ -19,10 +19,27 @@ function ThinkingIndicator() {
     return () => window.clearInterval(id)
   }, [])
 
+  const headline = label ?? 'Thinking'
+
   return (
-    <span className={`${type.body} ${typeColor.muted} docu-thinking-shimmer`} aria-live="polite">
-      Thinking {elapsed}s
-    </span>
+    <div className="space-y-1" aria-live="polite">
+      <span className={`${type.body} ${typeColor.muted} docu-thinking-shimmer block`}>
+        {headline}
+      </span>
+      <span className={`${type.caption} ${typeColor.muted} block`}>{elapsed}s</span>
+    </div>
+  )
+}
+
+function ErrorMessage({ content }: { content: string }) {
+  return (
+    <div
+      className={`${radius.md} border border-red-200 bg-red-50 px-4 py-3 ${type.body} text-red-800`}
+      role="alert"
+    >
+      <p className="font-medium mb-1">Couldn&apos;t get an answer</p>
+      <p className="leading-relaxed">{content}</p>
+    </div>
   )
 }
 
@@ -61,8 +78,12 @@ function AnswerContent({ message }: { message: ChatMessage }) {
 }
 
 function AssistantMessage({ message }: AssistantMessageProps) {
+  if (message.status === 'error') {
+    return <ErrorMessage content={message.content} />
+  }
+
   if (message.status === 'thinking') {
-    return <ThinkingIndicator />
+    return <ThinkingIndicator label={message.progressLabel} />
   }
 
   return (

@@ -106,7 +106,9 @@ describe('IngestionOverviewPage', () => {
   it('displays READY document in table', async () => {
     renderPage()
     const row = await screen.findByRole('row', { name: /CT_Report\.pdf/i })
-    expect(within(row).getByText(/ready/i)).toBeInTheDocument()
+    expect(
+      within(row).getByRole('img', { name: /Pipeline: Fully indexed and searchable/i }),
+    ).toBeInTheDocument()
   })
 
   it('displays INDEXING document', async () => {

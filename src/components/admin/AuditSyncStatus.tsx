@@ -1,5 +1,6 @@
 import { Alert, Card, Descriptions, Tag } from 'antd'
 import type { IngestionOverview } from '../../api/types/admin'
+import { ADMIN_CARD_CLASS } from '../../config/adminStyles'
 import { formatDateTime, formatRelativeTime } from '../../utils/lifecycle'
 
 interface AuditSyncStatusProps {
@@ -16,7 +17,7 @@ export default function AuditSyncStatus({ overview }: AuditSyncStatusProps) {
     Date.now() - new Date(pollAt).getTime() > STALE_MINUTES * 60 * 1000
 
   return (
-    <Card title="LogicalDOC Incremental Sync" size="small" className="shadow-sm">
+    <Card title="LogicalDOC Incremental Sync" size="small" className={ADMIN_CARD_CLASS}>
       {!overview.audit_sync_enabled ? (
         <Tag>Disabled</Tag>
       ) : (

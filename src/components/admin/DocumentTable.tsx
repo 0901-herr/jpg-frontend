@@ -1,8 +1,10 @@
-import { Table } from 'antd'
+import { Card, Table } from 'antd'
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table'
 import type { AdminDocumentSummary } from '../../api/types/admin'
+import { ADMIN_CARD_CLASS, ADMIN_TABLE_SCROLL } from '../../config/adminStyles'
 import { formatDateTime } from '../../utils/lifecycle'
 import DocumentStatusBadge from './DocumentStatusBadge'
+import IngestionPipelineWaterfall from './IngestionPipelineWaterfall'
 
 interface DocumentTableProps {
   items: AdminDocumentSummary[]
@@ -28,19 +30,29 @@ export default function DocumentTable({
       title: 'Filename',
       dataIndex: 'filename',
       key: 'filename',
+      ellipsis: true,
+      width: 200,
       render: (value: string | null, row) => value ?? `(doc ${row.source_document_id})`,
     },
     {
       title: 'LogicalDOC ID',
       dataIndex: 'source_document_id',
       key: 'source_document_id',
-      width: 120,
+      width: 110,
+    },
+    {
+      title: 'Pipeline',
+      key: 'pipeline',
+      width: 280,
+      render: (_value, row) => (
+        <IngestionPipelineWaterfall status={row.lifecycle_status} doc={row} />
+      ),
     },
     {
       title: 'Status',
       dataIndex: 'lifecycle_status',
       key: 'lifecycle_status',
-      width: 120,
+      width: 100,
       render: (status) => <DocumentStatusBadge status={status} />,
     },
     {
@@ -48,19 +60,20 @@ export default function DocumentTable({
       dataIndex: 'discovery_source',
       key: 'discovery_source',
       width: 100,
+      ellipsis: true,
       render: (v: string | null) => v ?? '—',
     },
     {
       title: 'Retry',
       dataIndex: 'retry_count',
       key: 'retry_count',
-      width: 70,
+      width: 64,
     },
     {
       title: 'Last updated',
       dataIndex: 'updated_at',
       key: 'updated_at',
-      width: 180,
+      width: 160,
       render: (v: string | null) => formatDateTime(v),
     },
   ]
@@ -76,17 +89,23 @@ export default function DocumentTable({
   }
 
   return (
-    <Table
-      rowKey="source_document_id"
-      columns={columns}
-      dataSource={items}
-      loading={loading}
-      pagination={pagination}
-      onRow={(record) => ({
-        onClick: () => onSelect(record),
-        className: 'cursor-pointer',
-      })}
-      locale={{ emptyText: 'No documents match your search' }}
-    />
+    <Card title="Documents" className={ADMIN_CARD_CLASS}>
+      <div className="min-w-0 overflow-x-auto">
+        <Table
+          rowKey="source_document_id"
+          columns={columns}
+          dataSource={items}
+          loading={loading}
+          pagination={pagination}
+          scroll={ADMIN_TABLE_SCROLL}
+          size="middle"
+          onRow={(record) => ({
+            onClick: () => onSelect(record),
+            className: 'cursor-pointer',
+          })}
+          locale={{ emptyText: 'No documents match your search' }}
+        />
+      </div>
+    </Card>
   )
 }

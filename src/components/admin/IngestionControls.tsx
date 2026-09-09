@@ -8,6 +8,7 @@ import {
   resumeIngestion,
 } from '../../api/admin'
 import type { IngestionOverview } from '../../api/types/admin'
+import { ADMIN_CARD_CLASS } from '../../config/adminStyles'
 import { adminQueryKeys } from '../../lib/adminQueryKeys'
 
 const { Paragraph, Text } = Typography
@@ -64,7 +65,7 @@ export default function IngestionControls({ overview }: IngestionControlsProps) 
   const discoveryPaused = overview.discovery_state === 'PAUSED'
 
   return (
-    <Card title="Controls" className="shadow-sm">
+    <Card title="Controls" className={ADMIN_CARD_CLASS}>
       <Paragraph type="secondary" className="!mb-4 text-sm">
         Pausing ingestion stops new RAG submissions. Documents already submitted continue indexing.
         MQ completion events still update status.

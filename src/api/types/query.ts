@@ -25,6 +25,8 @@ export interface CoverageEvent {
 
 export interface StreamQueryCallbacks {
   onCoverage?: (coverage: CoverageEvent) => void
+  onProgress?: (stage: string) => void
+  onRoute?: (strategy: string) => void
   onAnswer?: (delta: string) => void
   /** Batch of citations from a single SSE citation event */
   onCitations?: (citations: Citation[]) => void

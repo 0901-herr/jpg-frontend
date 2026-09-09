@@ -1,6 +1,7 @@
 import { Alert, Spin } from 'antd'
 import { useQuery } from '@tanstack/react-query'
 import { useCallback, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { fetchAdminDocuments, fetchIngestionOverview } from '../../api/admin'
 import type { AdminDocumentQuery, AdminDocumentSummary } from '../../api/types/admin'
 import AuditSyncStatus from '../../components/admin/AuditSyncStatus'
@@ -8,12 +9,17 @@ import DocumentDetailsPanel from '../../components/admin/DocumentDetailsPanel'
 import DocumentSearch from '../../components/admin/DocumentSearch'
 import DocumentTable from '../../components/admin/DocumentTable'
 import FailedDocumentsTable from '../../components/admin/FailedDocumentsTable'
+import IngestionActivityLog from '../../components/admin/IngestionActivityLog'
 import IngestionControls from '../../components/admin/IngestionControls'
+import IngestionSectionNav, {
+  getIngestionSection,
+} from '../../components/admin/IngestionSectionNav'
 import IngestionStatusHeader from '../../components/admin/IngestionStatusHeader'
 import ProgressSummary from '../../components/admin/ProgressSummary'
 import ReconciliationStatus from '../../components/admin/ReconciliationStatus'
 import SystemHealth from '../../components/admin/SystemHealth'
 import ThroughputSummary from '../../components/admin/ThroughputSummary'
+import { ADMIN_PAGE_CLASS, ADMIN_SECTION_MAIN_CLASS, ADMIN_SECTION_NAV_CLASS } from '../../config/adminStyles'
 import { ADMIN_OVERVIEW_POLL_MS } from '../../config/admin'
 import { adminQueryKeys } from '../../lib/adminQueryKeys'
 import { ApiError } from '../../api/http'
@@ -21,6 +27,8 @@ import { ApiError } from '../../api/http'
 const DEFAULT_QUERY: AdminDocumentQuery = { offset: 0, limit: 50 }
 
 export default function IngestionOverviewPage() {
+  const [searchParams] = useSearchParams()
+  const section = getIngestionSection(searchParams)
   const [docQuery, setDocQuery] = useState<AdminDocumentQuery>(DEFAULT_QUERY)
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null)
   const [detailsOpen, setDetailsOpen] = useState(false)
@@ -35,6 +43,14 @@ export default function IngestionOverviewPage() {
     queryKey: adminQueryKeys.documents(docQuery),
     queryFn: ({ signal }) => fetchAdminDocuments(docQuery, signal),
     placeholderData: (prev) => prev,
+    enabled: section === 'documents' || section === 'overview',
+  })
+
+  const activityQuery = useQuery({
+    queryKey: adminQueryKeys.activityFeed,
+    queryFn: ({ signal }) => fetchAdminDocuments({ offset: 0, limit: 100 }, signal),
+    refetchInterval: section === 'activity' ? ADMIN_OVERVIEW_POLL_MS : false,
+    enabled: section === 'activity',
   })
 
   const page = Math.floor((docQuery.offset ?? 0) / (docQuery.limit ?? 50)) + 1
@@ -53,7 +69,7 @@ export default function IngestionOverviewPage() {
 
   if (overviewQuery.isLoading) {
     return (
-      <div className="flex justify-center py-24">
+      <div className="flex justify-center items-center h-full">
         <Spin size="large" />
       </div>
     )
@@ -62,67 +78,112 @@ export default function IngestionOverviewPage() {
   if (overviewQuery.isError) {
     const err = overviewQuery.error
     return (
-      <Alert
-        type="error"
-        showIcon
-        message="Failed to load ingestion overview"
-        description={err instanceof ApiError ? err.detail ?? err.message : (err as Error).message}
-      />
+      <div className="p-6 max-w-2xl">
+        <Alert
+          type="error"
+          showIcon
+          message="Failed to load ingestion overview"
+          description={err instanceof ApiError ? err.detail ?? err.message : (err as Error).message}
+        />
+      </div>
     )
   }
 
   if (!overview) return null
 
   return (
-    <div className="space-y-6">
-        <IngestionStatusHeader overview={overview} />
+    <div className={ADMIN_PAGE_CLASS}>
+      <aside className={ADMIN_SECTION_NAV_CLASS}>
+        <IngestionSectionNav failedCount={overview.counts.failed} />
+      </aside>
 
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          <div className="xl:col-span-2 space-y-6">
-            <ProgressSummary overview={overview} />
-            <IngestionControls overview={overview} />
-          </div>
-          <div className="space-y-6">
-            <SystemHealth health={overview.health} circuitOpen={overview.circuit_open} />
-            <ThroughputSummary bulk={overview.bulk_progress} />
-          </div>
+      <main className={ADMIN_SECTION_MAIN_CLASS}>
+        <div className="max-w-6xl w-full mx-auto space-y-6">
+          <IngestionStatusHeader overview={overview} compact={section !== 'overview'} />
+
+          {section === 'overview' && (
+            <>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                <div className="lg:col-span-2 space-y-5">
+                  <ProgressSummary overview={overview} />
+                  <IngestionControls overview={overview} />
+                </div>
+                <div className="space-y-5">
+                  <ThroughputSummary bulk={overview.bulk_progress} />
+                </div>
+              </div>
+            </>
+          )}
+
+          {section === 'activity' && (
+            <IngestionActivityLog
+              overview={overview}
+              documents={activityQuery.data?.items ?? []}
+              loading={activityQuery.isFetching}
+              onRefresh={() => {
+                void activityQuery.refetch()
+                void overviewQuery.refetch()
+              }}
+              onSelectDocument={(docId) => {
+                setSelectedDocId(docId)
+                setDetailsOpen(true)
+              }}
+            />
+          )}
+
+          {section === 'documents' && (
+            <>
+              <DocumentSearch
+                loading={documentsQuery.isFetching}
+                onSearch={(query) => {
+                  handleSearch(query)
+                }}
+              />
+              <DocumentTable
+                items={documentsQuery.data?.items ?? []}
+                total={documentsQuery.data?.total ?? 0}
+                loading={documentsQuery.isLoading}
+                page={page}
+                pageSize={pageSize}
+                onPageChange={(p, size) => {
+                  setDocQuery((prev) => ({
+                    ...prev,
+                    offset: (p - 1) * size,
+                    limit: size,
+                  }))
+                }}
+                onSelect={openDocument}
+              />
+            </>
+          )}
+
+          {section === 'errors' && <FailedDocumentsTable onSelect={openDocument} />}
+
+          {section === 'health' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-3xl">
+              <SystemHealth
+                health={overview.health}
+                circuitOpen={overview.circuit_open}
+                ragApiBaseUrl={overview.rag_api_base_url}
+              />
+              <ThroughputSummary bulk={overview.bulk_progress} />
+            </div>
+          )}
+
+          {section === 'sync' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-4xl">
+              <AuditSyncStatus overview={overview} />
+              <ReconciliationStatus overview={overview} />
+            </div>
+          )}
         </div>
+      </main>
 
-        <DocumentSearch
-          loading={documentsQuery.isFetching}
-          onSearch={(query) => {
-            handleSearch(query)
-          }}
-        />
-
-        <DocumentTable
-          items={documentsQuery.data?.items ?? []}
-          total={documentsQuery.data?.total ?? 0}
-          loading={documentsQuery.isLoading}
-          page={page}
-          pageSize={pageSize}
-          onPageChange={(p, size) => {
-            setDocQuery((prev) => ({
-              ...prev,
-              offset: (p - 1) * size,
-              limit: size,
-            }))
-          }}
-          onSelect={openDocument}
-        />
-
-        <FailedDocumentsTable onSelect={openDocument} />
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <AuditSyncStatus overview={overview} />
-          <ReconciliationStatus overview={overview} />
-        </div>
-
-        <DocumentDetailsPanel
-          docId={selectedDocId}
-          open={detailsOpen}
-          onClose={() => setDetailsOpen(false)}
-        />
+      <DocumentDetailsPanel
+        docId={selectedDocId}
+        open={detailsOpen}
+        onClose={() => setDetailsOpen(false)}
+      />
     </div>
   )
 }

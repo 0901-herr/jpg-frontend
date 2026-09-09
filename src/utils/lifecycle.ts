@@ -43,6 +43,88 @@ export function isTerminalLifecycle(status: LifecycleStatus): boolean {
   return status === 'READY' || status === 'FAILED' || status === 'DELETED'
 }
 
+/** Ordered ingestion pipeline stages for waterfall UI. */
+export const PIPELINE_STAGES = [
+  { id: 'discovered', shortLabel: 'Disc', label: 'Discovered in LogicalDOC' },
+  { id: 'queued', shortLabel: 'Queue', label: 'Queued for ingestion' },
+  { id: 'preparing', shortLabel: 'Prep', label: 'Downloading from LogicalDOC' },
+  { id: 'staged', shortLabel: 'Stage', label: 'Staged for RAG submit' },
+  { id: 'submitted', shortLabel: 'Submit', label: 'Submitted to RAG Engine' },
+  { id: 'indexing', shortLabel: 'Index', label: 'Indexing in RAG Engine' },
+  { id: 'ready', shortLabel: 'Ready', label: 'Searchable in RAG' },
+] as const
+
+export type PipelineStageState = 'pending' | 'complete' | 'current' | 'failed' | 'skipped'
+
+const STATUS_STAGE_INDEX: Record<LifecycleStatus, number> = {
+  DISCOVERED: 0,
+  QUEUED: 1,
+  PREPARING: 2,
+  STAGED: 3,
+  SUBMITTED: 4,
+  INDEXING: 5,
+  READY: 6,
+  FAILED: -1,
+  DELETING: 6,
+  DELETED: 6,
+}
+
+type PipelineDocTimestamps = Pick<
+  import('../api/types/admin').AdminDocumentSummary,
+  'discovered_at' | 'submitted_at' | 'ready_at' | 'failed_at'
+>
+
+/** Infer the stage where a FAILED document stopped (best-effort from timestamps). */
+export function inferFailedStageIndex(doc?: PipelineDocTimestamps): number {
+  if (!doc) return 2
+  if (doc.ready_at) return 6
+  if (doc.submitted_at) return 5
+  if (doc.discovered_at) return 2
+  return 1
+}
+
+export function getPipelineProgress(
+  status: LifecycleStatus,
+  doc?: PipelineDocTimestamps,
+): { states: PipelineStageState[]; summary: string } {
+  const stageCount = PIPELINE_STAGES.length
+  let activeIndex = STATUS_STAGE_INDEX[status]
+  let failed = false
+
+  if (status === 'FAILED') {
+    failed = true
+    activeIndex = inferFailedStageIndex(doc)
+  } else if (status === 'DELETING') {
+    activeIndex = 6
+  } else if (status === 'DELETED') {
+    activeIndex = 6
+  }
+
+  const states: PipelineStageState[] = PIPELINE_STAGES.map((_, index) => {
+    if (failed) {
+      if (index < activeIndex) return 'complete'
+      if (index === activeIndex) return 'failed'
+      return 'pending'
+    }
+    if (status === 'READY' || status === 'DELETED') return 'complete'
+    if (status === 'DELETING' && index === stageCount - 1) return 'current'
+    if (index < activeIndex) return 'complete'
+    if (index === activeIndex) return 'current'
+    return 'pending'
+  })
+
+  const summary =
+    status === 'FAILED'
+      ? `Failed at ${PIPELINE_STAGES[activeIndex]?.label ?? 'unknown stage'}`
+      : status === 'READY'
+        ? 'Fully indexed and searchable'
+        : status === 'DELETED'
+          ? 'Removed from corpus'
+          : `${PIPELINE_STAGES[activeIndex]?.label ?? status} (in progress)`
+
+  return { states, summary }
+}
+
 export function formatDateTime(value: string | null | undefined): string {
   if (!value) return '—'
   const date = new Date(value)
