@@ -9,7 +9,7 @@ describe('toUserFacingQueryError', () => {
   it('uses almost-done message when failure follows assembly stage', () => {
     expect(
       toUserFacingQueryError('RAG Engine unavailable during query', {
-        progressLabel: 'Almost done — putting your answer together…',
+        progressLabel: 'Almost done. Putting your answer together…',
       }),
     ).toBe(QUERY_ALMOST_DONE_ERROR)
   })

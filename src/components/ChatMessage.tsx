@@ -73,7 +73,7 @@ function CoverageNotice({ coverage }: { coverage?: CoverageInfo }) {
 
   return (
     <p className={`${type.caption} ${typeColor.muted} leading-relaxed`} role="status">
-      {scope} — answer may be incomplete until indexing finishes.
+      {scope}. Some documents are still indexing, so the answer may be incomplete.
     </p>
   )
 }

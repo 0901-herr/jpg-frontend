@@ -5,12 +5,12 @@ const STAGE_LABELS: Record<string, string> = {
   retrieving: 'Searching your documents…',
   reranking: 'Finding the best matches…',
   generating: 'Writing your answer…',
-  assembly: 'Almost done — putting your answer together…',
-  assembling: 'Almost done — putting your answer together…',
-  synthesizing: 'Almost done — putting your answer together…',
-  composing: 'Almost done — putting your answer together…',
-  formatting: 'Almost done — finishing up…',
-  finalizing: 'Almost done — finishing up…',
+  assembly: 'Almost done. Putting your answer together…',
+  assembling: 'Almost done. Putting your answer together…',
+  synthesizing: 'Almost done. Putting your answer together…',
+  composing: 'Almost done. Putting your answer together…',
+  formatting: 'Almost done. Finishing up…',
+  finalizing: 'Almost done. Finishing up…',
 }
 
 function humanizeStage(stage: string): string {
@@ -26,7 +26,7 @@ export function formatProgressStage(stage: string | undefined): string | undefin
   if (STAGE_LABELS[key]) return STAGE_LABELS[key]
 
   if (key.includes('generat') || key.includes('assembl') || key.includes('synth')) {
-    return 'Almost done — putting your answer together…'
+    return 'Almost done. Putting your answer together…'
   }
   if (key.includes('retriev') || key.includes('search')) {
     return 'Searching your documents…'
@@ -38,7 +38,7 @@ export function formatProgressStage(stage: string | undefined): string | undefin
     return 'Understanding your question…'
   }
 
-  return `Still working — ${humanizeStage(stage)}…`
+  return `Still working on ${humanizeStage(stage)}…`
 }
 
 export function formatRouteLabel(strategy: string | undefined): string | undefined {

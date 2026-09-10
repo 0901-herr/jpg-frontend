@@ -8,12 +8,12 @@ describe('formatProgressStage', () => {
 
   it('maps assembly to almost done', () => {
     expect(formatProgressStage('assembly')).toBe(
-      'Almost done — putting your answer together…',
+      'Almost done. Putting your answer together…',
     )
   })
 
   it('humanizes unknown stages without raw snake_case', () => {
-    expect(formatProgressStage('custom_stage')).toBe('Still working — Custom Stage…')
+    expect(formatProgressStage('custom_stage')).toBe('Still working on Custom Stage…')
   })
 })
 

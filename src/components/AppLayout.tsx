@@ -181,7 +181,7 @@ export default function AppLayout() {
         if (deniedCount > 0) {
           selection.trimSelection(scope.accessible_document_ids)
           message.warning(
-            `${deniedCount} selected ${deniedCount === 1 ? 'document was' : 'documents were'} removed — you don't have access.`,
+            `${deniedCount} selected ${deniedCount === 1 ? 'document was' : 'documents were'} removed because you don't have access.`,
           )
         }
 
@@ -198,7 +198,7 @@ export default function AppLayout() {
         }
 
         if (scope.ready_files === 0 && scope.indexing_files > 0) {
-          const reason = 'Documents still indexing — please wait until at least one is ready.'
+          const reason = 'Documents are still indexing. Please wait until at least one is ready.'
           setInputBlockedReason(reason)
           message.warning(reason)
           return
@@ -213,7 +213,7 @@ export default function AppLayout() {
 
         if (scope.indexing_files > 0) {
           message.info(
-            `${scope.indexing_files} selected ${scope.indexing_files === 1 ? 'document is' : 'documents are'} still indexing — answers may be incomplete.`,
+            `${scope.indexing_files} selected ${scope.indexing_files === 1 ? 'document is' : 'documents are'} still indexing. Answers may be incomplete.`,
           )
         }
       } catch (err) {
