@@ -3,6 +3,7 @@ import type {
   AdminDocumentSummary,
   IngestionControlState,
   IngestionOverview,
+  ReingestMissingResponse,
   RetryResponse,
 } from '../api/types/admin'
 
@@ -81,6 +82,7 @@ export function mockDocument(
     db_status: 'READY',
     discovery_source: 'bfs',
     rag_document_id: 'abc123-uuid',
+    classification_category: null,
     checksum: 'sha256:abc',
     retry_count: 1,
     last_error: null,
@@ -118,3 +120,8 @@ export const mockControlPaused: IngestionControlState = {
 }
 
 export const mockRetryResponse: RetryResponse = { retried: 1 }
+
+export const mockReingestMissingResponse: ReingestMissingResponse = {
+  queued: 2,
+  source_document_ids: ['101', '102'],
+}

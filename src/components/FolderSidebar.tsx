@@ -1,8 +1,10 @@
 import { FileTextOutlined, FolderOpenOutlined, RightOutlined } from '@ant-design/icons'
-import { Alert, Spin, TreeSelect } from 'antd'
+import { Alert, Select, Spin, TreeSelect } from 'antd'
+import { useEffect, useMemo, useState } from 'react'
 import type { AntTreeNodeProps } from 'antd/es/tree'
 import { sectionLabel } from '../styles/theme'
 import { sidebar, typeColor } from '../styles/typography'
+import { formatCategoryLabel } from '../utils/classification'
 import type { BrowseTreeState } from '../hooks/useBrowseTree'
 import type { DocumentSelection } from '../hooks/useDocumentSelection'
 import DocumentChecklist from './DocumentChecklist'
@@ -27,6 +29,30 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
     handleLoadTreeData,
     handleLoadMoreDocuments,
   } = browse
+
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null)
+
+  const allDocuments = activeFolderContents?.documents ?? []
+
+  const categoryOptions = useMemo(() => {
+    const seen = new Map<string, string>()
+    for (const doc of allDocuments) {
+      const key = doc.classification_category ?? 'uncategorized'
+      if (!seen.has(key)) seen.set(key, formatCategoryLabel(doc.classification_category))
+    }
+    return Array.from(seen, ([value, label]) => ({ value, label }))
+  }, [allDocuments])
+
+  const filteredDocuments = useMemo(() => {
+    if (!categoryFilter) return allDocuments
+    return allDocuments.filter(
+      (doc) => (doc.classification_category ?? 'uncategorized') === categoryFilter,
+    )
+  }, [allDocuments, categoryFilter])
+
+  useEffect(() => {
+    setCategoryFilter(null)
+  }, [activeFolderId])
 
   if (sessionExpired) {
     return (
@@ -110,22 +136,31 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
             </span>
           )}
         </div>
+        {categoryOptions.length > 1 && (
+          <Select
+            allowClear
+            placeholder="All categories"
+            value={categoryFilter ?? undefined}
+            onChange={(value) => setCategoryFilter(value ?? null)}
+            options={categoryOptions}
+            size="small"
+            className="w-full shrink-0"
+          />
+        )}
         <div className="flex flex-1 min-h-0 flex-col overflow-y-auto -mx-3 px-3">
           <DocumentChecklist
-            documents={activeFolderContents?.documents ?? []}
+            documents={filteredDocuments}
             selectedIds={selection.selectedIds}
             isLoading={isActiveFolderLoading}
             hasMore={activeFolderContents?.has_more_documents}
             isLoadingMore={loadingMoreFolderId === activeFolderId}
             onToggle={selection.toggleDocument}
             onSelectAll={() =>
-              selection.selectAllSelectable(activeFolderContents?.documents ?? [], {
+              selection.selectAllSelectable(filteredDocuments, {
                 replace: true,
               })
             }
-            onDeselectAll={() =>
-              selection.deselectAllInView(activeFolderContents?.documents ?? [])
-            }
+            onDeselectAll={() => selection.deselectAllInView(filteredDocuments)}
             onLoadMore={() => void handleLoadMoreDocuments()}
           />
         </div>

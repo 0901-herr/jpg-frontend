@@ -6,6 +6,7 @@ import type {
   IngestionControlState,
   IngestionErrorsResponse,
   IngestionOverview,
+  ReingestMissingResponse,
   RetryResponse,
 } from './types/admin'
 
@@ -60,4 +61,8 @@ export function retryDocument(docId: string, signal?: AbortSignal) {
 
 export function retryFailedDocuments(signal?: AbortSignal) {
   return adminPost<RetryResponse>('/admin/documents/retry-failed', signal)
+}
+
+export function reingestMissingClassification(signal?: AbortSignal) {
+  return adminPost<ReingestMissingResponse>('/admin/classification/re-ingest-missing', signal)
 }
