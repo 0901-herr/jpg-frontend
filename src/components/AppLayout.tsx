@@ -13,6 +13,7 @@ import { type, typeColor } from '../styles/typography'
 import { citationsToSources, mergeCitations } from '../utils/citations'
 import { appendStreamDelta } from '../utils/appendStreamDelta'
 import { formatProgressStage, formatRouteLabel } from '../utils/queryProgress'
+import { toUserFacingQueryError } from '../utils/userFacingErrors'
 import { isCitationDemoEnabled, isCitationLoadingDemoEnabled } from '../config/demo'
 import {
   createCitationDemoSession,
@@ -72,6 +73,8 @@ export default function AppLayout() {
   const browse = useBrowseTree(handleDocumentsLoaded)
   const abortControllerRef = useRef<AbortController | null>(null)
   const streamingCitationsRef = useRef<Citation[]>([])
+  const lastProgressStageRef = useRef<string | undefined>(undefined)
+  const hadPartialAnswerRef = useRef(false)
 
   useEffect(() => {
     if (sessions.length === 0) {
@@ -156,9 +159,17 @@ export default function AppLayout() {
       abortControllerRef.current?.abort()
       const controller = new AbortController()
       abortControllerRef.current = controller
+      lastProgressStageRef.current = undefined
+      hadPartialAnswerRef.current = false
       const startedAt = Date.now()
 
       const elapsedSeconds = () => Math.max(1, Math.round((Date.now() - startedAt) / 1000))
+
+      const friendlyQueryError = (raw: string | undefined) =>
+        toUserFacingQueryError(raw, {
+          progressLabel: formatProgressStage(lastProgressStageRef.current),
+          hadPartialAnswer: hadPartialAnswerRef.current,
+        })
 
       let scopeDocuments = selectedDocs
 
@@ -253,6 +264,7 @@ export default function AppLayout() {
               }))
             },
             onProgress: (stage) => {
+              lastProgressStageRef.current = stage
               updateAssistantMessage(activeChatId, (msg) => ({
                 ...msg,
                 status: msg.content ? 'streaming' : 'thinking',
@@ -266,15 +278,17 @@ export default function AppLayout() {
                 progressLabel: msg.content ? undefined : formatRouteLabel(strategy),
               }))
             },
-            onError: (message) => {
+            onError: (rawMessage) => {
+              const content = friendlyQueryError(rawMessage)
               updateAssistantMessage(activeChatId, (msg) => ({
                 ...msg,
                 status: 'error',
-                content: message,
-                progressLabel: undefined,
+                content,
+                progressLabel: formatProgressStage(lastProgressStageRef.current),
               }))
             },
             onAnswer: (delta) => {
+              hadPartialAnswerRef.current = true
               updateAssistantMessage(activeChatId, (msg) => ({
                 ...msg,
                 status: 'streaming',
@@ -330,14 +344,15 @@ export default function AppLayout() {
           return
         }
 
-        const detail =
-          err instanceof Error && err.message ? err.message : 'Request failed'
+        const detail = friendlyQueryError(
+          err instanceof Error ? err.message : undefined,
+        )
         message.error(detail, 8)
         updateAssistantMessage(activeChatId, (msg) => ({
           ...msg,
           content: detail,
           status: 'error',
-          progressLabel: undefined,
+          progressLabel: formatProgressStage(lastProgressStageRef.current),
           thinkingSeconds: elapsedSeconds(),
         }))
       } finally {

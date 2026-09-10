@@ -19,7 +19,7 @@ function ThinkingIndicator({ label }: { label?: string }) {
     return () => window.clearInterval(id)
   }, [])
 
-  const headline = label ?? 'Thinking'
+  const headline = label ?? 'Getting started…'
 
   return (
     <div className="space-y-1" aria-live="polite">
@@ -31,14 +31,25 @@ function ThinkingIndicator({ label }: { label?: string }) {
   )
 }
 
-function ErrorMessage({ content }: { content: string }) {
+function ErrorMessage({
+  content,
+  progressHint,
+}: {
+  content: string
+  progressHint?: string
+}) {
   return (
     <div
-      className={`${radius.md} border border-red-200 bg-red-50 px-4 py-3 ${type.body} text-red-800`}
+      className={`${radius.md} border border-amber-200 bg-amber-50 px-4 py-3 ${type.body} text-amber-950`}
       role="alert"
     >
-      <p className="font-medium mb-1">Couldn&apos;t get an answer</p>
+      <p className="font-medium mb-1">Couldn&apos;t finish this answer</p>
       <p className="leading-relaxed">{content}</p>
+      {progressHint && (
+        <p className={`${type.caption} mt-2 text-amber-800/80`}>
+          Last step: {progressHint.replace(/…$/, '')}
+        </p>
+      )}
     </div>
   )
 }
@@ -95,7 +106,9 @@ function AnswerContent({ message }: { message: ChatMessage }) {
 
 function AssistantMessage({ message }: AssistantMessageProps) {
   if (message.status === 'error') {
-    return <ErrorMessage content={message.content} />
+    return (
+      <ErrorMessage content={message.content} progressHint={message.progressLabel} />
+    )
   }
 
   if (message.status === 'thinking') {
