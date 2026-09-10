@@ -2,6 +2,7 @@ import { Checkbox, Spin, Tooltip } from 'antd'
 import { useMemo } from 'react'
 import type { BrowseDocumentItem } from '../api/types/browse'
 import { sidebar, typeColor } from '../styles/typography'
+import { documentCategoryLabel } from '../utils/documentCategories'
 import {
   getSelectableDocumentIds,
   getSelectionWarning,
@@ -104,6 +105,9 @@ export default function DocumentChecklist({
               <span className="min-w-0 flex-1">
                 <span className={`block truncate ${sidebar.body} ${typeColor.primary}`}>
                   {doc.filename}
+                </span>
+                <span className={`block truncate ${sidebar.caption} ${typeColor.muted}`}>
+                  {documentCategoryLabel(doc)}
                 </span>
                 {warning && checked && (
                   <span className={`block ${sidebar.caption} ${typeColor.primary} mt-0.5`}>

@@ -11,6 +11,7 @@ import { useDocumentSelection } from '../hooks/useDocumentSelection'
 import { useResizableWidth } from '../hooks/useResizableWidth'
 import { type, typeColor } from '../styles/typography'
 import { citationsToSources, mergeCitations } from '../utils/citations'
+import { appendStreamDelta } from '../utils/appendStreamDelta'
 import { formatProgressStage, formatRouteLabel } from '../utils/queryProgress'
 import { isCitationDemoEnabled, isCitationLoadingDemoEnabled } from '../config/demo'
 import {
@@ -261,8 +262,8 @@ export default function AppLayout() {
             onRoute: (strategy) => {
               updateAssistantMessage(activeChatId, (msg) => ({
                 ...msg,
-                status: 'thinking',
-                progressLabel: formatRouteLabel(strategy),
+                status: msg.content ? 'streaming' : 'thinking',
+                progressLabel: msg.content ? undefined : formatRouteLabel(strategy),
               }))
             },
             onError: (message) => {
@@ -277,9 +278,8 @@ export default function AppLayout() {
               updateAssistantMessage(activeChatId, (msg) => ({
                 ...msg,
                 status: 'streaming',
-                content: msg.content + delta,
+                content: appendStreamDelta(msg.content, delta),
                 coverage: coverage ?? msg.coverage,
-                progressLabel: undefined,
               }))
             },
             onCitations: (batch) => {

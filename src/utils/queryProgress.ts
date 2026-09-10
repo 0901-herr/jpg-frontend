@@ -16,10 +16,11 @@ export function formatProgressStage(stage: string | undefined): string | undefin
 export function formatRouteLabel(strategy: string | undefined): string | undefined {
   if (!strategy) return undefined
   const labels: Record<string, string> = {
-    simple: 'Simple lookup',
-    simple_lookup: 'Simple lookup',
-    aggregation: 'Aggregation query',
-    agent: 'Agent query',
+    simple: 'Simple lookup…',
+    simple_lookup: 'Simple lookup…',
+    aggregation: 'Aggregation query…',
+    agent: 'Agent query…',
   }
-  return labels[strategy] ?? strategy
+  const label = labels[strategy] ?? strategy
+  return label.endsWith('…') ? label : `${label}…`
 }

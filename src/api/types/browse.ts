@@ -15,6 +15,7 @@ export interface BrowseDocumentItem {
   folder_id: number
   indexing_status: IndexingStatus
   rag_document_id: string | null
+  classification_category?: string | null
   queryable: boolean
 }
 

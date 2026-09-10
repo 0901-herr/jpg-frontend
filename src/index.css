@@ -352,3 +352,35 @@ body {
     background-position: -100% 0;
   }
 }
+
+/* Sidebar browse mode toggle — centered pill */
+.docu-browse-view-toggle {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 9999px;
+  background: var(--docu-bg-muted);
+  gap: 2px;
+}
+
+.docu-browse-view-toggle button {
+  border: none;
+  background: transparent;
+  color: var(--docu-text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.25rem;
+  padding: 6px 16px;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.docu-browse-view-toggle button:hover:not(.is-active) {
+  color: var(--docu-text-primary);
+}
+
+.docu-browse-view-toggle button.is-active {
+  background: #fff;
+  color: var(--docu-text-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}

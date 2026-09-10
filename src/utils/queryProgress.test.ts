@@ -13,6 +13,6 @@ describe('formatProgressStage', () => {
 
 describe('formatRouteLabel', () => {
   it('maps simple lookup', () => {
-    expect(formatRouteLabel('simple_lookup')).toBe('Simple lookup')
+    expect(formatRouteLabel('simple_lookup')).toBe('Simple lookup…')
   })
 })

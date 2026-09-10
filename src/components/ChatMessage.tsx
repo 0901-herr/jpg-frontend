@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { type, typeColor } from '../styles/typography'
 import { radius } from '../styles/theme'
 import { splitAnswerByDocRefs } from '../utils/citations'
-import type { ChatMessage } from '../types'
+import type { ChatMessage, CoverageInfo } from '../types'
 import CitationList, { CitationLink } from './CitationList'
 
 const { Text } = Typography
@@ -51,6 +51,22 @@ function formatThoughtDuration(seconds: number): string {
   return `Thought for ${seconds} ${seconds === 1 ? 'second' : 'seconds'}`
 }
 
+function CoverageNotice({ coverage }: { coverage?: CoverageInfo }) {
+  const indexing = coverage?.indexing_files ?? 0
+  if (indexing <= 0) return null
+
+  const total = coverage?.total_files
+  const ready = coverage?.ready_files ?? 0
+  const scope =
+    total != null ? `${ready} of ${total} selected documents ready` : `${indexing} still indexing`
+
+  return (
+    <p className={`${type.caption} ${typeColor.muted} leading-relaxed`} role="status">
+      {scope} — answer may be incomplete until indexing finishes.
+    </p>
+  )
+}
+
 function AnswerContent({ message }: { message: ChatMessage }) {
   const sources = message.sources ?? []
   const segments = splitAnswerByDocRefs(message.content, sources)
@@ -83,11 +99,20 @@ function AssistantMessage({ message }: AssistantMessageProps) {
   }
 
   if (message.status === 'thinking') {
-    return <ThinkingIndicator label={message.progressLabel} />
+    return (
+      <div className="space-y-2">
+        <CoverageNotice coverage={message.coverage} />
+        <ThinkingIndicator label={message.progressLabel} />
+      </div>
+    )
   }
 
   return (
     <div className="space-y-3">
+      <CoverageNotice coverage={message.coverage} />
+      {message.status === 'streaming' && message.progressLabel && (
+        <p className={`${type.caption} ${typeColor.muted}`}>{message.progressLabel}</p>
+      )}
       <AnswerContent message={message} />
 
       {message.thinkingSeconds != null &&
