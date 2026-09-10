@@ -18,6 +18,7 @@ import {
   QUERY_INCOMPLETE_ERROR,
   toUserFacingQueryError,
 } from '../utils/userFacingErrors'
+import { joinAnswerText } from '../utils/text'
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' ? (value as Record<string, unknown>) : null
@@ -116,7 +117,7 @@ async function streamQuery(
           case 'answer': {
             const delta = extractAnswerDelta(data)
             if (delta) {
-              content += delta
+              content = joinAnswerText(content, delta)
               callbacks.onAnswer?.(delta)
             }
             break

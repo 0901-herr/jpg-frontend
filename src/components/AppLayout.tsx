@@ -12,6 +12,7 @@ import { useResizableWidth } from '../hooks/useResizableWidth'
 import { type, typeColor } from '../styles/typography'
 import { citationsToSources, mergeCitations } from '../utils/citations'
 import { formatProgressStage, formatRouteLabel } from '../utils/queryProgress'
+import { joinAnswerText } from '../utils/text'
 import { isCitationDemoEnabled, isCitationLoadingDemoEnabled } from '../config/demo'
 import {
   createCitationDemoSession,
@@ -277,7 +278,7 @@ export default function AppLayout() {
               updateAssistantMessage(activeChatId, (msg) => ({
                 ...msg,
                 status: 'streaming',
-                content: msg.content + delta,
+                content: joinAnswerText(msg.content, delta),
                 coverage: coverage ?? msg.coverage,
                 progressLabel: undefined,
               }))
