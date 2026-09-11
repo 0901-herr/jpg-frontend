@@ -50,6 +50,19 @@ function extractAnswerDelta(data: unknown): string {
   return readString(obj, 'delta') ?? readString(obj, 'text') ?? readString(obj, 'answer') ?? ''
 }
 
+/** Each `answer` SSE event is a whole citation-attributed segment (a clause or
+ * sentence), not a token/sub-word delta — rag-engine's contract splits the
+ * answer at citation-marker boundaries, one segment per source. Naively
+ * concatenating them with no separator runs adjacent segments together
+ * ("in,there", "incident.mentions"). Insert exactly one joining space unless
+ * one already exists on either side, or the segment starts with punctuation
+ * that shouldn't be preceded by a space. */
+export function joinAnswerSegment(existing: string, next: string): string {
+  if (!existing || !next) return existing + next
+  const needsSpace = !/\s$/.test(existing) && !/^[\s.,;:!?)\]}]/.test(next)
+  return needsSpace ? `${existing} ${next}` : existing + next
+}
+
 function extractErrorMessage(data: unknown): string {
   const obj = asRecord(data)
   if (!obj) {
@@ -114,9 +127,11 @@ async function streamQuery(
             break
           }
           case 'answer': {
-            const delta = extractAnswerDelta(data)
-            if (delta) {
-              content += delta
+            const rawDelta = extractAnswerDelta(data)
+            if (rawDelta) {
+              const joined = joinAnswerSegment(content, rawDelta)
+              const delta = joined.slice(content.length)
+              content = joined
               callbacks.onAnswer?.(delta)
             }
             break
