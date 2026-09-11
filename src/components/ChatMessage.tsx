@@ -97,6 +97,13 @@ function AnswerContent({ message }: { message: ChatMessage }) {
         }
         return <span key={`text-${i}`}>{segment.value}</span>
       })}
+      {isStreaming && message.liveText && (
+        // Raw, unattributed preview of the segment still being generated —
+        // finalized `content` above already covers everything earlier,
+        // so this is deliberately not run through splitAnswerByDocRefs
+        // (no citation markers to reconstruct in live token text).
+        <span className="opacity-60">{message.liveText}</span>
+      )}
       {isStreaming && (
         <span className="inline-block w-1.5 h-4 ml-0.5 bg-zinc-400 animate-pulse align-middle rounded-sm" />
       )}

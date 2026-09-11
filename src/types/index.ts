@@ -26,6 +26,11 @@ export interface ChatMessage {
   status?: 'thinking' | 'streaming' | 'complete' | 'error'
   /** Live pipeline stage while status is thinking (from RAG progress SSE). */
   progressLabel?: string
+  /** Raw, unattributed preview text from `delta` SSE events for the
+   * segment currently being generated — rendered dimmed, ahead of
+   * `content`. Reset to '' each time an `answer` segment finalizes that
+   * text into `content`; never itself part of the final message. */
+  liveText?: string
   thinkingSeconds?: number
   coverage?: CoverageInfo
 }

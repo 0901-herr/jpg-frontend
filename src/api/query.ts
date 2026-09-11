@@ -145,6 +145,12 @@ async function streamQuery(
             if (strategy) callbacks.onRoute?.(strategy)
             break
           }
+          case 'delta': {
+            const obj = asRecord(data)
+            const text = obj ? readString(obj, 'text') : undefined
+            if (text) callbacks.onDelta?.(text)
+            break
+          }
           case 'answer': {
             const delta = extractAnswerDelta(data)
             if (delta) {
