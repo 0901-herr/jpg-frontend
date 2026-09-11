@@ -25,17 +25,32 @@ describe('IngestionControls', () => {
   beforeEach(() => {
     vi.mocked(adminApi.pauseIngestion).mockResolvedValue(mockControlPaused)
     vi.mocked(adminApi.resumeIngestion).mockResolvedValue(mockControlRunning)
+    vi.mocked(adminApi.resumeAllIngestion).mockResolvedValue({
+      discovery_resumed: false,
+      ingestion_resumed: false,
+      bulk_started: true,
+    })
   })
 
-  it('shows pause control for running ingestion', () => {
+  it('lists discovery and ingestion controls', () => {
     renderControls()
-    expect(screen.getByRole('button', { name: /Pause Ingestion/i })).toBeInTheDocument()
+    expect(screen.getByText('Discovery')).toBeInTheDocument()
+    expect(screen.getByText('Ingestion')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /Run all/i }).length).toBeGreaterThan(0)
   })
 
   it('calls resume ingestion API when paused', async () => {
     const user = userEvent.setup()
     renderControls(mockOverviewPaused)
-    await user.click(screen.getByRole('button', { name: /Resume Ingestion/i }))
+    const resumeButtons = screen.getAllByRole('button', { name: /Resume/i })
+    await user.click(resumeButtons[resumeButtons.length - 1]!)
     await waitFor(() => expect(adminApi.resumeIngestion).toHaveBeenCalled())
+  })
+
+  it('calls run all API', async () => {
+    const user = userEvent.setup()
+    renderControls()
+    await user.click(screen.getByRole('button', { name: /Run all/i }))
+    await waitFor(() => expect(adminApi.resumeAllIngestion).toHaveBeenCalled())
   })
 })

@@ -1,8 +1,9 @@
-import { Card, Table } from 'antd'
+import { Table } from 'antd'
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table'
 import type { AdminDocumentSummary } from '../../api/types/admin'
-import { ADMIN_CARD_CLASS, ADMIN_TABLE_SCROLL } from '../../config/adminStyles'
+import { ADMIN_EMPTY, ADMIN_TABLE_SCROLL } from '../../config/adminStyles'
 import { formatDateTime } from '../../utils/lifecycle'
+import AdminCard from './AdminCard'
 import DocumentStatusBadge from './DocumentStatusBadge'
 import IngestionPipelineWaterfall from './IngestionPipelineWaterfall'
 
@@ -61,7 +62,7 @@ export default function DocumentTable({
       key: 'discovery_source',
       width: 100,
       ellipsis: true,
-      render: (v: string | null) => v ?? '—',
+      render: (v: string | null) => v ?? ADMIN_EMPTY,
     },
     {
       title: 'Retry',
@@ -70,7 +71,7 @@ export default function DocumentTable({
       width: 64,
     },
     {
-      title: 'Last updated',
+      title: 'Updated',
       dataIndex: 'updated_at',
       key: 'updated_at',
       width: 160,
@@ -89,8 +90,8 @@ export default function DocumentTable({
   }
 
   return (
-    <Card title="Documents" className={ADMIN_CARD_CLASS}>
-      <div className="min-w-0 overflow-x-auto">
+    <AdminCard title="Documents">
+      <div className="min-w-0 overflow-x-auto -mx-1">
         <Table
           rowKey="source_document_id"
           columns={columns}
@@ -106,6 +107,6 @@ export default function DocumentTable({
           locale={{ emptyText: 'No documents match your search' }}
         />
       </div>
-    </Card>
+    </AdminCard>
   )
 }

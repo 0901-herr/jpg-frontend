@@ -1,6 +1,7 @@
-import { Card, List, Typography } from 'antd'
+import { List, Typography } from 'antd'
 import type { IngestionErrorGroup } from '../../api/types/admin'
-import { ADMIN_CARD_CLASS } from '../../config/adminStyles'
+import { ADMIN_TEXT_MUTED } from '../../config/adminStyles'
+import AdminCard from './AdminCard'
 
 const { Text } = Typography
 
@@ -12,14 +13,14 @@ interface FailureSummaryProps {
 export default function FailureSummary({ groups, totalFailed }: FailureSummaryProps) {
   if (totalFailed === 0) {
     return (
-      <Card title="Failure Summary" size="small" className={ADMIN_CARD_CLASS}>
-        <Text type="secondary">No failed documents</Text>
-      </Card>
+      <AdminCard title="Failures">
+        <Text className={ADMIN_TEXT_MUTED}>No failed documents</Text>
+      </AdminCard>
     )
   }
 
   return (
-    <Card title="Failure Summary" size="small" className={ADMIN_CARD_CLASS}>
+    <AdminCard title="Failures">
       <List
         size="small"
         dataSource={groups}
@@ -30,6 +31,6 @@ export default function FailureSummary({ groups, totalFailed }: FailureSummaryPr
           </List.Item>
         )}
       />
-    </Card>
+    </AdminCard>
   )
 }

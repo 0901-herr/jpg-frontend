@@ -1,12 +1,14 @@
 import { ReloadOutlined } from '@ant-design/icons'
-import { App, Button, Card, Table } from 'antd'
+import { App, Button, Table } from 'antd'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnsType } from 'antd/es/table'
 import { fetchAdminDocuments, fetchIngestionErrors, retryDocument, retryFailedDocuments } from '../../api/admin'
 import type { AdminDocumentSummary } from '../../api/types/admin'
-import { ADMIN_CARD_CLASS } from '../../config/adminStyles'
+import { ADMIN_EMPTY } from '../../config/adminStyles'
 import { adminQueryKeys } from '../../lib/adminQueryKeys'
 import { formatDateTime } from '../../utils/lifecycle'
+import { ADMIN_TEXT_MUTED } from '../../config/adminStyles'
+import AdminCard from './AdminCard'
 
 interface FailedDocumentsTableProps {
   onSelect: (doc: AdminDocumentSummary) => void
@@ -52,7 +54,7 @@ export default function FailedDocumentsTable({ onSelect }: FailedDocumentsTableP
       title: 'Error',
       dataIndex: 'last_error',
       ellipsis: true,
-      render: (v: string | null, row) => v ?? row.last_error_code ?? '—',
+      render: (v: string | null, row) => v ?? row.last_error_code ?? ADMIN_EMPTY,
     },
     { title: 'Retries', dataIndex: 'retry_count', width: 80 },
     {
@@ -84,9 +86,8 @@ export default function FailedDocumentsTable({ onSelect }: FailedDocumentsTableP
   const totalFailed = data?.total ?? 0
 
   return (
-    <Card
-      title={`Failed Documents (${totalFailed.toLocaleString()})`}
-      className={ADMIN_CARD_CLASS}
+    <AdminCard
+      title={`Failures (${totalFailed.toLocaleString()})`}
       extra={
         totalFailed > 0 ? (
           <Button
@@ -95,13 +96,13 @@ export default function FailedDocumentsTable({ onSelect }: FailedDocumentsTableP
             loading={retryAllMutation.isPending}
             onClick={() => retryAllMutation.mutate()}
           >
-            Retry all (up to 500)
+            Retry all
           </Button>
         ) : null
       }
     >
       {errors && errors.groups.length > 0 && (
-        <div className="mb-4 text-sm text-[#676767]">
+        <div className={`mb-4 ${ADMIN_TEXT_MUTED}`}>
           Top errors:{' '}
           {errors.groups
             .slice(0, 5)
@@ -109,7 +110,7 @@ export default function FailedDocumentsTable({ onSelect }: FailedDocumentsTableP
             .join(' · ')}
         </div>
       )}
-      <div className="min-w-0 overflow-x-auto">
+      <div className="min-w-0 overflow-x-auto -mx-1">
         <Table
           rowKey="source_document_id"
           size="small"
@@ -125,6 +126,6 @@ export default function FailedDocumentsTable({ onSelect }: FailedDocumentsTableP
           })}
         />
       </div>
-    </Card>
+    </AdminCard>
   )
 }

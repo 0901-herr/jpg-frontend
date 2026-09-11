@@ -3,6 +3,7 @@ import { App, Button, Descriptions, Drawer, Spin, Typography } from 'antd'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchAdminDocument, retryDocument } from '../../api/admin'
 import { ADMIN_DOCUMENT_POLL_MS } from '../../config/admin'
+import { ADMIN_EMPTY, ADMIN_TEXT_BODY, ADMIN_TEXT_ERROR, ADMIN_TEXT_MUTED } from '../../config/adminStyles'
 import { adminQueryKeys } from '../../lib/adminQueryKeys'
 import {
   formatDateTime,
@@ -81,13 +82,13 @@ export default function DocumentDetailsPanel({ docId, open, onClose }: DocumentD
             <IngestionPipelineWaterfall status={data.lifecycle_status} doc={data} compact={false} />
             <div className="mt-3 flex items-center gap-2">
               <DocumentStatusBadge status={data.lifecycle_status} />
-              <Text type="secondary" className="text-sm">
+              <Text type="secondary" className={ADMIN_TEXT_BODY}>
                 {LIFECYCLE_HINTS[data.lifecycle_status as LifecycleStatus] ??
                   LIFECYCLE_LABELS[data.lifecycle_status as LifecycleStatus]}
               </Text>
             </div>
             {isFetching && !isLoading && (
-              <Text type="secondary" className="block text-xs mt-1">
+              <Text type="secondary" className={`block mt-1 ${ADMIN_TEXT_MUTED}`}>
                 Refreshing…
               </Text>
             )}
@@ -98,9 +99,9 @@ export default function DocumentDetailsPanel({ docId, open, onClose }: DocumentD
               <Text strong className="text-red-700">
                 Failure
               </Text>
-              <Paragraph className="!mb-0 mt-1 text-sm text-red-800">{data.last_error}</Paragraph>
+              <Paragraph className={`!mb-0 mt-1 ${ADMIN_TEXT_ERROR}`}>{data.last_error}</Paragraph>
               {data.last_error_code && (
-                <Text type="secondary" className="text-xs">
+                <Text type="secondary" className={ADMIN_TEXT_MUTED}>
                   Code: {data.last_error_code}
                 </Text>
               )}
@@ -109,10 +110,10 @@ export default function DocumentDetailsPanel({ docId, open, onClose }: DocumentD
 
           <Descriptions column={1} size="small" title="LogicalDOC">
             <Descriptions.Item label="docId">{data.source_document_id}</Descriptions.Item>
-            <Descriptions.Item label="Folder / path">{data.file_path ?? '—'}</Descriptions.Item>
-            <Descriptions.Item label="Folder ID">{data.source_folder_id ?? '—'}</Descriptions.Item>
-            <Descriptions.Item label="Version">{data.source_file_version ?? '—'}</Descriptions.Item>
-            <Descriptions.Item label="Checksum">{data.checksum ?? '—'}</Descriptions.Item>
+            <Descriptions.Item label="Folder / path">{data.file_path ?? ADMIN_EMPTY}</Descriptions.Item>
+            <Descriptions.Item label="Folder ID">{data.source_folder_id ?? ADMIN_EMPTY}</Descriptions.Item>
+            <Descriptions.Item label="Version">{data.source_file_version ?? ADMIN_EMPTY}</Descriptions.Item>
+            <Descriptions.Item label="Checksum">{data.checksum ?? ADMIN_EMPTY}</Descriptions.Item>
           </Descriptions>
 
           <Descriptions column={1} size="small" title="Ingestion timeline">
@@ -122,11 +123,11 @@ export default function DocumentDetailsPanel({ docId, open, onClose }: DocumentD
             <Descriptions.Item label="Ready">{formatDateTime(data.ready_at)}</Descriptions.Item>
             <Descriptions.Item label="Failed">{formatDateTime(data.failed_at)}</Descriptions.Item>
             <Descriptions.Item label="MinIO staged">{data.minio_staged ? 'Yes' : 'No'}</Descriptions.Item>
-            <Descriptions.Item label="Processing stage">{data.processing_stage ?? '—'}</Descriptions.Item>
+            <Descriptions.Item label="Processing stage">{data.processing_stage ?? ADMIN_EMPTY}</Descriptions.Item>
           </Descriptions>
 
           <Descriptions column={1} size="small" title="RAG">
-            <Descriptions.Item label="RAG item ID">{data.rag_document_id ?? '—'}</Descriptions.Item>
+            <Descriptions.Item label="RAG item ID">{data.rag_document_id ?? ADMIN_EMPTY}</Descriptions.Item>
             <Descriptions.Item label="Indexed">
               {data.lifecycle_status === 'READY' ? 'Yes' : 'No'}
             </Descriptions.Item>
@@ -134,9 +135,9 @@ export default function DocumentDetailsPanel({ docId, open, onClose }: DocumentD
 
           <Descriptions column={1} size="small" title="Retry & orchestration">
             <Descriptions.Item label="Retry count">{data.retry_count}</Descriptions.Item>
-            <Descriptions.Item label="Discovery source">{data.discovery_source ?? '—'}</Descriptions.Item>
+            <Descriptions.Item label="Discovery source">{data.discovery_source ?? ADMIN_EMPTY}</Descriptions.Item>
             <Descriptions.Item label="Temporal workflow">
-              {data.temporal_workflow_id ?? '—'}
+              {data.temporal_workflow_id ?? ADMIN_EMPTY}
             </Descriptions.Item>
             <Descriptions.Item label="Last failure">{formatDateTime(data.last_failure_at)}</Descriptions.Item>
           </Descriptions>
