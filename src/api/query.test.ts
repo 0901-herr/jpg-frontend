@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { joinAnswerSegment } from './query'
+import { citationRefForSegment, joinAnswerSegment } from './query'
+import type { Citation } from './types/query'
 
 describe('joinAnswerSegment', () => {
   it('inserts a space between two whole-clause segments', () => {
@@ -26,5 +27,28 @@ describe('joinAnswerSegment', () => {
 
   it('does not insert a leading space on the first segment', () => {
     expect(joinAnswerSegment('', 'Based on the context')).toBe('Based on the context')
+  })
+})
+
+describe('citationRefForSegment', () => {
+  const citations: Citation[] = [
+    { doc_ref: '[Doc1]', chunk_id: 'chunk-a', item_id: 'item-1', page: 9 },
+    { doc_ref: '[Doc2]', chunk_id: 'chunk-b', item_id: 'item-1', page: 22 },
+  ]
+
+  it('matches by chunk_id', () => {
+    expect(citationRefForSegment({ chunk_id: 'chunk-b' }, citations)).toBe('[Doc2]')
+  })
+
+  it('falls back to item_id + page when chunk_id is absent', () => {
+    expect(citationRefForSegment({ item_id: 'item-1', page: 9 }, citations)).toBe('[Doc1]')
+  })
+
+  it('returns null for an uncited segment', () => {
+    expect(citationRefForSegment({}, citations)).toBeNull()
+  })
+
+  it('returns null when nothing matches', () => {
+    expect(citationRefForSegment({ chunk_id: 'chunk-z' }, citations)).toBeNull()
   })
 })

@@ -63,6 +63,28 @@ export function joinAnswerSegment(existing: string, next: string): string {
   return needsSpace ? `${existing} ${next}` : existing + next
 }
 
+/** Find the citation an `answer` segment belongs to, by chunk_id (falling
+ * back to item_id+page for segments without one), and return its doc_ref
+ * (e.g. "[Doc1]") — the exact literal token splitAnswerByDocRefs (utils/
+ * citations.ts) looks for to render an inline, clickable source link.
+ * rag-engine strips [DocN] markers from the text itself (they're replaced
+ * by these same structured fields), so without this the reference is lost
+ * entirely instead of rendered — this puts it back using data we already
+ * have, no backend change needed. */
+export function citationRefForSegment(data: unknown, citations: Citation[]): string | null {
+  const obj = asRecord(data)
+  if (!obj) return null
+  const chunkId = readString(obj, 'chunk_id')
+  const itemId = readString(obj, 'item_id')
+  const page = readNumber(obj, 'page')
+  const match = citations.find((c) => {
+    if (chunkId) return c.chunk_id === chunkId
+    if (!itemId) return false
+    return c.item_id === itemId && (page == null || c.page === page || c.page_number === page)
+  })
+  return match?.doc_ref || null
+}
+
 function extractErrorMessage(data: unknown): string {
   const obj = asRecord(data)
   if (!obj) {
@@ -127,8 +149,10 @@ async function streamQuery(
             break
           }
           case 'answer': {
-            const rawDelta = extractAnswerDelta(data)
-            if (rawDelta) {
+            const segmentText = extractAnswerDelta(data)
+            if (segmentText) {
+              const ref = citationRefForSegment(data, citations)
+              const rawDelta = ref ? joinAnswerSegment(segmentText, ref) : segmentText
               const joined = joinAnswerSegment(content, rawDelta)
               const delta = joined.slice(content.length)
               content = joined
