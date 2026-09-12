@@ -5,6 +5,7 @@ export const ADMIN_API_KEY_HEADER =
   import.meta.env.VITE_ADMIN_API_KEY_HEADER ?? 'X-Adapter-Query-Key'
 
 export const ADMIN_OVERVIEW_POLL_MS = 8_000
+export const ADMIN_OVERVIEW_POLL_ACTIVE_MS = 3_000
 export const ADMIN_DOCUMENT_POLL_MS = 5_000
 
 export function isAdminConfigured(): boolean {

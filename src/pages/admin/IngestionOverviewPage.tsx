@@ -2,7 +2,7 @@ import { Alert, Spin } from 'antd'
 import { useQuery } from '@tanstack/react-query'
 import { useCallback, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { fetchAdminDocuments, fetchIngestionOverview } from '../../api/admin'
+import { fetchAdminDocuments, fetchIngestionActivity, fetchIngestionOverview } from '../../api/admin'
 import type { AdminDocumentQuery, AdminDocumentSummary } from '../../api/types/admin'
 import AuditSyncStatus from '../../components/admin/AuditSyncStatus'
 import DocumentDetailsPanel from '../../components/admin/DocumentDetailsPanel'
@@ -27,7 +27,9 @@ import {
   ADMIN_STACK_GAP,
   ADMIN_STACK_SPACE,
 } from '../../config/adminStyles'
-import { ADMIN_OVERVIEW_POLL_MS } from '../../config/admin'
+import { ADMIN_OVERVIEW_POLL_ACTIVE_MS, ADMIN_OVERVIEW_POLL_MS } from '../../config/admin'
+import PipelineStatusBanner from '../../components/admin/PipelineStatusBanner'
+import { overviewShouldPollFast } from '../../utils/pipelineStatus'
 import { adminQueryKeys } from '../../lib/adminQueryKeys'
 import { ApiError } from '../../api/http'
 
@@ -43,7 +45,8 @@ export default function IngestionOverviewPage() {
   const overviewQuery = useQuery({
     queryKey: adminQueryKeys.overview,
     queryFn: ({ signal }) => fetchIngestionOverview(signal),
-    refetchInterval: ADMIN_OVERVIEW_POLL_MS,
+    refetchInterval: (query) =>
+      overviewShouldPollFast(query.state.data) ? ADMIN_OVERVIEW_POLL_ACTIVE_MS : ADMIN_OVERVIEW_POLL_MS,
   })
 
   const documentsQuery = useQuery({
@@ -51,11 +54,22 @@ export default function IngestionOverviewPage() {
     queryFn: ({ signal }) => fetchAdminDocuments(docQuery, signal),
     placeholderData: (prev) => prev,
     enabled: section === 'documents' || section === 'overview',
+    refetchInterval: (query) => {
+      if (section !== 'documents') return false
+      return overviewShouldPollFast(overviewQuery.data) ? ADMIN_OVERVIEW_POLL_ACTIVE_MS : ADMIN_OVERVIEW_POLL_MS
+    },
   })
 
-  const activityQuery = useQuery({
-    queryKey: adminQueryKeys.activityFeed,
+  const activityDocsQuery = useQuery({
+    queryKey: adminQueryKeys.activityDocuments,
     queryFn: ({ signal }) => fetchAdminDocuments({ offset: 0, limit: 100 }, signal),
+    refetchInterval: section === 'activity' ? ADMIN_OVERVIEW_POLL_MS : false,
+    enabled: section === 'activity',
+  })
+
+  const activityEventsQuery = useQuery({
+    queryKey: adminQueryKeys.activityEvents,
+    queryFn: ({ signal }) => fetchIngestionActivity(signal),
     refetchInterval: section === 'activity' ? ADMIN_OVERVIEW_POLL_MS : false,
     enabled: section === 'activity',
   })
@@ -110,8 +124,16 @@ export default function IngestionOverviewPage() {
 
           {section === 'overview' && (
             <div className={ADMIN_STACK_SPACE}>
+              <PipelineStatusBanner
+                overview={overview}
+                dataUpdatedAt={overviewQuery.dataUpdatedAt}
+                isFetching={overviewQuery.isFetching}
+                onRefresh={() => {
+                  void overviewQuery.refetch()
+                }}
+              />
               <ProgressSummary overview={overview} />
-              <ThroughputSummary bulk={overview.bulk_progress} />
+              <ThroughputSummary bulk={overview.bulk_progress} counts={overview.counts} />
               <IngestionControls overview={overview} />
             </div>
           )}
@@ -119,10 +141,12 @@ export default function IngestionOverviewPage() {
           {section === 'activity' && (
             <IngestionActivityLog
               overview={overview}
-              documents={activityQuery.data?.items ?? []}
-              loading={activityQuery.isFetching}
+              documents={activityDocsQuery.data?.items ?? []}
+              systemEvents={activityEventsQuery.data?.items ?? []}
+              loading={activityDocsQuery.isFetching || activityEventsQuery.isFetching}
               onRefresh={() => {
-                void activityQuery.refetch()
+                void activityDocsQuery.refetch()
+                void activityEventsQuery.refetch()
                 void overviewQuery.refetch()
               }}
               onSelectDocument={(docId) => {
@@ -134,6 +158,15 @@ export default function IngestionOverviewPage() {
 
           {section === 'documents' && (
             <div className={ADMIN_STACK_SPACE}>
+              <PipelineStatusBanner
+                overview={overview}
+                dataUpdatedAt={documentsQuery.dataUpdatedAt}
+                isFetching={documentsQuery.isFetching}
+                onRefresh={() => {
+                  void documentsQuery.refetch()
+                  void overviewQuery.refetch()
+                }}
+              />
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <DocumentSearch
                   loading={documentsQuery.isFetching}
@@ -147,6 +180,7 @@ export default function IngestionOverviewPage() {
                 items={documentsQuery.data?.items ?? []}
                 total={documentsQuery.data?.total ?? 0}
                 loading={documentsQuery.isLoading}
+                refreshing={documentsQuery.isFetching && !documentsQuery.isLoading}
                 page={page}
                 pageSize={pageSize}
                 onPageChange={(p, size) => {
@@ -157,6 +191,10 @@ export default function IngestionOverviewPage() {
                   }))
                 }}
                 onSelect={openDocument}
+                onRefresh={() => {
+                  void documentsQuery.refetch()
+                  void overviewQuery.refetch()
+                }}
               />
             </div>
           )}

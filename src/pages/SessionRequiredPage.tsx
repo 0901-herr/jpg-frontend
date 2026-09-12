@@ -1,5 +1,5 @@
-import { LockOutlined } from '@ant-design/icons'
 import { Typography } from 'antd'
+import { ChatLockIcon } from '../icons/chat'
 import { useAuth } from '../context/AuthContext'
 import { type, typeColor } from '../styles/typography'
 import { radius, surface } from '../styles/theme'
@@ -15,7 +15,7 @@ export default function SessionRequiredPage() {
         <div
           className={`inline-flex items-center justify-center w-12 h-12 ${radius.md} ${surface.inset} mb-4`}
         >
-          <LockOutlined className="text-xl text-zinc-500" />
+          <ChatLockIcon className="text-zinc-500" />
         </div>
 
         <Title level={4} className="!mb-3 !font-semibold !text-zinc-900">

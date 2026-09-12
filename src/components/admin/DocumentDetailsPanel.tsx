@@ -1,4 +1,4 @@
-import { ReloadOutlined } from '@ant-design/icons'
+import { AdminRefreshIcon } from '../../icons/admin'
 import { App, Button, Descriptions, Drawer, Spin, Typography } from 'antd'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchAdminDocument, retryDocument } from '../../api/admin'
@@ -59,7 +59,7 @@ export default function DocumentDetailsPanel({ docId, open, onClose }: DocumentD
         data?.lifecycle_status === 'FAILED' ? (
           <Button
             type="primary"
-            icon={<ReloadOutlined />}
+            icon={<AdminRefreshIcon />}
             loading={retryMutation.isPending}
             onClick={() => retryMutation.mutate()}
           >

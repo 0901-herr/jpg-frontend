@@ -1,5 +1,5 @@
-import { DeleteOutlined, EditOutlined, EllipsisOutlined } from '@ant-design/icons'
 import { Dropdown, Input, Modal } from 'antd'
+import { ChatDeleteIcon, ChatEditIcon, ChatMoreIcon } from '../icons/chat'
 import type { InputRef, MenuProps } from 'antd'
 import { useEffect, useRef, useState } from 'react'
 import { sidebar, typeColor } from '../styles/typography'
@@ -23,6 +23,7 @@ export default function ChatListItem({
 }: ChatListItemProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
   const [draftTitle, setDraftTitle] = useState(chat.title)
   const inputRef = useRef<InputRef>(null)
 
@@ -54,22 +55,14 @@ export default function ChatListItem({
       return
     }
     if (key === 'delete') {
-      Modal.confirm({
-        title: 'Delete chat?',
-        content: 'This cannot be undone.',
-        okText: 'Delete',
-        okType: 'danger',
-        cancelText: 'Cancel',
-        centered: true,
-        onOk: () => onDelete(chat.id),
-      })
+      setDeleteOpen(true)
     }
   }
 
   const menuItems: MenuProps['items'] = [
-    { key: 'rename', label: 'Rename', icon: <EditOutlined /> },
+    { key: 'rename', label: 'Rename', icon: <ChatEditIcon /> },
     { type: 'divider' },
-    { key: 'delete', label: 'Delete', danger: true, icon: <DeleteOutlined /> },
+    { key: 'delete', label: 'Delete', danger: true, icon: <ChatDeleteIcon /> },
   ]
 
   return (
@@ -124,10 +117,42 @@ export default function ChatListItem({
               menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
             }`}
           >
-            <EllipsisOutlined className={sidebar.caption} />
+            <ChatMoreIcon className={sidebar.caption} />
           </button>
         </Dropdown>
       )}
+
+      <Modal
+        open={deleteOpen}
+        title="Delete chat?"
+        footer={null}
+        closable={false}
+        centered
+        width={360}
+        className="chat-delete-modal"
+        onCancel={() => setDeleteOpen(false)}
+      >
+        <p className="chat-delete-modal-body">This cannot be undone.</p>
+        <div className="chat-delete-modal-actions">
+          <button
+            type="button"
+            className="chat-delete-modal-btn chat-delete-modal-btn--cancel"
+            onClick={() => setDeleteOpen(false)}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="chat-delete-modal-btn chat-delete-modal-btn--delete"
+            onClick={() => {
+              setDeleteOpen(false)
+              onDelete(chat.id)
+            }}
+          >
+            Delete
+          </button>
+        </div>
+      </Modal>
     </div>
   )
 }

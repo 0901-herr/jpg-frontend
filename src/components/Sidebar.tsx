@@ -1,9 +1,5 @@
-import {
-  LogoutOutlined,
-  MessageOutlined,
-  PlusOutlined,
-} from '@ant-design/icons'
 import { Avatar, Dropdown, Layout } from 'antd'
+import { ChatAddIcon, ChatLogoutIcon, ChatMessageIcon } from '../icons/chat'
 import type { MenuProps } from 'antd'
 import { useAuth } from '../context/AuthContext'
 import { sectionLabel, spacing, surface } from '../styles/theme'
@@ -49,7 +45,7 @@ export default function Sidebar({
     {
       key: 'logout',
       label: 'Log out',
-      icon: <LogoutOutlined />,
+      icon: <ChatLogoutIcon />,
       onClick: () => void logout(),
     },
   ]
@@ -61,7 +57,7 @@ export default function Sidebar({
       theme="light"
     >
       <div className={`flex flex-col h-full min-h-0 ${spacing.panelLg}`}>
-        <div className="shrink-0 mb-4 text-left">
+        <div className="shrink-0 mb-3 text-left">
           <span className={`text-lg font-semibold ${typeColor.primary}`}>Docu Arch AI</span>
         </div>
 
@@ -72,7 +68,7 @@ export default function Sidebar({
 
           <div className={`flex flex-col flex-1 min-h-0 overflow-hidden ${spacing.sectionY}`}>
             <span className={sectionLabel}>
-              <MessageOutlined className="text-[14px]" />
+              <ChatMessageIcon />
               Chats
             </span>
             <div className="flex-1 overflow-auto min-h-0 space-y-0.5">
@@ -90,12 +86,12 @@ export default function Sidebar({
           </div>
         </div>
 
-        <div className="shrink-0 pt-4 mt-2">
-          <SidebarNavItem icon={<PlusOutlined />} onClick={onNewChat} variant="primary">
+        <div className="shrink-0 pt-2 mt-1">
+          <SidebarNavItem icon={<ChatAddIcon />} onClick={onNewChat} variant="primary">
             New chat
           </SidebarNavItem>
 
-          <div className="mt-3 pt-3 border-t border-[#ececec]">
+          <div className="mt-2 pt-2 border-t border-[#ececec]">
             <Dropdown
               menu={{ items: profileMenu }}
               trigger={['click']}
@@ -104,7 +100,7 @@ export default function Sidebar({
             >
               <button
                 type="button"
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-left transition-colors hover:bg-[#ececec] ${sidebar.body}`}
+                className={`w-full flex items-center gap-2.5 px-2 py-2 rounded-[10px] text-left transition-colors hover:bg-[#ececec] ${sidebar.body}`}
               >
                 <Avatar
                   size={32}

@@ -1,4 +1,4 @@
-import { ReloadOutlined, SearchOutlined } from '@ant-design/icons'
+import { AdminRefreshIcon, AdminSearchIcon } from '../../icons/admin'
 import { Button, Checkbox, Col, Form, Input, Row, Select, Space } from 'antd'
 import type { AdminDocumentQuery, LifecycleStatus } from '../../api/types/admin'
 import { LIFECYCLE_LABELS } from '../../utils/lifecycle'
@@ -60,7 +60,7 @@ export default function DocumentSearch({ initialValues, loading, onSearch }: Doc
         <Row gutter={16}>
           <Col xs={24} md={8}>
             <Form.Item label="Search" name="search">
-              <Input placeholder="docId or filename" allowClear prefix={<SearchOutlined />} />
+              <Input placeholder="docId or filename" allowClear prefix={<AdminSearchIcon />} />
             </Form.Item>
           </Col>
           <Col xs={24} md={4}>
@@ -99,11 +99,11 @@ export default function DocumentSearch({ initialValues, loading, onSearch }: Doc
           </Col>
         </Row>
         <Space>
-          <Button type="primary" htmlType="submit" loading={loading} icon={<SearchOutlined />}>
+          <Button type="primary" htmlType="submit" loading={loading} icon={<AdminSearchIcon />}>
             Search
           </Button>
           <Button
-            icon={<ReloadOutlined />}
+            icon={<AdminRefreshIcon />}
             onClick={() => {
               form.resetFields()
               onSearch({ offset: 0, limit: 50 })

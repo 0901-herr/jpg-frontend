@@ -1,4 +1,4 @@
-import { ReloadOutlined } from '@ant-design/icons'
+import { AdminRefreshIcon } from '../../icons/admin'
 import { App, Button, Table } from 'antd'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnsType } from 'antd/es/table'
@@ -70,7 +70,7 @@ export default function FailedDocumentsTable({ onSelect }: FailedDocumentsTableP
       render: (_, row) => (
         <Button
           size="small"
-          icon={<ReloadOutlined />}
+          icon={<AdminRefreshIcon />}
           loading={retryOneMutation.isPending}
           onClick={(e) => {
             e.stopPropagation()
@@ -92,7 +92,7 @@ export default function FailedDocumentsTable({ onSelect }: FailedDocumentsTableP
         totalFailed > 0 ? (
           <Button
             type="primary"
-            icon={<ReloadOutlined />}
+            icon={<AdminRefreshIcon />}
             loading={retryAllMutation.isPending}
             onClick={() => retryAllMutation.mutate()}
           >

@@ -66,20 +66,20 @@ describe('IngestionOverviewPage', () => {
     vi.mocked(adminApi.fetchIngestionOverview).mockResolvedValue(mockOverviewPaused)
     renderPage('/admin/ingestion?tab=overview')
     expect(await screen.findByRole('button', { name: /Overall: PAUSED/i })).toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: /Resume/i }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: /Resume discovery|Resume ingestion/i }).length).toBeGreaterThan(0)
   })
 
   it('pause action calls backend', async () => {
     renderPage('/admin/ingestion?tab=overview')
-    expect(await screen.findByText('Controls')).toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: /Pause/i }).length).toBeGreaterThan(0)
+    expect(await screen.findByText('Pipeline')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /Pause discovery|Pause ingestion/i }).length).toBeGreaterThan(0)
   })
 
   it('resume action calls backend when paused', async () => {
     vi.mocked(adminApi.fetchIngestionOverview).mockResolvedValue(mockOverviewPaused)
     renderPage('/admin/ingestion?tab=overview')
-    expect(await screen.findByText('Controls')).toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: /Resume/i }).length).toBeGreaterThan(0)
+    expect(await screen.findByText('Pipeline')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /Resume discovery|Resume ingestion/i }).length).toBeGreaterThan(0)
   })
 
   it('searches documents by docId', async () => {

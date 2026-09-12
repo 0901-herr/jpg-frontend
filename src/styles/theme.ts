@@ -41,10 +41,10 @@ export const sidebarNav = {
 export const spacing = {
   page: 'p-3',
   panel: 'p-3',
-  panelLg: 'px-3 py-3',
+  panelLg: 'px-2.5 py-2.5',
   gap: 'gap-2',
-  section: 'gap-5',
-  sectionY: 'py-4',
+  section: 'gap-4',
+  sectionY: 'py-3',
 } as const
 
 /** Interactive list row */

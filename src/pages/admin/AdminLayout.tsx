@@ -1,4 +1,4 @@
-import { DashboardOutlined } from '@ant-design/icons'
+import { AdminDashboardIcon } from '../../icons/admin'
 import { App, Layout, Menu, Typography } from 'antd'
 import { Link, Outlet, useLocation } from 'react-router-dom'
 import { ADMIN_PANEL_CLASS, ADMIN_TEXT_MUTED } from '../../config/adminStyles'
@@ -31,7 +31,7 @@ export default function AdminLayout() {
             items={[
               {
                 key: 'ingestion',
-                icon: <DashboardOutlined />,
+                icon: <AdminDashboardIcon />,
                 label: <Link to="/admin/ingestion">Ingestion</Link>,
               },
             ]}

@@ -6,7 +6,13 @@ import React from 'react'
 import { vi } from 'vitest'
 import * as adminApi from '../../api/admin'
 import IngestionControls from '../../components/admin/IngestionControls'
-import { mockControlPaused, mockControlRunning, mockOverviewPaused, mockOverviewRunning } from '../../test/adminFixtures'
+import {
+  mockControlPaused,
+  mockControlRunning,
+  mockOverviewIdle,
+  mockOverviewPaused,
+  mockOverviewRunning,
+} from '../../test/adminFixtures'
 
 vi.mock('../../api/admin')
 
@@ -32,25 +38,31 @@ describe('IngestionControls', () => {
     })
   })
 
-  it('lists discovery and ingestion controls', () => {
+  it('lists grouped control sections', () => {
     renderControls()
-    expect(screen.getByText('Discovery')).toBeInTheDocument()
-    expect(screen.getByText('Ingestion')).toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: /Run all/i }).length).toBeGreaterThan(0)
+    expect(screen.getByText('Pipeline')).toBeInTheDocument()
+    expect(screen.getByText('Initial corpus')).toBeInTheDocument()
+    expect(screen.getByText('Change detection')).toBeInTheDocument()
+    expect(screen.getByText('Maintenance')).toBeInTheDocument()
+    expect(screen.getByText('Operator')).toBeInTheDocument()
+    expect(screen.getByText('Audit changelog')).toBeInTheDocument()
+    expect(screen.getByText('Reconciliation')).toBeInTheDocument()
+    expect(
+      screen.getAllByRole('button', { name: /Start ingesting|Pipeline running/i }).length,
+    ).toBeGreaterThan(0)
   })
 
   it('calls resume ingestion API when paused', async () => {
     const user = userEvent.setup()
     renderControls(mockOverviewPaused)
-    const resumeButtons = screen.getAllByRole('button', { name: /Resume/i })
-    await user.click(resumeButtons[resumeButtons.length - 1]!)
+    await user.click(screen.getByRole('button', { name: /Resume ingestion/i }))
     await waitFor(() => expect(adminApi.resumeIngestion).toHaveBeenCalled())
   })
 
-  it('calls run all API', async () => {
+  it('calls start ingesting API', async () => {
     const user = userEvent.setup()
-    renderControls()
-    await user.click(screen.getByRole('button', { name: /Run all/i }))
+    renderControls(mockOverviewIdle)
+    await user.click(screen.getByRole('button', { name: /Start ingesting/i }))
     await waitFor(() => expect(adminApi.resumeAllIngestion).toHaveBeenCalled())
   })
 })

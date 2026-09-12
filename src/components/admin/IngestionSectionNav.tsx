@@ -1,11 +1,11 @@
 import {
-  AlertOutlined,
-  AppstoreOutlined,
-  CloudSyncOutlined,
-  FileSearchOutlined,
-  HeartOutlined,
-  UnorderedListOutlined,
-} from '@ant-design/icons'
+  AdminAppsNavIcon,
+  AdminCloudSyncNavIcon,
+  AdminFindNavIcon,
+  AdminHealthNavIcon,
+  AdminListNavIcon,
+  AdminWarningNavIcon,
+} from '../../icons/admin'
 import { Badge } from 'antd'
 import type { ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
@@ -33,12 +33,12 @@ export const INGESTION_SECTION_LABELS: Record<IngestionSection, string> = {
 }
 
 const NAV_ITEMS: Omit<NavItem, 'badge'>[] = [
-  { key: 'overview', label: INGESTION_SECTION_LABELS.overview, icon: <AppstoreOutlined /> },
-  { key: 'activity', label: INGESTION_SECTION_LABELS.activity, icon: <UnorderedListOutlined /> },
-  { key: 'documents', label: INGESTION_SECTION_LABELS.documents, icon: <FileSearchOutlined /> },
-  { key: 'errors', label: INGESTION_SECTION_LABELS.errors, icon: <AlertOutlined /> },
-  { key: 'health', label: INGESTION_SECTION_LABELS.health, icon: <HeartOutlined /> },
-  { key: 'sync', label: INGESTION_SECTION_LABELS.sync, icon: <CloudSyncOutlined /> },
+  { key: 'overview', label: INGESTION_SECTION_LABELS.overview, icon: <AdminAppsNavIcon /> },
+  { key: 'activity', label: INGESTION_SECTION_LABELS.activity, icon: <AdminListNavIcon /> },
+  { key: 'documents', label: INGESTION_SECTION_LABELS.documents, icon: <AdminFindNavIcon /> },
+  { key: 'errors', label: INGESTION_SECTION_LABELS.errors, icon: <AdminWarningNavIcon /> },
+  { key: 'health', label: INGESTION_SECTION_LABELS.health, icon: <AdminHealthNavIcon /> },
+  { key: 'sync', label: INGESTION_SECTION_LABELS.sync, icon: <AdminCloudSyncNavIcon /> },
 ]
 
 function isSection(value: string | null): value is IngestionSection {

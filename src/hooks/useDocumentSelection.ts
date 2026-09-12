@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import type { BrowseDocumentItem } from '../api/types/browse'
 import { getSelectableDocumentIds } from '../components/IndexingStatusBadge'
 import {
@@ -82,9 +82,18 @@ export function useDocumentSelection() {
     return allowed
   }, [])
 
+  const selectedFilenames = useMemo(
+    () =>
+      [...selectedIds]
+        .map((id) => documentMeta.get(id)?.filename ?? `Document ${id}`)
+        .sort((a, b) => a.localeCompare(b)),
+    [documentMeta, selectedIds],
+  )
+
   return {
     selectedIds,
     selectedCount: selectedIds.size,
+    selectedFilenames,
     documentMeta,
     registerDocuments,
     toggleDocument,
