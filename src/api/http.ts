@@ -168,6 +168,13 @@ export async function apiPostStream(
   }
 }
 
+/** Longest gap allowed between bytes on an SSE stream before it's treated as
+ * dead. The backend sends periodic `: ping` comments during long-running
+ * stages specifically to stay under this — a real stall (backend crash,
+ * dropped connection that never surfaces as a network error) must not hang
+ * the UI forever waiting on a read that will never resolve. */
+const SSE_INACTIVITY_TIMEOUT_MS = 45_000
+
 /** Parse SSE stream from a fetch Response body. */
 export async function consumeSseStream(
   response: Response,
@@ -180,6 +187,24 @@ export async function consumeSseStream(
   const decoder = new TextDecoder()
   let buffer = ''
   let currentEvent = 'message'
+
+  const readWithTimeout = () =>
+    new Promise<ReadableStreamReadResult<Uint8Array>>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reader.cancel().catch(() => {})
+        reject(new ApiError('Response stream stalled', 504))
+      }, SSE_INACTIVITY_TIMEOUT_MS)
+      reader
+        .read()
+        .then((result) => {
+          clearTimeout(timer)
+          resolve(result)
+        })
+        .catch((err) => {
+          clearTimeout(timer)
+          reject(err)
+        })
+    })
 
   const dispatchBlock = (block: string) => {
     const lines = block.split('\n')
@@ -214,7 +239,7 @@ export async function consumeSseStream(
       return
     }
 
-    const { done, value } = await reader.read()
+    const { done, value } = await readWithTimeout()
     if (done) break
 
     buffer += decoder.decode(value, { stream: true })
