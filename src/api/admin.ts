@@ -1,11 +1,14 @@
 import { adminGet, adminPost } from './adminHttp'
 import type {
+  AdminChatSessionResponse,
   AdminDocumentDetail,
   AdminDocumentListResponse,
   AdminDocumentQuery,
+  AdminResumeAllResponse,
   IngestionControlState,
   IngestionErrorsResponse,
   IngestionOverview,
+  ReingestMissingClassificationResponse,
   RetryResponse,
 } from './types/admin'
 
@@ -60,4 +63,19 @@ export function retryDocument(docId: string, signal?: AbortSignal) {
 
 export function retryFailedDocuments(signal?: AbortSignal) {
   return adminPost<RetryResponse>('/admin/documents/retry-failed', signal)
+}
+
+export function resumeAllIngestion(signal?: AbortSignal) {
+  return adminPost<AdminResumeAllResponse>('/admin/ingestion/resume-all', signal)
+}
+
+export function mintAdminChatSession(signal?: AbortSignal) {
+  return adminPost<AdminChatSessionResponse>('/admin/chat/session', signal)
+}
+
+export function classifyMissingDocuments(limit = 10, signal?: AbortSignal) {
+  return adminPost<ReingestMissingClassificationResponse>(
+    `/admin/classification/re-ingest-missing?limit=${limit}`,
+    signal,
+  )
 }

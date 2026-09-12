@@ -1,7 +1,8 @@
-import { Card, Col, Progress, Row, Statistic, Typography } from 'antd'
+import { Col, Progress, Row, Statistic, Typography } from 'antd'
 import type { IngestionOverview } from '../../api/types/admin'
-import { ADMIN_CARD_CLASS } from '../../config/adminStyles'
+import { ADMIN_STAT_TITLE, ADMIN_STAT_VALUE, ADMIN_TEXT_BODY, ADMIN_TEXT_MUTED } from '../../config/adminStyles'
 import { computeProgressLabel } from '../../utils/lifecycle'
+import AdminCard from './AdminCard'
 
 const { Text } = Typography
 
@@ -26,44 +27,63 @@ export default function ProgressSummary({ overview }: ProgressSummaryProps) {
   const queued = counts.discovered + counts.staged
 
   return (
-    <Card title="Bulk Ingestion Progress" className={ADMIN_CARD_CLASS}>
-      <div className="mb-4 space-y-2">
-        <Text>{progress.label}</Text>
+    <AdminCard title="Progress">
+      <div className="mb-5 space-y-2">
+        <Text className={ADMIN_TEXT_BODY}>{progress.label}</Text>
         {progress.percent != null && (
-          <Progress percent={progress.percent} status={overview.overall_state === 'PAUSED' ? 'exception' : 'active'} />
+          <Progress
+            percent={progress.percent}
+            status={overview.overall_state === 'PAUSED' ? 'exception' : 'active'}
+            strokeColor="#0084ff"
+          />
         )}
         {!traversalComplete && bulk?.job_state === 'running' && (
-          <Text type="secondary" className="block text-sm">
-            Folder traversal in progress — corpus total not final yet.
+          <Text className={`block ${ADMIN_TEXT_MUTED}`}>
+            Folder traversal in progress. Corpus total may change.
           </Text>
         )}
       </div>
-      <Row gutter={[16, 16]}>
+      <Row gutter={[20, 20]}>
         <Col xs={12} sm={8} md={6} lg={4}>
-          <Statistic title="Discovered" value={discoveredSoFar} />
+          <Statistic title="Discovered" value={discoveredSoFar} className={`${ADMIN_STAT_VALUE} ${ADMIN_STAT_TITLE}`} />
         </Col>
         <Col xs={12} sm={8} md={6} lg={4}>
-          <Statistic title="Queued" value={queued} />
+          <Statistic title="Queued" value={queued} className={`${ADMIN_STAT_VALUE} ${ADMIN_STAT_TITLE}`} />
         </Col>
         <Col xs={12} sm={8} md={6} lg={4}>
-          <Statistic title="Preparing" value={counts.preparing} />
+          <Statistic title="Preparing" value={counts.preparing} className={`${ADMIN_STAT_VALUE} ${ADMIN_STAT_TITLE}`} />
         </Col>
         <Col xs={12} sm={8} md={6} lg={4}>
-          <Statistic title="Staged" value={counts.staged} />
+          <Statistic title="Staged" value={counts.staged} className={`${ADMIN_STAT_VALUE} ${ADMIN_STAT_TITLE}`} />
         </Col>
         <Col xs={12} sm={8} md={6} lg={4}>
-          <Statistic title="Indexing" value={counts.indexing} valueStyle={{ color: '#d48806' }} />
+          <Statistic
+            title="Indexing"
+            value={counts.indexing}
+            valueStyle={{ color: '#d48806' }}
+            className={`${ADMIN_STAT_VALUE} ${ADMIN_STAT_TITLE}`}
+          />
         </Col>
         <Col xs={12} sm={8} md={6} lg={4}>
-          <Statistic title="Ready" value={counts.ready} valueStyle={{ color: '#389e0d' }} />
+          <Statistic
+            title="Ready"
+            value={counts.ready}
+            valueStyle={{ color: '#389e0d' }}
+            className={`${ADMIN_STAT_VALUE} ${ADMIN_STAT_TITLE}`}
+          />
         </Col>
         <Col xs={12} sm={8} md={6} lg={4}>
-          <Statistic title="Failed" value={counts.failed} valueStyle={{ color: '#cf1322' }} />
+          <Statistic
+            title="Failed"
+            value={counts.failed}
+            valueStyle={{ color: '#cf1322' }}
+            className={`${ADMIN_STAT_VALUE} ${ADMIN_STAT_TITLE}`}
+          />
         </Col>
         <Col xs={12} sm={8} md={6} lg={4}>
-          <Statistic title="Deleted" value={counts.deleted} />
+          <Statistic title="Deleted" value={counts.deleted} className={`${ADMIN_STAT_VALUE} ${ADMIN_STAT_TITLE}`} />
         </Col>
       </Row>
-    </Card>
+    </AdminCard>
   )
 }

@@ -1,4 +1,4 @@
-export { verifyToken, devLogin, getCurrentUser, logout, checkCookieSession } from './auth'
+export { getCurrentUser, logout, checkCookieSession } from './auth'
 export { fetchBrowseRoot, fetchFolderContents, validateQueryScope, fetchDocumentViewUrl } from './browse'
 export { browseDocuments } from './documents'
 export { ApiError, getApiBaseUrl } from './http'

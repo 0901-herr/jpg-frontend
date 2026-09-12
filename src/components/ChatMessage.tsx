@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { type, typeColor } from '../styles/typography'
 import { radius } from '../styles/theme'
 import { splitAnswerByDocRefs } from '../utils/citations'
-import type { ChatMessage } from '../types'
+import type { ChatMessage, CoverageInfo } from '../types'
 import CitationList, { CitationLink } from './CitationList'
 
 const { Text } = Typography
@@ -19,7 +19,7 @@ function ThinkingIndicator({ label }: { label?: string }) {
     return () => window.clearInterval(id)
   }, [])
 
-  const headline = label ?? 'Thinking'
+  const headline = label ?? 'Getting started…'
 
   return (
     <div className="space-y-1" aria-live="polite">
@@ -31,14 +31,25 @@ function ThinkingIndicator({ label }: { label?: string }) {
   )
 }
 
-function ErrorMessage({ content }: { content: string }) {
+function ErrorMessage({
+  content,
+  progressHint,
+}: {
+  content: string
+  progressHint?: string
+}) {
   return (
     <div
-      className={`${radius.md} border border-red-200 bg-red-50 px-4 py-3 ${type.body} text-red-800`}
+      className={`${radius.md} border border-amber-200 bg-amber-50 px-4 py-3 ${type.body} text-amber-950`}
       role="alert"
     >
-      <p className="font-medium mb-1">Couldn&apos;t get an answer</p>
+      <p className="font-medium mb-1">Couldn&apos;t finish this answer</p>
       <p className="leading-relaxed">{content}</p>
+      {progressHint && (
+        <p className={`${type.caption} mt-2 text-amber-800/80`}>
+          Last step: {progressHint.replace(/…$/, '')}
+        </p>
+      )}
     </div>
   )
 }
@@ -49,6 +60,22 @@ interface AssistantMessageProps {
 
 function formatThoughtDuration(seconds: number): string {
   return `Thought for ${seconds} ${seconds === 1 ? 'second' : 'seconds'}`
+}
+
+function CoverageNotice({ coverage }: { coverage?: CoverageInfo }) {
+  const indexing = coverage?.indexing_files ?? 0
+  if (indexing <= 0) return null
+
+  const total = coverage?.total_files
+  const ready = coverage?.ready_files ?? 0
+  const scope =
+    total != null ? `${ready} of ${total} selected documents ready` : `${indexing} still indexing`
+
+  return (
+    <p className={`${type.caption} ${typeColor.muted} leading-relaxed`} role="status">
+      {scope}. Some documents are still indexing, so the answer may be incomplete.
+    </p>
+  )
 }
 
 function AnswerContent({ message }: { message: ChatMessage }) {
@@ -70,6 +97,13 @@ function AnswerContent({ message }: { message: ChatMessage }) {
         }
         return <span key={`text-${i}`}>{segment.value}</span>
       })}
+      {isStreaming && message.liveText && (
+        // Raw, unattributed preview of the segment still being generated —
+        // finalized `content` above already covers everything earlier,
+        // so this is deliberately not run through splitAnswerByDocRefs
+        // (no citation markers to reconstruct in live token text).
+        <span className="opacity-60">{message.liveText}</span>
+      )}
       {isStreaming && (
         <span className="inline-block w-1.5 h-4 ml-0.5 bg-zinc-400 animate-pulse align-middle rounded-sm" />
       )}
@@ -79,15 +113,26 @@ function AnswerContent({ message }: { message: ChatMessage }) {
 
 function AssistantMessage({ message }: AssistantMessageProps) {
   if (message.status === 'error') {
-    return <ErrorMessage content={message.content} />
+    return (
+      <ErrorMessage content={message.content} progressHint={message.progressLabel} />
+    )
   }
 
   if (message.status === 'thinking') {
-    return <ThinkingIndicator label={message.progressLabel} />
+    return (
+      <div className="space-y-2">
+        <CoverageNotice coverage={message.coverage} />
+        <ThinkingIndicator label={message.progressLabel} />
+      </div>
+    )
   }
 
   return (
     <div className="space-y-3">
+      <CoverageNotice coverage={message.coverage} />
+      {message.status === 'streaming' && message.progressLabel && (
+        <p className={`${type.caption} ${typeColor.muted}`}>{message.progressLabel}</p>
+      )}
       <AnswerContent message={message} />
 
       {message.thinkingSeconds != null &&

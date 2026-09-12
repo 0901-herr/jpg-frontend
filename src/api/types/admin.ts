@@ -13,6 +13,15 @@ export type LifecycleStatus =
   | 'DELETING'
   | 'DELETED'
 
+export interface AdminHealthEndpoints {
+  adapter: string
+  logicaldoc: string
+  rag_engine: string
+  minio: string
+  rabbitmq: string | null
+  temporal: string | null
+}
+
 export interface AdminHealthStatus {
   adapter: string
   logicaldoc: string
@@ -20,6 +29,7 @@ export interface AdminHealthStatus {
   minio: string
   mq_consumer_configured: boolean
   temporal_enabled: boolean
+  endpoints?: AdminHealthEndpoints | null
 }
 
 export interface BulkProgressSnapshot {
@@ -121,6 +131,24 @@ export interface IngestionErrorsResponse {
 
 export interface RetryResponse {
   retried: number
+}
+
+export interface AdminResumeAllResponse {
+  discovery_resumed: boolean
+  ingestion_resumed: boolean
+  bulk_started: boolean
+}
+
+export interface AdminChatSessionResponse {
+  username: string
+  exchange_token: string
+  session_url: string | null
+  chat_url: string | null
+}
+
+export interface ReingestMissingClassificationResponse {
+  queued: number
+  source_document_ids: string[]
 }
 
 export interface AdminDocumentQuery {

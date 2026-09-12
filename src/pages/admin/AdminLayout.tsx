@@ -1,9 +1,9 @@
 import { DashboardOutlined } from '@ant-design/icons'
 import { App, Layout, Menu, Typography } from 'antd'
 import { Link, Outlet, useLocation } from 'react-router-dom'
-import { surface } from '../../styles/theme'
+import { ADMIN_PANEL_CLASS, ADMIN_TEXT_MUTED } from '../../config/adminStyles'
 
-const { Header, Sider, Content } = Layout
+const { Sider, Content } = Layout
 const { Text } = Typography
 
 export default function AdminLayout() {
@@ -12,24 +12,22 @@ export default function AdminLayout() {
 
   return (
     <App>
-      <Layout className={`h-screen overflow-hidden overflow-x-hidden ${surface.page}`}>
+      <Layout className={`${ADMIN_PANEL_CLASS} h-screen overflow-hidden overflow-x-hidden bg-[#f4f6f9]`}>
         <Sider
           width={240}
           theme="light"
-          className="!bg-[#fafafa] border-r border-[#ececec] shrink-0"
+          className="!bg-white border-r border-[#e8edf2] shrink-0"
         >
-          <div className="px-5 py-6 border-b border-[#ececec]">
-            <Text strong className="text-lg tracking-tight">
+          <div className="px-6 py-6 border-b border-[#eef1f5]">
+            <Text strong className="admin-sidebar-title">
               JPG Admin
             </Text>
-            <Text type="secondary" className="block text-xs mt-1">
-              Operator console
-            </Text>
+            <Text className={`block mt-1 ${ADMIN_TEXT_MUTED}`}>Operator console</Text>
           </div>
           <Menu
             mode="inline"
             selectedKeys={selected}
-            className="!bg-transparent !border-none px-2 pt-3"
+            className="!bg-transparent !border-none px-3 pt-4"
             items={[
               {
                 key: 'ingestion',
@@ -38,21 +36,8 @@ export default function AdminLayout() {
               },
             ]}
           />
-          <div className="absolute bottom-5 left-5 right-5">
-            <Link
-              to="/chat"
-              className="text-sm text-[#0084ff] hover:text-[#0066cc] no-underline"
-            >
-              ← Back to chat
-            </Link>
-          </div>
         </Sider>
-        <Layout className="min-w-0 flex flex-col">
-          <Header className="!bg-[#fefdfc] !h-14 border-b border-[#ececec] px-5 flex items-center shrink-0">
-            <Text type="secondary" className="text-sm truncate">
-              Operator dashboard — not visible to hospital users
-            </Text>
-          </Header>
+        <Layout className="min-w-0 flex flex-col bg-[#f4f6f9]">
           <Content className="flex-1 min-h-0 min-w-0 overflow-hidden">
             <Outlet />
           </Content>

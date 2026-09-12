@@ -62,7 +62,7 @@ export function buildDocumentActivityEvents(doc: AdminDocumentSummary): Activity
   if (!isTerminalLifecycle(status) && doc.updated_at) {
     add(
       doc.updated_at,
-      `${label} — ${LIFECYCLE_LABELS[status]}`,
+      `${label}: ${LIFECYCLE_LABELS[status]}`,
       levelForStatus(status),
       LIFECYCLE_HINTS[status],
     )

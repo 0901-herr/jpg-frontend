@@ -1,6 +1,8 @@
-import { Card, Col, Row, Statistic, Typography } from 'antd'
+import { Col, Row, Statistic, Typography } from 'antd'
 import type { BulkProgressSnapshot } from '../../api/types/admin'
-import { ADMIN_CARD_CLASS } from '../../config/adminStyles'
+import { ADMIN_EMPTY, ADMIN_STAT_TITLE, ADMIN_STAT_VALUE } from '../../config/adminStyles'
+import { ADMIN_TEXT_MUTED } from '../../config/adminStyles'
+import AdminCard from './AdminCard'
 
 const { Text } = Typography
 
@@ -9,7 +11,7 @@ interface ThroughputSummaryProps {
 }
 
 function formatEta(seconds: number | null | undefined): string {
-  if (seconds == null || !Number.isFinite(seconds)) return '—'
+  if (seconds == null || !Number.isFinite(seconds)) return ADMIN_EMPTY
   if (seconds < 60) return `${Math.round(seconds)}s`
   if (seconds < 3600) return `${Math.round(seconds / 60)}m`
   return `${Math.round(seconds / 3600)}h`
@@ -18,35 +20,41 @@ function formatEta(seconds: number | null | undefined): string {
 export default function ThroughputSummary({ bulk }: ThroughputSummaryProps) {
   if (!bulk || bulk.job_state === 'idle') {
     return (
-      <Card title="Throughput" size="small" className={ADMIN_CARD_CLASS}>
-        <Text type="secondary">No active bulk job — throughput metrics unavailable</Text>
-      </Card>
+      <AdminCard title="Throughput">
+        <Text className={ADMIN_TEXT_MUTED}>No active bulk job.</Text>
+      </AdminCard>
     )
   }
 
   const rate = bulk.documents_per_second
 
   return (
-    <Card title="Throughput" size="small" className={ADMIN_CARD_CLASS}>
-      <Row gutter={[16, 16]}>
+    <AdminCard title="Throughput">
+      <Row gutter={[20, 20]}>
         <Col span={8}>
           <Statistic
             title="Ready rate"
             value={rate != null ? rate * 60 : undefined}
             precision={1}
             suffix="/ min"
+            className={`${ADMIN_STAT_VALUE} ${ADMIN_STAT_TITLE}`}
           />
         </Col>
         <Col span={8}>
-          <Statistic title="Queue depth (staged)" value={bulk.total_staged_for_rag} />
+          <Statistic
+            title="Queue depth"
+            value={bulk.total_staged_for_rag}
+            className={`${ADMIN_STAT_VALUE} ${ADMIN_STAT_TITLE}`}
+          />
         </Col>
         <Col span={8}>
-          <Statistic title="ETA" value={formatEta(bulk.estimated_seconds_remaining)} />
+          <Statistic
+            title="ETA"
+            value={formatEta(bulk.estimated_seconds_remaining)}
+            className={`${ADMIN_STAT_VALUE} ${ADMIN_STAT_TITLE}`}
+          />
         </Col>
       </Row>
-      <Text type="secondary" className="block mt-3 text-xs">
-        Rates derived from active bulk job only. Historical throughput charts not available yet.
-      </Text>
-    </Card>
+    </AdminCard>
   )
 }

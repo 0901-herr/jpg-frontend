@@ -80,8 +80,8 @@ export function getSelectableDocumentIds(documents: BrowseDocumentItem[]): strin
 }
 
 export function getSelectionWarning(status: IndexingStatus | string): string | null {
-  if (status === 'INDEXING') return 'Still indexing — answers may be incomplete'
-  if (status === 'FAILED') return 'Indexing failed — not queryable'
-  if (status === 'NOT_INDEXED') return 'Not indexed — not queryable'
+  if (status === 'INDEXING') return 'Still indexing. Answers may be incomplete.'
+  if (status === 'FAILED') return 'Indexing failed. Not queryable.'
+  if (status === 'NOT_INDEXED') return 'Not indexed. Not queryable.'
   return null
 }

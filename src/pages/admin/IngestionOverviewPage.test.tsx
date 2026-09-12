@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { App as AntApp } from 'antd'
 import React from 'react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { vi } from 'vitest'
 import * as adminApi from '../../api/admin'
 import type { AdminDocumentQuery } from '../../api/types/admin'
@@ -20,15 +20,17 @@ import {
 
 vi.mock('../../api/admin')
 
-function renderPage() {
+function renderPage(initialRoute = '/admin/ingestion?tab=documents') {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   return render(
     <QueryClientProvider client={queryClient}>
       <AntApp>
-        <MemoryRouter>
-          <IngestionOverviewPage />
+        <MemoryRouter initialEntries={[initialRoute]}>
+          <Routes>
+            <Route path="/admin/ingestion" element={<IngestionOverviewPage />} />
+          </Routes>
         </MemoryRouter>
       </AntApp>
     </QueryClientProvider>,
@@ -49,40 +51,43 @@ describe('IngestionOverviewPage', () => {
   })
 
   it('loads overview', async () => {
-    renderPage()
+    renderPage('/admin/ingestion?tab=overview')
     expect(await screen.findByText('Ingestion Operations')).toBeInTheDocument()
-    expect(screen.getByText(/Overall: RUNNING/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Overall: RUNNING/i })).toBeInTheDocument()
   })
 
   it('shows running state', async () => {
-    renderPage()
-    expect(await screen.findByText(/Discovery: RUNNING/)).toBeInTheDocument()
-    expect(screen.getByText(/Ingestion: RUNNING/)).toBeInTheDocument()
+    renderPage('/admin/ingestion?tab=overview')
+    expect(await screen.findByRole('button', { name: /Discovery: RUNNING/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Ingestion: RUNNING/i })).toBeInTheDocument()
   })
 
   it('shows paused state', async () => {
     vi.mocked(adminApi.fetchIngestionOverview).mockResolvedValue(mockOverviewPaused)
-    renderPage()
-    expect(await screen.findByText(/Overall: PAUSED/)).toBeInTheDocument()
-    expect(screen.getByText('Resume Ingestion')).toBeInTheDocument()
+    renderPage('/admin/ingestion?tab=overview')
+    expect(await screen.findByRole('button', { name: /Overall: PAUSED/i })).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /Resume/i }).length).toBeGreaterThan(0)
   })
 
   it('pause action calls backend', async () => {
-    // Covered by IngestionControls.test.tsx — keep overview integration smoke only
-    renderPage()
-    expect(await screen.findByRole('button', { name: /Pause Ingestion/i })).toBeInTheDocument()
+    renderPage('/admin/ingestion?tab=overview')
+    expect(await screen.findByText('Controls')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /Pause/i }).length).toBeGreaterThan(0)
   })
 
   it('resume action calls backend when paused', async () => {
     vi.mocked(adminApi.fetchIngestionOverview).mockResolvedValue(mockOverviewPaused)
-    renderPage()
-    expect(await screen.findByRole('button', { name: /Resume Ingestion/i })).toBeInTheDocument()
+    renderPage('/admin/ingestion?tab=overview')
+    expect(await screen.findByText('Controls')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /Resume/i }).length).toBeGreaterThan(0)
   })
 
   it('searches documents by docId', async () => {
     const user = userEvent.setup()
     renderPage()
-    const searchCard = (await screen.findByText('Search Documents')).closest('.ant-card') as HTMLElement
+    const searchCard = (await screen.findByPlaceholderText('docId or filename')).closest(
+      '.ant-card',
+    ) as HTMLElement
     await user.type(within(searchCard).getByPlaceholderText('docId or filename'), '5052')
     await user.click(within(searchCard).getByRole('button', { name: /search/i }))
     await waitFor(() =>
@@ -138,8 +143,7 @@ describe('IngestionOverviewPage', () => {
   })
 
   it('shows failed documents section with retry controls', async () => {
-    renderPage()
-    expect(await screen.findByText(/Failed Documents/)).toBeInTheDocument()
+    renderPage('/admin/ingestion?tab=errors')
     expect(await screen.findByRole('button', { name: /Retry all/i })).toBeInTheDocument()
   })
 
@@ -174,7 +178,9 @@ describe('IngestionOverviewPage', () => {
   it('applies failed-only filter', async () => {
     const user = userEvent.setup()
     renderPage()
-    const searchCard = (await screen.findByText('Search Documents')).closest('.ant-card') as HTMLElement
+    const searchCard = (await screen.findByPlaceholderText('docId or filename')).closest(
+      '.ant-card',
+    ) as HTMLElement
     await user.click(within(searchCard).getByRole('checkbox', { name: 'Failed only' }))
     await user.click(within(searchCard).getByRole('button', { name: /search/i }))
     await waitFor(() =>
@@ -185,12 +191,19 @@ describe('IngestionOverviewPage', () => {
     )
   })
 
+  it('shows service ports on health tab', async () => {
+    renderPage('/admin/ingestion?tab=health')
+    expect(await screen.findByText('localhost:8001')).toBeInTheDocument()
+    expect(screen.getByText('localhost:8082')).toBeInTheDocument()
+    expect(screen.getByText('rag.example:8080')).toBeInTheDocument()
+  })
+
   it('shows stale audit health when poll is old', async () => {
     vi.mocked(adminApi.fetchIngestionOverview).mockResolvedValue({
       ...mockOverviewRunning,
       last_audit_poll_at: new Date(Date.now() - 20 * 60 * 1000).toISOString(),
     })
-    renderPage()
+    renderPage('/admin/ingestion?tab=sync')
     expect(await screen.findByText('Stale')).toBeInTheDocument()
   })
 })

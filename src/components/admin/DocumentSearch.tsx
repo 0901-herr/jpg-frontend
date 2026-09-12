@@ -1,8 +1,8 @@
 import { ReloadOutlined, SearchOutlined } from '@ant-design/icons'
-import { Button, Card, Checkbox, Col, Form, Input, Row, Select, Space } from 'antd'
+import { Button, Checkbox, Col, Form, Input, Row, Select, Space } from 'antd'
 import type { AdminDocumentQuery, LifecycleStatus } from '../../api/types/admin'
-import { ADMIN_CARD_CLASS } from '../../config/adminStyles'
 import { LIFECYCLE_LABELS } from '../../utils/lifecycle'
+import AdminCard from './AdminCard'
 
 export interface DocumentSearchValues {
   search: string
@@ -45,7 +45,7 @@ export default function DocumentSearch({ initialValues, loading, onSearch }: Doc
   }
 
   return (
-    <Card title="Search Documents" className={ADMIN_CARD_CLASS}>
+    <AdminCard title="Search">
       <Form
         form={form}
         layout="vertical"
@@ -74,12 +74,12 @@ export default function DocumentSearch({ initialValues, loading, onSearch }: Doc
             </Form.Item>
           </Col>
           <Col xs={24} md={4}>
-            <Form.Item label="Lifecycle status" name="lifecycleStatus">
+            <Form.Item label="Status" name="lifecycleStatus">
               <Select allowClear placeholder="Any" options={lifecycleOptions} />
             </Form.Item>
           </Col>
           <Col xs={24} md={4}>
-            <Form.Item label="Discovery source" name="discoverySource">
+            <Form.Item label="Source" name="discoverySource">
               <Select
                 allowClear
                 placeholder="Any"
@@ -113,6 +113,6 @@ export default function DocumentSearch({ initialValues, loading, onSearch }: Doc
           </Button>
         </Space>
       </Form>
-    </Card>
+    </AdminCard>
   )
 }

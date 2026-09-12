@@ -1,10 +1,12 @@
 import { FileTextOutlined, ReloadOutlined } from '@ant-design/icons'
-import { Button, Card, Empty, Space, Statistic, Tag, Timeline, Typography } from 'antd'
+import { Button, Empty, Space, Statistic, Tag, Timeline, Typography } from 'antd'
 import { useMemo } from 'react'
 import type { AdminDocumentSummary, IngestionOverview } from '../../api/types/admin'
-import { ADMIN_CARD_CLASS } from '../../config/adminStyles'
+import { ADMIN_STACK_SPACE, ADMIN_STAT_TITLE, ADMIN_STAT_VALUE } from '../../config/adminStyles'
 import { mergeActivityFeed, type ActivityLevel } from '../../utils/activityLog'
 import { formatDateTime } from '../../utils/lifecycle'
+import { ADMIN_TEXT_BODY, ADMIN_TEXT_LINK, ADMIN_TEXT_MUTED } from '../../config/adminStyles'
+import AdminCard from './AdminCard'
 
 const { Text } = Typography
 
@@ -43,25 +45,32 @@ export default function IngestionActivityLog({
     counts.preparing + counts.staged + counts.indexing + counts.discovered
 
   return (
-    <div className="space-y-5">
-      <Card className={ADMIN_CARD_CLASS} size="small">
+    <div className={ADMIN_STACK_SPACE}>
+      <AdminCard>
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <Space wrap size="middle">
-            <Statistic title="In flight" value={inFlight} valueStyle={{ fontSize: 20 }} />
+          <Space wrap size="large">
+            <Statistic
+              title="In flight"
+              value={inFlight}
+              className={`${ADMIN_STAT_VALUE} ${ADMIN_STAT_TITLE}`}
+            />
             <Statistic
               title="Indexing"
               value={counts.indexing}
-              valueStyle={{ fontSize: 20, color: '#d48806' }}
+              valueStyle={{ color: '#d48806' }}
+              className={`${ADMIN_STAT_VALUE} ${ADMIN_STAT_TITLE}`}
             />
             <Statistic
               title="Ready"
               value={counts.ready}
-              valueStyle={{ fontSize: 20, color: '#389e0d' }}
+              valueStyle={{ color: '#389e0d' }}
+              className={`${ADMIN_STAT_VALUE} ${ADMIN_STAT_TITLE}`}
             />
             <Statistic
               title="Failed"
               value={counts.failed}
-              valueStyle={{ fontSize: 20, color: counts.failed ? '#cf1322' : undefined }}
+              valueStyle={{ color: counts.failed ? '#cf1322' : undefined }}
+              className={`${ADMIN_STAT_VALUE} ${ADMIN_STAT_TITLE}`}
             />
           </Space>
           {onRefresh && (
@@ -70,24 +79,19 @@ export default function IngestionActivityLog({
             </Button>
           )}
         </div>
-        <Text type="secondary" className="block mt-3 text-xs">
-          Live activity synthesized from document pipeline timestamps — not raw server logs.
-          Polls every few seconds while this tab is open.
-        </Text>
-      </Card>
+      </AdminCard>
 
-      <Card
+      <AdminCard
         title={
-          <Space>
+          <Space size="small">
             <FileTextOutlined />
             <span>Activity log</span>
-            <Tag>{entries.length} events</Tag>
+            <Tag className="!m-0">{entries.length}</Tag>
           </Space>
         }
-        className={ADMIN_CARD_CLASS}
       >
         {entries.length === 0 ? (
-          <Empty description="No recent ingestion activity" />
+          <Empty description="No recent activity" />
         ) : (
           <Timeline
             items={entries.map((entry) => ({
@@ -98,22 +102,22 @@ export default function IngestionActivityLog({
                     {entry.docId && onSelectDocument ? (
                       <button
                         type="button"
-                        className="text-left font-medium text-[#0084ff] hover:underline bg-transparent border-0 p-0 cursor-pointer"
+                        className={ADMIN_TEXT_LINK}
                         onClick={() => onSelectDocument(entry.docId!)}
                       >
                         {entry.headline}
                       </button>
                     ) : (
-                      <Text strong className="text-sm">
+                      <Text strong className={ADMIN_TEXT_BODY}>
                         {entry.headline}
                       </Text>
                     )}
-                    <Text type="secondary" className="text-xs whitespace-nowrap">
+                    <Text className={`${ADMIN_TEXT_MUTED} whitespace-nowrap`}>
                       {formatDateTime(entry.at)}
                     </Text>
                   </div>
                   {entry.detail && (
-                    <Text type="secondary" className="block text-xs mt-0.5 break-words">
+                    <Text className={`block mt-0.5 break-words ${ADMIN_TEXT_MUTED}`}>
                       {entry.detail}
                     </Text>
                   )}
@@ -122,7 +126,7 @@ export default function IngestionActivityLog({
             }))}
           />
         )}
-      </Card>
+      </AdminCard>
     </div>
   )
 }
