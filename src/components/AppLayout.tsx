@@ -287,12 +287,26 @@ export default function AppLayout() {
                 progressLabel: formatProgressStage(lastProgressStageRef.current),
               }))
             },
+            onDelta: (text) => {
+              hadPartialAnswerRef.current = true
+              updateAssistantMessage(activeChatId, (msg) => ({
+                ...msg,
+                status: 'streaming',
+                liveText: (msg.liveText ?? '') + text,
+                coverage: coverage ?? msg.coverage,
+                progressLabel: undefined,
+              }))
+            },
             onAnswer: (delta) => {
               hadPartialAnswerRef.current = true
               updateAssistantMessage(activeChatId, (msg) => ({
                 ...msg,
                 status: 'streaming',
                 content: appendStreamDelta(msg.content, delta),
+                // This segment just finalized into `content` — clear the
+                // live preview so the next segment's deltas start fresh
+                // rather than duplicating text already shown.
+                liveText: '',
                 coverage: coverage ?? msg.coverage,
               }))
             },
@@ -339,6 +353,7 @@ export default function AppLayout() {
             ...msg,
             content: msg.content || 'Response stopped.',
             status: 'complete',
+            liveText: '',
             thinkingSeconds: elapsedSeconds(),
           }))
           return
@@ -352,6 +367,7 @@ export default function AppLayout() {
           ...msg,
           content: detail,
           status: 'error',
+          liveText: '',
           progressLabel: formatProgressStage(lastProgressStageRef.current),
           thinkingSeconds: elapsedSeconds(),
         }))
