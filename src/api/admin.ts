@@ -79,3 +79,8 @@ export function classifyMissingDocuments(limit = 10, signal?: AbortSignal) {
     signal,
   )
 }
+
+/** Back-compat alias used by ReclassifyMissingButton. */
+export function reingestMissingClassification(signal?: AbortSignal) {
+  return classifyMissingDocuments(10, signal)
+}

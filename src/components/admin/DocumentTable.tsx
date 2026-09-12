@@ -3,6 +3,7 @@ import type { ColumnsType, TablePaginationConfig } from 'antd/es/table'
 import type { AdminDocumentSummary } from '../../api/types/admin'
 import { ADMIN_EMPTY, ADMIN_TABLE_SCROLL } from '../../config/adminStyles'
 import { formatDateTime } from '../../utils/lifecycle'
+import CategoryTag from '../CategoryTag'
 import AdminCard from './AdminCard'
 import DocumentStatusBadge from './DocumentStatusBadge'
 import IngestionPipelineWaterfall from './IngestionPipelineWaterfall'
@@ -55,6 +56,13 @@ export default function DocumentTable({
       key: 'lifecycle_status',
       width: 100,
       render: (status) => <DocumentStatusBadge status={status} />,
+    },
+    {
+      title: 'Category',
+      dataIndex: 'classification_category',
+      key: 'classification_category',
+      width: 100,
+      render: (category: string | null) => <CategoryTag category={category} />,
     },
     {
       title: 'Source',

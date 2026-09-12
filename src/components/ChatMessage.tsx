@@ -2,7 +2,7 @@ import { Typography } from 'antd'
 import { useEffect, useState } from 'react'
 import { type, typeColor } from '../styles/typography'
 import { radius } from '../styles/theme'
-import { splitAnswerByDocRefs } from '../utils/citations'
+import { citationDisplayLabel, splitAnswerByDocRefs } from '../utils/citations'
 import type { ChatMessage, CoverageInfo } from '../types'
 import CitationList, { CitationLink } from './CitationList'
 
@@ -91,7 +91,7 @@ function AnswerContent({ message }: { message: ChatMessage }) {
             <CitationLink
               key={`ref-${i}`}
               source={segment.source}
-              label={segment.value}
+              label={citationDisplayLabel(segment.source)}
             />
           )
         }

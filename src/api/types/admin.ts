@@ -89,6 +89,7 @@ export interface AdminDocumentSummary {
   db_status: string
   discovery_source: string | null
   rag_document_id: string | null
+  classification_category: string | null
   checksum: string | null
   retry_count: number
   last_error: string | null

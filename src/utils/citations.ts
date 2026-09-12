@@ -100,6 +100,13 @@ export function citationsToSources(citations: Citation[]): Source[] {
   return citations.map((citation, i) => mapCitationToSource(citation, i + 1))
 }
 
+/** Friendly inline citation label, e.g. "(Report.pdf, Page 22)" — replaces
+ * the raw [DocN] marker, which means nothing to a user reading the answer. */
+export function citationDisplayLabel(source: Source): string {
+  const detail = source.reference ? `, ${source.reference}` : ''
+  return `(${source.filename}${detail})`
+}
+
 export function citationsToTags(citations: Citation[]): string[] {
   const labels = [...new Set(citations.map(citationLabel).filter(Boolean))]
   if (labels.length <= 1) return labels

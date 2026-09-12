@@ -16,6 +16,7 @@ import IngestionSectionNav, {
 } from '../../components/admin/IngestionSectionNav'
 import IngestionStatusHeader from '../../components/admin/IngestionStatusHeader'
 import ProgressSummary from '../../components/admin/ProgressSummary'
+import ReclassifyMissingButton from '../../components/admin/ReclassifyMissingButton'
 import ReconciliationStatus from '../../components/admin/ReconciliationStatus'
 import SystemHealth from '../../components/admin/SystemHealth'
 import ThroughputSummary from '../../components/admin/ThroughputSummary'
@@ -133,12 +134,15 @@ export default function IngestionOverviewPage() {
 
           {section === 'documents' && (
             <div className={ADMIN_STACK_SPACE}>
-              <DocumentSearch
-                loading={documentsQuery.isFetching}
-                onSearch={(query) => {
-                  handleSearch(query)
-                }}
-              />
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <DocumentSearch
+                  loading={documentsQuery.isFetching}
+                  onSearch={(query) => {
+                    handleSearch(query)
+                  }}
+                />
+                <ReclassifyMissingButton />
+              </div>
               <DocumentTable
                 items={documentsQuery.data?.items ?? []}
                 total={documentsQuery.data?.total ?? 0}
