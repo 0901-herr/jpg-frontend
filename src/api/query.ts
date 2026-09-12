@@ -13,6 +13,7 @@ import {
   mergeCitations,
   parseCitationEvent,
 } from '../utils/citations'
+import { appendStreamDelta } from '../utils/appendStreamDelta'
 import {
   QUERY_GENERIC_ERROR,
   QUERY_INCOMPLETE_ERROR,
@@ -85,6 +86,37 @@ export function citationRefForSegment(data: unknown, citations: Citation[]): str
   return match?.doc_ref || null
 }
 
+function dispatchNestedMessageEvent(
+  data: unknown,
+  callbacks: StreamQueryCallbacks,
+): boolean {
+  const obj = asRecord(data)
+  if (!obj) return false
+  const nestedType = readString(obj, 'type') ?? readString(obj, 'event')
+  if (!nestedType) return false
+
+  if (nestedType === 'progress') {
+    const stage =
+      readString(obj, 'stage') ?? readString(obj, 'status') ?? readString(obj, 'phase')
+    if (stage) callbacks.onProgress?.(stage)
+    return true
+  }
+
+  if (nestedType === 'route') {
+    const strategy = readString(obj, 'strategy') ?? readString(obj, 'query_type')
+    if (strategy) callbacks.onRoute?.(strategy)
+    return true
+  }
+
+  if (nestedType === 'coverage') {
+    const coverage = parseCoverage(data)
+    callbacks.onCoverage?.(coverage)
+    return true
+  }
+
+  return false
+}
+
 function extractErrorMessage(data: unknown): string {
   const obj = asRecord(data)
   if (!obj) {
@@ -148,15 +180,33 @@ async function streamQuery(
             if (strategy) callbacks.onRoute?.(strategy)
             break
           }
+          case 'delta': {
+            const obj = asRecord(data)
+            const text = obj ? readString(obj, 'text') : undefined
+            if (text) callbacks.onDelta?.(text)
+            break
+          }
           case 'answer': {
             const segmentText = extractAnswerDelta(data)
             if (segmentText) {
               const ref = citationRefForSegment(data, citations)
               const rawDelta = ref ? joinAnswerSegment(segmentText, ref) : segmentText
               const joined = joinAnswerSegment(content, rawDelta)
-              const delta = joined.slice(content.length)
+              const appended = joined.slice(content.length)
               content = joined
-              callbacks.onAnswer?.(delta)
+              if (appended) callbacks.onAnswer?.(appended)
+            }
+            break
+          }
+          case 'message': {
+            if (!dispatchNestedMessageEvent(data, callbacks)) {
+              const delta = extractAnswerDelta(data)
+              if (delta) {
+                const merged = appendStreamDelta(content, delta)
+                const appended = merged.slice(content.length)
+                content = merged
+                if (appended) callbacks.onAnswer?.(appended)
+              }
             }
             break
           }
@@ -182,6 +232,7 @@ async function streamQuery(
             break
           }
           default:
+            dispatchNestedMessageEvent(data, callbacks)
             break
         }
       },

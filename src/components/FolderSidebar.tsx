@@ -1,12 +1,22 @@
-import { FileTextOutlined, FolderOpenOutlined, RightOutlined } from '@ant-design/icons'
+import {
+  AppstoreOutlined,
+  FileTextOutlined,
+  FolderOpenOutlined,
+  RightOutlined,
+} from '@ant-design/icons'
 import { Alert, Select, Spin, TreeSelect } from 'antd'
-import { useEffect, useMemo, useState } from 'react'
 import type { AntTreeNodeProps } from 'antd/es/tree'
+import { useEffect, useMemo, useState } from 'react'
 import { sectionLabel } from '../styles/theme'
 import { sidebar, typeColor } from '../styles/typography'
-import { formatCategoryLabel } from '../utils/classification'
 import type { BrowseTreeState } from '../hooks/useBrowseTree'
 import type { DocumentSelection } from '../hooks/useDocumentSelection'
+import {
+  extractCategories,
+  filterDocumentsByCategory,
+  resolveCategorySourceDocuments,
+} from '../utils/documentCategories'
+import BrowseViewToggle, { type BrowseViewMode } from './BrowseViewToggle'
 import DocumentChecklist from './DocumentChecklist'
 
 interface FolderSidebarProps {
@@ -15,6 +25,9 @@ interface FolderSidebarProps {
 }
 
 export default function FolderSidebar({ browse, selection }: FolderSidebarProps) {
+  const [viewMode, setViewMode] = useState<BrowseViewMode>('folder')
+  const [activeCategory, setActiveCategory] = useState<string | null>(null)
+
   const {
     treeSelectData,
     activeFolderId,
@@ -30,29 +43,41 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
     handleLoadMoreDocuments,
   } = browse
 
-  const [categoryFilter, setCategoryFilter] = useState<string | null>(null)
+  const folderDocuments = activeFolderContents?.documents ?? []
 
-  const allDocuments = activeFolderContents?.documents ?? []
+  const categorySourceDocuments = useMemo(
+    () => resolveCategorySourceDocuments(folderDocuments),
+    [folderDocuments],
+  )
 
-  const categoryOptions = useMemo(() => {
-    const seen = new Map<string, string>()
-    for (const doc of allDocuments) {
-      const key = doc.classification_category ?? 'uncategorized'
-      if (!seen.has(key)) seen.set(key, formatCategoryLabel(doc.classification_category))
-    }
-    return Array.from(seen, ([value, label]) => ({ value, label }))
-  }, [allDocuments])
-
-  const filteredDocuments = useMemo(() => {
-    if (!categoryFilter) return allDocuments
-    return allDocuments.filter(
-      (doc) => (doc.classification_category ?? 'uncategorized') === categoryFilter,
-    )
-  }, [allDocuments, categoryFilter])
+  const categoryOptions = useMemo(
+    () => extractCategories(categorySourceDocuments),
+    [categorySourceDocuments],
+  )
 
   useEffect(() => {
-    setCategoryFilter(null)
-  }, [activeFolderId])
+    if (viewMode !== 'category') return
+    if (categoryOptions.length === 0) {
+      setActiveCategory(null)
+      return
+    }
+    if (activeCategory == null || !categoryOptions.some((c) => c.name === activeCategory)) {
+      setActiveCategory(categoryOptions[0].name)
+    }
+  }, [viewMode, categoryOptions, activeCategory])
+
+  const visibleDocuments = useMemo(() => {
+    if (viewMode === 'folder') return folderDocuments
+    if (activeCategory == null) return []
+    return filterDocumentsByCategory(categorySourceDocuments, activeCategory)
+  }, [viewMode, folderDocuments, categorySourceDocuments, activeCategory])
+
+  const documentsContextLabel =
+    viewMode === 'folder'
+      ? activeFolderName
+      : activeCategory != null
+        ? activeCategory
+        : null
 
   if (sessionExpired) {
     return (
@@ -88,37 +113,68 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
 
   return (
     <div className="flex flex-col min-h-0 flex-1 gap-3">
+      <BrowseViewToggle mode={viewMode} onChange={setViewMode} />
+
       <div className="shrink-0">
-        <span className={sectionLabel}>
-          <FolderOpenOutlined className="text-[14px]" />
-          Folder
-        </span>
-        <TreeSelect
-          value={activeFolderId ?? undefined}
-          treeData={treeSelectData}
-          placeholder="Select a folder"
-          treeDefaultExpandAll
-          showSearch
-          treeNodeFilterProp="title"
-          loadData={handleLoadTreeData}
-          switcherIcon={({ expanded, isLeaf }: AntTreeNodeProps) =>
-            isLeaf ? null : (
-              <RightOutlined
-                className={`docu-tree-chevron${expanded ? ' expanded' : ''}`}
-                aria-hidden
+        {viewMode === 'folder' ? (
+          <>
+            <span className={sectionLabel}>
+              <FolderOpenOutlined className="text-[14px]" />
+              Folder
+            </span>
+            <TreeSelect
+              value={activeFolderId ?? undefined}
+              treeData={treeSelectData}
+              placeholder="Select a folder"
+              treeDefaultExpandAll
+              showSearch
+              treeNodeFilterProp="title"
+              loadData={handleLoadTreeData}
+              switcherIcon={({ expanded, isLeaf }: AntTreeNodeProps) =>
+                isLeaf ? null : (
+                  <RightOutlined
+                    className={`docu-tree-chevron${expanded ? ' expanded' : ''}`}
+                    aria-hidden
+                  />
+                )
+              }
+              onChange={(value) => {
+                const folderId = Number(value)
+                if (Number.isFinite(folderId)) void handleSelectFolder(folderId)
+              }}
+              suffixIcon={<FolderOpenOutlined className="text-[#8e8e8e] text-sm" />}
+              className="w-full docu-sidebar-select"
+              popupMatchSelectWidth={false}
+              classNames={{ popup: { root: 'docu-folder-tree-popup' } }}
+              styles={{ popup: { root: { maxHeight: 320, overflow: 'auto' } } }}
+            />
+          </>
+        ) : (
+          <>
+            <span className={sectionLabel}>
+              <AppstoreOutlined className="text-[14px]" />
+              Category
+            </span>
+            {categoryOptions.length === 0 ? (
+              <p className={`${sidebar.caption} ${typeColor.muted} px-1 py-2 m-0`}>
+                No classification categories in this folder yet.
+              </p>
+            ) : (
+              <Select
+                value={activeCategory ?? undefined}
+                placeholder="Select a category"
+                options={categoryOptions.map((option) => ({
+                  value: option.name,
+                  label: `${option.name} (${option.count})`,
+                }))}
+                onChange={(value) => setActiveCategory(String(value))}
+                suffixIcon={<AppstoreOutlined className="text-[#8e8e8e] text-sm" />}
+                className="w-full docu-sidebar-select"
+                popupMatchSelectWidth
               />
-            )
-          }
-          onChange={(value) => {
-            const folderId = Number(value)
-            if (Number.isFinite(folderId)) void handleSelectFolder(folderId)
-          }}
-          suffixIcon={<FolderOpenOutlined className="text-[#8e8e8e] text-sm" />}
-          className="w-full docu-sidebar-select"
-          popupMatchSelectWidth={false}
-          classNames={{ popup: { root: 'docu-folder-tree-popup' } }}
-          styles={{ popup: { root: { maxHeight: 320, overflow: 'auto' } } }}
-        />
+            )}
+          </>
+        )}
       </div>
 
       <div className="flex flex-col min-h-0 flex-1 gap-1.5 pt-4">
@@ -127,42 +183,39 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
             <FileTextOutlined className="text-[14px]" />
             Documents
           </span>
-          {activeFolderName && (
+          {documentsContextLabel && (
             <span
               className={`${sidebar.caption} ${typeColor.muted} truncate max-w-[45%]`}
-              title={activeFolderName}
+              title={documentsContextLabel}
             >
-              {activeFolderName}
+              {documentsContextLabel}
             </span>
           )}
         </div>
-        {categoryOptions.length > 1 && (
-          <Select
-            allowClear
-            placeholder="All categories"
-            value={categoryFilter ?? undefined}
-            onChange={(value) => setCategoryFilter(value ?? null)}
-            options={categoryOptions}
-            size="small"
-            className="w-full shrink-0"
-          />
-        )}
         <div className="flex flex-1 min-h-0 flex-col overflow-y-auto -mx-3 px-3">
-          <DocumentChecklist
-            documents={filteredDocuments}
-            selectedIds={selection.selectedIds}
-            isLoading={isActiveFolderLoading}
-            hasMore={activeFolderContents?.has_more_documents}
-            isLoadingMore={loadingMoreFolderId === activeFolderId}
-            onToggle={selection.toggleDocument}
-            onSelectAll={() =>
-              selection.selectAllSelectable(filteredDocuments, {
-                replace: true,
-              })
-            }
-            onDeselectAll={() => selection.deselectAllInView(filteredDocuments)}
-            onLoadMore={() => void handleLoadMoreDocuments()}
-          />
+          {viewMode === 'category' && categoryOptions.length === 0 ? (
+            <div className="flex h-full min-h-[80px] items-center justify-center px-3 text-center">
+              <span className={`${sidebar.caption} ${typeColor.muted}`}>
+                Categories appear after ingestion classification completes.
+              </span>
+            </div>
+          ) : (
+            <DocumentChecklist
+              documents={visibleDocuments}
+              selectedIds={selection.selectedIds}
+              isLoading={viewMode === 'folder' && isActiveFolderLoading}
+              hasMore={viewMode === 'folder' && activeFolderContents?.has_more_documents}
+              isLoadingMore={loadingMoreFolderId === activeFolderId}
+              onToggle={selection.toggleDocument}
+              onSelectAll={() =>
+                selection.selectAllSelectable(visibleDocuments, {
+                  replace: true,
+                })
+              }
+              onDeselectAll={() => selection.deselectAllInView(visibleDocuments)}
+              onLoadMore={viewMode === 'folder' ? () => void handleLoadMoreDocuments() : undefined}
+            />
+          )}
         </div>
       </div>
     </div>

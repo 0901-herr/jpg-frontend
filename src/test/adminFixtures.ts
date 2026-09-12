@@ -37,6 +37,14 @@ export const mockOverviewRunning: IngestionOverview = {
     minio: 'ok',
     mq_consumer_configured: true,
     temporal_enabled: true,
+    endpoints: {
+      adapter: 'http://localhost:8001',
+      logicaldoc: 'http://localhost:8082',
+      rag_engine: 'http://rag.example:8080',
+      minio: 'http://localhost:9000',
+      rabbitmq: '127.0.0.1:5672',
+      temporal: 'localhost:7233',
+    },
   },
   bulk_progress: {
     job_state: 'running',

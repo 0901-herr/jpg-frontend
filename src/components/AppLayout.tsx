@@ -11,7 +11,9 @@ import { useDocumentSelection } from '../hooks/useDocumentSelection'
 import { useResizableWidth } from '../hooks/useResizableWidth'
 import { type, typeColor } from '../styles/typography'
 import { citationsToSources, mergeCitations } from '../utils/citations'
+import { appendStreamDelta } from '../utils/appendStreamDelta'
 import { formatProgressStage, formatRouteLabel } from '../utils/queryProgress'
+import { toUserFacingQueryError } from '../utils/userFacingErrors'
 import { isCitationDemoEnabled, isCitationLoadingDemoEnabled } from '../config/demo'
 import {
   createCitationDemoSession,
@@ -71,6 +73,8 @@ export default function AppLayout() {
   const browse = useBrowseTree(handleDocumentsLoaded)
   const abortControllerRef = useRef<AbortController | null>(null)
   const streamingCitationsRef = useRef<Citation[]>([])
+  const lastProgressStageRef = useRef<string | undefined>(undefined)
+  const hadPartialAnswerRef = useRef(false)
 
   useEffect(() => {
     if (sessions.length === 0) {
@@ -155,9 +159,17 @@ export default function AppLayout() {
       abortControllerRef.current?.abort()
       const controller = new AbortController()
       abortControllerRef.current = controller
+      lastProgressStageRef.current = undefined
+      hadPartialAnswerRef.current = false
       const startedAt = Date.now()
 
       const elapsedSeconds = () => Math.max(1, Math.round((Date.now() - startedAt) / 1000))
+
+      const friendlyQueryError = (raw: string | undefined) =>
+        toUserFacingQueryError(raw, {
+          progressLabel: formatProgressStage(lastProgressStageRef.current),
+          hadPartialAnswer: hadPartialAnswerRef.current,
+        })
 
       let scopeDocuments = selectedDocs
 
@@ -169,7 +181,7 @@ export default function AppLayout() {
         if (deniedCount > 0) {
           selection.trimSelection(scope.accessible_document_ids)
           message.warning(
-            `${deniedCount} selected ${deniedCount === 1 ? 'document was' : 'documents were'} removed — you don't have access.`,
+            `${deniedCount} selected ${deniedCount === 1 ? 'document was' : 'documents were'} removed because you don't have access.`,
           )
         }
 
@@ -186,7 +198,7 @@ export default function AppLayout() {
         }
 
         if (scope.ready_files === 0 && scope.indexing_files > 0) {
-          const reason = 'Documents still indexing — please wait until at least one is ready.'
+          const reason = 'Documents are still indexing. Please wait until at least one is ready.'
           setInputBlockedReason(reason)
           message.warning(reason)
           return
@@ -201,7 +213,7 @@ export default function AppLayout() {
 
         if (scope.indexing_files > 0) {
           message.info(
-            `${scope.indexing_files} selected ${scope.indexing_files === 1 ? 'document is' : 'documents are'} still indexing — answers may be incomplete.`,
+            `${scope.indexing_files} selected ${scope.indexing_files === 1 ? 'document is' : 'documents are'} still indexing. Answers may be incomplete.`,
           )
         }
       } catch (err) {
@@ -252,6 +264,7 @@ export default function AppLayout() {
               }))
             },
             onProgress: (stage) => {
+              lastProgressStageRef.current = stage
               updateAssistantMessage(activeChatId, (msg) => ({
                 ...msg,
                 status: msg.content ? 'streaming' : 'thinking',
@@ -261,25 +274,40 @@ export default function AppLayout() {
             onRoute: (strategy) => {
               updateAssistantMessage(activeChatId, (msg) => ({
                 ...msg,
-                status: 'thinking',
-                progressLabel: formatRouteLabel(strategy),
+                status: msg.content ? 'streaming' : 'thinking',
+                progressLabel: msg.content ? undefined : formatRouteLabel(strategy),
               }))
             },
-            onError: (message) => {
+            onError: (rawMessage) => {
+              const content = friendlyQueryError(rawMessage)
               updateAssistantMessage(activeChatId, (msg) => ({
                 ...msg,
                 status: 'error',
-                content: message,
+                content,
+                progressLabel: formatProgressStage(lastProgressStageRef.current),
+              }))
+            },
+            onDelta: (text) => {
+              hadPartialAnswerRef.current = true
+              updateAssistantMessage(activeChatId, (msg) => ({
+                ...msg,
+                status: 'streaming',
+                liveText: (msg.liveText ?? '') + text,
+                coverage: coverage ?? msg.coverage,
                 progressLabel: undefined,
               }))
             },
             onAnswer: (delta) => {
+              hadPartialAnswerRef.current = true
               updateAssistantMessage(activeChatId, (msg) => ({
                 ...msg,
                 status: 'streaming',
-                content: msg.content + delta,
+                content: appendStreamDelta(msg.content, delta),
+                // This segment just finalized into `content` — clear the
+                // live preview so the next segment's deltas start fresh
+                // rather than duplicating text already shown.
+                liveText: '',
                 coverage: coverage ?? msg.coverage,
-                progressLabel: undefined,
               }))
             },
             onCitations: (batch) => {
@@ -325,19 +353,22 @@ export default function AppLayout() {
             ...msg,
             content: msg.content || 'Response stopped.',
             status: 'complete',
+            liveText: '',
             thinkingSeconds: elapsedSeconds(),
           }))
           return
         }
 
-        const detail =
-          err instanceof Error && err.message ? err.message : 'Request failed'
+        const detail = friendlyQueryError(
+          err instanceof Error ? err.message : undefined,
+        )
         message.error(detail, 8)
         updateAssistantMessage(activeChatId, (msg) => ({
           ...msg,
           content: detail,
           status: 'error',
-          progressLabel: undefined,
+          liveText: '',
+          progressLabel: formatProgressStage(lastProgressStageRef.current),
           thinkingSeconds: elapsedSeconds(),
         }))
       } finally {

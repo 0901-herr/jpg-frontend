@@ -27,6 +27,11 @@ export interface StreamQueryCallbacks {
   onCoverage?: (coverage: CoverageEvent) => void
   onProgress?: (stage: string) => void
   onRoute?: (strategy: string) => void
+  /** Raw, safe-to-reveal token text from a `delta` SSE event — a live
+   * preview of the segment currently being generated. Never accumulated
+   * into the final message content; superseded by the next `onAnswer`
+   * call for that segment. */
+  onDelta?: (text: string) => void
   onAnswer?: (delta: string) => void
   /** Batch of citations from a single SSE citation event */
   onCitations?: (citations: Citation[]) => void

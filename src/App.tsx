@@ -7,6 +7,7 @@ import AdminLayout from './pages/admin/AdminLayout'
 import { AdminIndexRedirect, AdminRoute } from './pages/admin/AdminRoute'
 import IngestionOverviewPage from './pages/admin/IngestionOverviewPage'
 import QueryProvider from './providers/QueryProvider'
+import { FONT_FAMILY_SANS } from './config/typography'
 
 export default function App() {
   return (
@@ -24,8 +25,7 @@ export default function App() {
           borderRadius: 10,
           borderRadiusLG: 12,
           borderRadiusSM: 8,
-          fontFamily:
-            "ui-sans-serif, -apple-system, system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+          fontFamily: FONT_FAMILY_SANS,
           fontSize: 16,
           fontSizeSM: 14,
           fontSizeLG: 18,

@@ -20,7 +20,13 @@ import ReclassifyMissingButton from '../../components/admin/ReclassifyMissingBut
 import ReconciliationStatus from '../../components/admin/ReconciliationStatus'
 import SystemHealth from '../../components/admin/SystemHealth'
 import ThroughputSummary from '../../components/admin/ThroughputSummary'
-import { ADMIN_PAGE_CLASS, ADMIN_SECTION_MAIN_CLASS, ADMIN_SECTION_NAV_CLASS } from '../../config/adminStyles'
+import {
+  ADMIN_PAGE_CLASS,
+  ADMIN_SECTION_MAIN_CLASS,
+  ADMIN_SECTION_NAV_CLASS,
+  ADMIN_STACK_GAP,
+  ADMIN_STACK_SPACE,
+} from '../../config/adminStyles'
 import { ADMIN_OVERVIEW_POLL_MS } from '../../config/admin'
 import { adminQueryKeys } from '../../lib/adminQueryKeys'
 import { ApiError } from '../../api/http'
@@ -99,21 +105,15 @@ export default function IngestionOverviewPage() {
       </aside>
 
       <main className={ADMIN_SECTION_MAIN_CLASS}>
-        <div className="max-w-6xl w-full mx-auto space-y-6">
-          <IngestionStatusHeader overview={overview} compact={section !== 'overview'} />
+        <div className={`max-w-6xl w-full mx-auto ${ADMIN_STACK_SPACE} pb-2`}>
+          <IngestionStatusHeader overview={overview} section={section} />
 
           {section === 'overview' && (
-            <>
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-                <div className="lg:col-span-2 space-y-5">
-                  <ProgressSummary overview={overview} />
-                  <IngestionControls overview={overview} />
-                </div>
-                <div className="space-y-5">
-                  <ThroughputSummary bulk={overview.bulk_progress} />
-                </div>
-              </div>
-            </>
+            <div className={ADMIN_STACK_SPACE}>
+              <ProgressSummary overview={overview} />
+              <ThroughputSummary bulk={overview.bulk_progress} />
+              <IngestionControls overview={overview} />
+            </div>
           )}
 
           {section === 'activity' && (
@@ -133,7 +133,7 @@ export default function IngestionOverviewPage() {
           )}
 
           {section === 'documents' && (
-            <>
+            <div className={ADMIN_STACK_SPACE}>
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <DocumentSearch
                   loading={documentsQuery.isFetching}
@@ -158,13 +158,13 @@ export default function IngestionOverviewPage() {
                 }}
                 onSelect={openDocument}
               />
-            </>
+            </div>
           )}
 
           {section === 'errors' && <FailedDocumentsTable onSelect={openDocument} />}
 
           {section === 'health' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-3xl">
+            <div className={`grid grid-cols-1 md:grid-cols-2 ${ADMIN_STACK_GAP} max-w-3xl`}>
               <SystemHealth
                 health={overview.health}
                 circuitOpen={overview.circuit_open}
@@ -175,7 +175,7 @@ export default function IngestionOverviewPage() {
           )}
 
           {section === 'sync' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-4xl">
+            <div className={`grid grid-cols-1 md:grid-cols-2 ${ADMIN_STACK_GAP} max-w-4xl`}>
               <AuditSyncStatus overview={overview} />
               <ReconciliationStatus overview={overview} />
             </div>

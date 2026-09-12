@@ -1,7 +1,8 @@
-import { Alert, Card, Descriptions, Tag } from 'antd'
+import { Alert, Descriptions, Tag } from 'antd'
 import type { IngestionOverview } from '../../api/types/admin'
-import { ADMIN_CARD_CLASS } from '../../config/adminStyles'
+import { ADMIN_EMPTY } from '../../config/adminStyles'
 import { formatDateTime, formatRelativeTime } from '../../utils/lifecycle'
+import AdminCard from './AdminCard'
 
 interface AuditSyncStatusProps {
   overview: IngestionOverview
@@ -17,7 +18,7 @@ export default function AuditSyncStatus({ overview }: AuditSyncStatusProps) {
     Date.now() - new Date(pollAt).getTime() > STALE_MINUTES * 60 * 1000
 
   return (
-    <Card title="LogicalDOC Incremental Sync" size="small" className={ADMIN_CARD_CLASS}>
+    <AdminCard title="LogicalDOC sync">
       {!overview.audit_sync_enabled ? (
         <Tag>Disabled</Tag>
       ) : (
@@ -28,9 +29,9 @@ export default function AuditSyncStatus({ overview }: AuditSyncStatusProps) {
               {pollAt ? `${formatRelativeTime(pollAt)} (${formatDateTime(pollAt)})` : 'Never'}
             </Descriptions.Item>
             <Descriptions.Item label="Last history ID">
-              {overview.last_history_id ?? '—'}
+              {overview.last_history_id ?? ADMIN_EMPTY}
             </Descriptions.Item>
-            <Descriptions.Item label="Last event time">
+            <Descriptions.Item label="Last event">
               {formatDateTime(overview.last_history_at)}
             </Descriptions.Item>
             <Descriptions.Item label="Status">
@@ -39,14 +40,14 @@ export default function AuditSyncStatus({ overview }: AuditSyncStatusProps) {
           </Descriptions>
           {stale && (
             <Alert
-              className="mt-3"
+              className="mt-4"
               type="warning"
               showIcon
-              message={`Audit sync has not completed successfully for ${STALE_MINUTES}+ minutes`}
+              message={`Audit sync stale for ${STALE_MINUTES}+ minutes`}
             />
           )}
         </>
       )}
-    </Card>
+    </AdminCard>
   )
 }
