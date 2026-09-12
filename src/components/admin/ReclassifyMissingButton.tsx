@@ -1,4 +1,4 @@
-import { TagsOutlined } from '@ant-design/icons'
+import { AdminTagIcon } from '../../icons/admin'
 import { App, Button, Popconfirm } from 'antd'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { reingestMissingClassification } from '../../api/admin'
@@ -24,7 +24,7 @@ export default function ReclassifyMissingButton() {
       description="Re-submits every READY document with no classification category (up to 500) so it gets re-classified."
       onConfirm={() => mutation.mutate()}
     >
-      <Button icon={<TagsOutlined />} loading={mutation.isPending}>
+      <Button icon={<AdminTagIcon />} loading={mutation.isPending}>
         Re-ingest missing classification
       </Button>
     </Popconfirm>

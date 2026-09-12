@@ -45,12 +45,12 @@ export function isTerminalLifecycle(status: LifecycleStatus): boolean {
 
 /** Ordered ingestion pipeline stages for waterfall UI. */
 export const PIPELINE_STAGES = [
-  { id: 'discovered', shortLabel: 'Disc', label: 'Discovered in LogicalDOC' },
-  { id: 'queued', shortLabel: 'Queue', label: 'Queued for ingestion' },
-  { id: 'preparing', shortLabel: 'Prep', label: 'Downloading from LogicalDOC' },
-  { id: 'staged', shortLabel: 'Stage', label: 'Staged for RAG submit' },
-  { id: 'submitted', shortLabel: 'Submit', label: 'Submitted to RAG Engine' },
-  { id: 'indexing', shortLabel: 'Index', label: 'Indexing in RAG Engine' },
+  { id: 'discovered', shortLabel: 'Discovered', label: 'Discovered in LogicalDOC' },
+  { id: 'queued', shortLabel: 'Queued', label: 'Queued for ingestion' },
+  { id: 'preparing', shortLabel: 'Preparing', label: 'Downloading from LogicalDOC' },
+  { id: 'staged', shortLabel: 'Staged', label: 'Staged for RAG submit' },
+  { id: 'submitted', shortLabel: 'Submitted', label: 'Submitted to RAG Engine' },
+  { id: 'indexing', shortLabel: 'Indexing', label: 'Indexing in RAG Engine' },
   { id: 'ready', shortLabel: 'Ready', label: 'Searchable in RAG' },
 ] as const
 

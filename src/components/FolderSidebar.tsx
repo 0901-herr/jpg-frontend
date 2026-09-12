@@ -1,10 +1,12 @@
-import {
-  AppstoreOutlined,
-  FileTextOutlined,
-  FolderOpenOutlined,
-  RightOutlined,
-} from '@ant-design/icons'
 import { Alert, Select, Spin, TreeSelect } from 'antd'
+import {
+  ChatAppsIcon,
+  ChatAppsSuffixIcon,
+  ChatChevronIcon,
+  ChatDescriptionIcon,
+  ChatFolderIcon,
+  ChatFolderSuffixIcon,
+} from '../icons/chat'
 import type { AntTreeNodeProps } from 'antd/es/tree'
 import { useEffect, useMemo, useState } from 'react'
 import { sectionLabel } from '../styles/theme'
@@ -119,7 +121,7 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
         {viewMode === 'folder' ? (
           <>
             <span className={sectionLabel}>
-              <FolderOpenOutlined className="text-[14px]" />
+              <ChatFolderIcon />
               Folder
             </span>
             <TreeSelect
@@ -132,7 +134,7 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
               loadData={handleLoadTreeData}
               switcherIcon={({ expanded, isLeaf }: AntTreeNodeProps) =>
                 isLeaf ? null : (
-                  <RightOutlined
+                  <ChatChevronIcon
                     className={`docu-tree-chevron${expanded ? ' expanded' : ''}`}
                     aria-hidden
                   />
@@ -142,7 +144,7 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
                 const folderId = Number(value)
                 if (Number.isFinite(folderId)) void handleSelectFolder(folderId)
               }}
-              suffixIcon={<FolderOpenOutlined className="text-[#8e8e8e] text-sm" />}
+              suffixIcon={<ChatFolderSuffixIcon className="text-[#8e8e8e] text-sm" />}
               className="w-full docu-sidebar-select"
               popupMatchSelectWidth={false}
               classNames={{ popup: { root: 'docu-folder-tree-popup' } }}
@@ -152,7 +154,7 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
         ) : (
           <>
             <span className={sectionLabel}>
-              <AppstoreOutlined className="text-[14px]" />
+              <ChatAppsIcon />
               Category
             </span>
             {categoryOptions.length === 0 ? (
@@ -168,7 +170,7 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
                   label: `${option.name} (${option.count})`,
                 }))}
                 onChange={(value) => setActiveCategory(String(value))}
-                suffixIcon={<AppstoreOutlined className="text-[#8e8e8e] text-sm" />}
+                suffixIcon={<ChatAppsSuffixIcon className="text-[#8e8e8e] text-sm" />}
                 className="w-full docu-sidebar-select"
                 popupMatchSelectWidth
               />
@@ -180,7 +182,7 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
       <div className="flex flex-col min-h-0 flex-1 gap-1.5 pt-4">
         <div className="flex items-center justify-between shrink-0 gap-2">
           <span className={`${sectionLabel} !mb-0`}>
-            <FileTextOutlined className="text-[14px]" />
+            <ChatDescriptionIcon />
             Documents
           </span>
           {documentsContextLabel && (
@@ -192,7 +194,7 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
             </span>
           )}
         </div>
-        <div className="flex flex-1 min-h-0 flex-col overflow-y-auto -mx-3 px-3">
+        <div className="flex flex-1 min-h-0 flex-col overflow-y-auto -mx-2.5 px-2.5">
           {viewMode === 'category' && categoryOptions.length === 0 ? (
             <div className="flex h-full min-h-[80px] items-center justify-center px-3 text-center">
               <span className={`${sidebar.caption} ${typeColor.muted}`}>

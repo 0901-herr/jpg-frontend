@@ -55,3 +55,11 @@ export function adminGet<T>(path: string, signal?: AbortSignal): Promise<T> {
 export function adminPost<T>(path: string, signal?: AbortSignal): Promise<T> {
   return adminRequest<T>(path, { method: 'POST', signal })
 }
+
+export function adminPatch<T>(
+  path: string,
+  body: unknown,
+  signal?: AbortSignal,
+): Promise<T> {
+  return adminRequest<T>(path, { method: 'PATCH', body, signal })
+}

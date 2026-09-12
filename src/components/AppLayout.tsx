@@ -1,6 +1,6 @@
-import { CommentOutlined } from '@ant-design/icons'
 import { Layout, message } from 'antd'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ChatBubbleIconLg } from '../icons/chat'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { validateQueryScope } from '../api/browse'
 import { ApiError } from '../api/http'
 import type { Citation } from '../api/types/query'
@@ -93,6 +93,46 @@ export default function AppLayout() {
     () => pairMessages(activeSession?.messages ?? []),
     [activeSession?.messages],
   )
+
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const shouldStickToBottomRef = useRef(true)
+
+  const lastTurnScrollKey = useMemo(() => {
+    const msgs = activeSession?.messages ?? []
+    const last = msgs[msgs.length - 1]
+    if (!last) return 'empty'
+    return [
+      last.id,
+      last.status,
+      last.content.length,
+      last.liveText?.length ?? 0,
+      last.sources?.length ?? 0,
+    ].join(':')
+  }, [activeSession?.messages])
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    messagesEndRef.current?.scrollIntoView({ behavior, block: 'end' })
+  }, [])
+
+  useEffect(() => {
+    const container = scrollContainerRef.current
+    if (!container) return
+
+    const onScroll = () => {
+      const distanceFromBottom =
+        container.scrollHeight - container.scrollTop - container.clientHeight
+      shouldStickToBottomRef.current = distanceFromBottom < 120
+    }
+
+    container.addEventListener('scroll', onScroll, { passive: true })
+    return () => container.removeEventListener('scroll', onScroll)
+  }, [])
+
+  useLayoutEffect(() => {
+    if (!shouldStickToBottomRef.current) return
+    scrollToBottom(messagePairs.length <= 1 ? 'auto' : 'smooth')
+  }, [lastTurnScrollKey, activeChatId, messagePairs.length, scrollToBottom])
 
   const handleNewChat = useCallback(() => {
     const newChat = createEmptySession()
@@ -237,6 +277,8 @@ export default function AppLayout() {
         status: 'thinking',
       }
 
+      shouldStickToBottomRef.current = true
+
       setSessions((prev) =>
         prev.map((s) =>
           s.id === activeChatId
@@ -244,6 +286,8 @@ export default function AppLayout() {
             : s,
         ),
       )
+
+      requestAnimationFrame(() => scrollToBottom('auto'))
 
       streamingCitationsRef.current = []
       let coverage: CoverageInfo | undefined
@@ -377,7 +421,7 @@ export default function AppLayout() {
         }
       }
     },
-    [activeChatId, selection, sendQuery, updateAssistantMessage],
+    [activeChatId, selection, sendQuery, updateAssistantMessage, scrollToBottom],
   )
 
   return (
@@ -406,14 +450,21 @@ export default function AppLayout() {
       </div>
       <Layout className="!bg-[var(--docu-bg-app)]">
         <Content className="flex flex-col h-full min-h-0">
-          <div className="flex-1 overflow-y-auto px-6 pt-6 pb-4 min-h-0">
-            <div className="max-w-3xl mx-auto space-y-0">
+          <div
+            ref={scrollContainerRef}
+            className="docu-chat-scroll flex-1 overflow-y-auto px-6 pt-6 pb-4 min-h-0 scroll-smooth flex flex-col"
+          >
+            <div
+              className={`max-w-3xl mx-auto w-full flex-1 flex flex-col space-y-0 ${
+                messagePairs.length === 0 ? 'justify-center' : ''
+              }`}
+            >
               {messagePairs.length === 0 ? (
-                <div className="flex flex-col items-center justify-center text-center mt-24 px-4">
-                  <div className="w-12 h-12 rounded-xl bg-zinc-100 flex items-center justify-center mb-4">
-                    <CommentOutlined className="text-xl text-zinc-400" />
+                <div className="flex flex-col items-center justify-center text-center px-4 py-8">
+                  <div className="w-12 h-12 rounded-xl bg-zinc-100 flex items-center justify-center mb-4 text-zinc-400">
+                    <ChatBubbleIconLg />
                   </div>
-                  <p className={`${typeColor.secondary} ${type.body} font-medium mb-1`}>
+                  <p className={`text-[#0d0d0d] ${type.body} font-semibold mb-1`}>
                     Start a conversation
                   </p>
                   <p className={`${typeColor.muted} ${type.caption}`}>
@@ -421,22 +472,30 @@ export default function AppLayout() {
                   </p>
                 </div>
               ) : (
-                messagePairs.map((pair, idx) => (
-                  <div key={pair.user.id}>
-                    <ChatMessageItem message={pair.user} />
-                    {pair.assistant && (
-                      <ChatMessageItem
-                        message={pair.assistant}
-                        showDivider={idx < messagePairs.length - 1}
-                      />
-                    )}
-                  </div>
-                ))
+                messagePairs.map((pair, idx) => {
+                  const isLastTurn = idx === messagePairs.length - 1
+                  return (
+                    <div
+                      key={pair.user.id}
+                      className={isLastTurn ? 'docu-chat-last-turn min-h-[min(72vh,calc(100dvh-13rem))]' : undefined}
+                    >
+                      <ChatMessageItem message={pair.user} />
+                      {pair.assistant && (
+                        <ChatMessageItem
+                          message={pair.assistant}
+                          showDivider={!isLastTurn}
+                        />
+                      )}
+                    </div>
+                  )
+                })
               )}
+              <div ref={messagesEndRef} className="h-px shrink-0" aria-hidden />
             </div>
           </div>
           <ChatInput
             selectedCount={selection.selectedCount}
+            selectedFiles={selection.selectedFilenames}
             onClearSelection={selection.clearSelection}
             onSend={handleSend}
             onStop={handleStop}

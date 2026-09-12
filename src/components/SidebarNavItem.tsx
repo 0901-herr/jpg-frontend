@@ -29,7 +29,7 @@ export default function SidebarNavItem({
       type={onClick ? 'button' : undefined}
       onClick={onClick}
       title={title}
-      className={`w-full flex items-center gap-3 px-3 py-2 text-left ${sidebarNav.row} ${
+      className={`w-full flex items-center gap-2.5 px-2 py-1.5 text-left ${sidebarNav.row} ${
         isPrimary
           ? 'bg-[#0084ff] text-white hover:bg-[#0077e6] font-medium'
           : active

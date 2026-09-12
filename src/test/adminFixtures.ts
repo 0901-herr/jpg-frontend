@@ -3,7 +3,7 @@ import type {
   AdminDocumentSummary,
   IngestionControlState,
   IngestionOverview,
-  ReingestMissingResponse,
+  ReingestMissingClassificationResponse,
   RetryResponse,
 } from '../api/types/admin'
 
@@ -29,6 +29,16 @@ export const mockOverviewRunning: IngestionOverview = {
   last_history_at: new Date().toISOString(),
   audit_sync_enabled: true,
   last_reconciliation_at: '2026-09-06T02:00:00Z',
+  sync: {
+    audit_sync_enabled: true,
+    audit_sync_env_default: false,
+    audit_sync_runtime_override: true,
+    audit_poll_interval_seconds: 60,
+    reconciliation_interval_hours: 168,
+    reconciliation_env_hours: 168,
+    reconciliation_runtime_override: null,
+    background_loop_active: true,
+  },
   rag_api_base_url: 'http://rag.example:8080',
   health: {
     adapter: 'ok',
@@ -58,6 +68,32 @@ export const mockOverviewRunning: IngestionOverview = {
     total_failed: 420,
     documents_per_second: 2.5,
     estimated_seconds_remaining: 12800,
+  },
+}
+
+export const mockOverviewIdle: IngestionOverview = {
+  ...mockOverviewRunning,
+  counts: {
+    discovered: 0,
+    staged: 0,
+    preparing: 0,
+    indexing: 0,
+    ready: 0,
+    failed: 0,
+    deleted: 0,
+  },
+  bulk_progress: {
+    job_state: 'idle',
+    traversal_status: 'idle',
+    total_known: null,
+    total_discovered: 0,
+    total_preparing: 0,
+    total_staged_for_rag: 0,
+    total_submitted: 0,
+    total_fully_indexed: 0,
+    total_failed: 0,
+    documents_per_second: null,
+    estimated_seconds_remaining: null,
   },
 }
 
@@ -129,7 +165,7 @@ export const mockControlPaused: IngestionControlState = {
 
 export const mockRetryResponse: RetryResponse = { retried: 1 }
 
-export const mockReingestMissingResponse: ReingestMissingResponse = {
+export const mockReingestMissingResponse: ReingestMissingClassificationResponse = {
   queued: 2,
   source_document_ids: ['101', '102'],
 }

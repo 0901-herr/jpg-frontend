@@ -1,13 +1,17 @@
-import { adminGet, adminPost } from './adminHttp'
+import { adminGet, adminPatch, adminPost } from './adminHttp'
 import type {
+  AdminBulkStartResponse,
   AdminChatSessionResponse,
   AdminDocumentDetail,
   AdminDocumentListResponse,
   AdminDocumentQuery,
   AdminResumeAllResponse,
+  IncrementalSyncResult,
+  IngestionActivityResponse,
   IngestionControlState,
   IngestionErrorsResponse,
   IngestionOverview,
+  ReconciliationResult,
   ReingestMissingClassificationResponse,
   RetryResponse,
 } from './types/admin'
@@ -27,6 +31,10 @@ function buildQuery(params: AdminDocumentQuery): string {
 
 export function fetchIngestionOverview(signal?: AbortSignal) {
   return adminGet<IngestionOverview>('/admin/ingestion/overview', signal)
+}
+
+export function fetchIngestionActivity(signal?: AbortSignal) {
+  return adminGet<IngestionActivityResponse>('/admin/ingestion/activity', signal)
 }
 
 export function pauseIngestion(signal?: AbortSignal) {
@@ -66,7 +74,29 @@ export function retryFailedDocuments(signal?: AbortSignal) {
 }
 
 export function resumeAllIngestion(signal?: AbortSignal) {
-  return adminPost<AdminResumeAllResponse>('/admin/ingestion/resume-all', signal)
+  return adminPost<AdminResumeAllResponse>('/admin/ingestion/start', signal)
+}
+
+export function startBulkCrawl(signal?: AbortSignal) {
+  return adminPost<AdminBulkStartResponse>('/admin/ingestion/bulk/start', signal)
+}
+
+export function updateIngestionSyncSettings(
+  settings: {
+    audit_sync_enabled?: boolean
+    reconciliation_interval_hours?: number
+  },
+  signal?: AbortSignal,
+) {
+  return adminPatch<IngestionOverview>('/admin/ingestion/sync-settings', settings, signal)
+}
+
+export function triggerAuditPoll(signal?: AbortSignal) {
+  return adminPost<IncrementalSyncResult>('/admin/ingestion/sync/audit-poll', signal)
+}
+
+export function triggerReconciliation(signal?: AbortSignal) {
+  return adminPost<ReconciliationResult>('/admin/ingestion/sync/reconcile', signal)
 }
 
 export function mintAdminChatSession(signal?: AbortSignal) {

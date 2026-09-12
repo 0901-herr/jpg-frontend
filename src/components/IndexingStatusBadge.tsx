@@ -1,11 +1,11 @@
-import {
-  CheckCircleOutlined,
-  ClockCircleOutlined,
-  CloseCircleOutlined,
-  MinusCircleOutlined,
-} from '@ant-design/icons'
 import type { ReactNode } from 'react'
 import type { IndexingStatus, BrowseDocumentItem } from '../api/types/browse'
+import {
+  StatusFailedIcon,
+  StatusIndexingIcon,
+  StatusNotIndexedIcon,
+  StatusReadyIcon,
+} from '../icons/chat'
 import { type } from '../styles/typography'
 import { radius } from '../styles/theme'
 
@@ -16,22 +16,22 @@ const STATUS_CONFIG: Record<
   READY: {
     label: 'Ready',
     className: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    icon: <CheckCircleOutlined />,
+    icon: <StatusReadyIcon />,
   },
   INDEXING: {
     label: 'Indexing',
     className: 'bg-amber-50 text-amber-700 border-amber-200',
-    icon: <ClockCircleOutlined />,
+    icon: <StatusIndexingIcon />,
   },
   FAILED: {
     label: 'Failed',
     className: 'bg-red-50 text-red-700 border-red-200',
-    icon: <CloseCircleOutlined />,
+    icon: <StatusFailedIcon />,
   },
   NOT_INDEXED: {
     label: 'Not indexed',
     className: 'bg-zinc-100 text-zinc-500 border-zinc-200',
-    icon: <MinusCircleOutlined />,
+    icon: <StatusNotIndexedIcon />,
   },
 }
 

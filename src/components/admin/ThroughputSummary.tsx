@@ -1,5 +1,5 @@
 import { Col, Row, Statistic, Typography } from 'antd'
-import type { BulkProgressSnapshot } from '../../api/types/admin'
+import type { BulkProgressSnapshot, IngestionOverview } from '../../api/types/admin'
 import { ADMIN_EMPTY, ADMIN_STAT_TITLE, ADMIN_STAT_VALUE } from '../../config/adminStyles'
 import { ADMIN_TEXT_MUTED } from '../../config/adminStyles'
 import AdminCard from './AdminCard'
@@ -8,6 +8,7 @@ const { Text } = Typography
 
 interface ThroughputSummaryProps {
   bulk: BulkProgressSnapshot | null
+  counts?: IngestionOverview['counts']
 }
 
 function formatEta(seconds: number | null | undefined): string {
@@ -17,11 +18,42 @@ function formatEta(seconds: number | null | undefined): string {
   return `${Math.round(seconds / 3600)}h`
 }
 
-export default function ThroughputSummary({ bulk }: ThroughputSummaryProps) {
+export default function ThroughputSummary({ bulk, counts }: ThroughputSummaryProps) {
+  const inFlight =
+    (counts?.preparing ?? 0) +
+    (counts?.staged ?? 0) +
+    (counts?.indexing ?? 0) +
+    (counts?.discovered ?? 0)
+
   if (!bulk || bulk.job_state === 'idle') {
     return (
       <AdminCard title="Throughput">
-        <Text className={ADMIN_TEXT_MUTED}>No active bulk job.</Text>
+        <Text className={ADMIN_TEXT_MUTED}>
+          {inFlight > 0
+            ? `${inFlight} document(s) still moving through the RAG pipeline.`
+            : 'No active bulk job. Start ingesting to begin.'}
+        </Text>
+      </AdminCard>
+    )
+  }
+
+  if (bulk.job_state === 'completed' && inFlight > 0 && bulk.documents_per_second == null) {
+    return (
+      <AdminCard title="Throughput">
+        <Text className={ADMIN_TEXT_MUTED}>
+          Bulk crawl finished. {inFlight} document(s) still preparing or indexing — watch Progress
+          counts above.
+        </Text>
+      </AdminCard>
+    )
+  }
+
+  if (bulk.job_state === 'failed') {
+    return (
+      <AdminCard title="Throughput">
+        <Text className={ADMIN_TEXT_MUTED}>
+          Bulk crawl failed{bulk.job_error ? `: ${bulk.job_error}` : '.'}
+        </Text>
       </AdminCard>
     )
   }

@@ -55,4 +55,4 @@ export const ADMIN_STAT_VALUE =
 
 export const ADMIN_STAT_TITLE = 'admin-stat-title'
 
-export const ADMIN_TABLE_SCROLL = { x: 960 } as const
+export const ADMIN_TABLE_SCROLL = { x: 1200 } as const

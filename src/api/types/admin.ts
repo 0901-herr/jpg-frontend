@@ -44,6 +44,36 @@ export interface BulkProgressSnapshot {
   total_failed: number
   documents_per_second: number | null
   estimated_seconds_remaining: number | null
+  job_error?: string | null
+}
+
+export interface IngestionSyncSettings {
+  audit_sync_enabled: boolean
+  audit_sync_env_default: boolean
+  audit_sync_runtime_override: boolean | null
+  audit_poll_interval_seconds: number
+  reconciliation_interval_hours: number
+  reconciliation_env_hours: number
+  reconciliation_runtime_override: number | null
+  background_loop_active: boolean
+}
+
+export interface IncrementalSyncResult {
+  events_read: number
+  docs_queued: number
+  docs_skipped: number
+  deletes_processed: number
+  checkpoint_history_id: number | null
+  checkpoint_history_at: string | null
+}
+
+export interface ReconciliationResult {
+  logicaldoc_ids: number
+  adapter_ids: number
+  missing_in_adapter: number
+  orphaned_in_adapter: number
+  queued_for_ingest: number
+  deletes_processed: number
 }
 
 export interface IngestionOverview {
@@ -68,6 +98,7 @@ export interface IngestionOverview {
   last_history_at: string | null
   audit_sync_enabled: boolean
   last_reconciliation_at: string | null
+  sync: IngestionSyncSettings
   rag_api_base_url: string
   health: AdminHealthStatus
   bulk_progress: BulkProgressSnapshot | null
@@ -137,6 +168,25 @@ export interface RetryResponse {
 export interface AdminResumeAllResponse {
   discovery_resumed: boolean
   ingestion_resumed: boolean
+  bulk_started: boolean
+  catch_up_scheduled?: boolean
+}
+
+export interface IngestionActivityItem {
+  id: string
+  at: string
+  level: 'info' | 'success' | 'warning' | 'error'
+  category: string
+  action: string
+  headline: string
+  detail?: string | null
+}
+
+export interface IngestionActivityResponse {
+  items: IngestionActivityItem[]
+}
+
+export interface AdminBulkStartResponse {
   bulk_started: boolean
 }
 
