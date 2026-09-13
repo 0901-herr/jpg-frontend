@@ -1,8 +1,11 @@
 import { Input, Tooltip } from 'antd'
 import { useState } from 'react'
 import { ChatCloseIcon, ChatSendIcon } from '../icons/chat'
+import type { QueryTier } from '../api/types/query'
+import { getSendDisabledReason } from '../utils/chatComposerGate'
 import { type, typeColor } from '../styles/typography'
 import { radius } from '../styles/theme'
+import QueryTierDropdown from './QueryTierDropdown'
 
 interface ChatInputProps {
   selectedCount: number
@@ -14,6 +17,9 @@ interface ChatInputProps {
   isResponding?: boolean
   disabled?: boolean
   disabledReason?: string
+  summarizeDisabledReason?: string | null
+  queryTier: QueryTier
+  onQueryTierChange: (tier: QueryTier) => void
 }
 
 function SelectedFilesTooltip({ files }: { files: string[] }) {
@@ -39,12 +45,20 @@ export default function ChatInput({
   isResponding = false,
   disabled = false,
   disabledReason,
+  summarizeDisabledReason = null,
+  queryTier,
+  onQueryTierChange,
 }: ChatInputProps) {
   const [value, setValue] = useState('')
 
   const canSend = !isResponding && !disabled && value.trim().length > 0 && selectedCount > 0
-  const canSummarize = !isResponding && !disabled && selectedCount === 1
-  const showSummarize = selectedCount === 1
+  const canSummarize = summarizeDisabledReason == null
+  const sendDisabledReason = getSendDisabledReason({
+    selectedCount,
+    hasMessage: value.trim().length > 0,
+    isResponding,
+    disabled,
+  })
 
   const handleSend = () => {
     const trimmed = value.trim()
@@ -61,12 +75,13 @@ export default function ChatInput({
   }
 
   return (
-    <div className="px-6 pb-5 pt-0 bg-[var(--docu-bg-app)]">
-      <div className="max-w-3xl mx-auto docu-chat-input space-y-2">
+    <div className="docu-chat-input-footer bg-[var(--docu-bg-app)]">
+      <div className="max-w-4xl mx-auto docu-chat-input">
         {disabledReason && (
-          <p className={`${type.caption} text-amber-700 px-1`}>{disabledReason}</p>
+          <p className={`${type.caption} text-amber-700 px-1 mb-2`}>{disabledReason}</p>
         )}
 
+        <div className="docu-chat-input-stack">
         <div className="docu-chat-composer flex items-center gap-2">
           <div className="docu-chat-composer-lead flex items-center shrink-0">
             {selectedCount > 0 && (
@@ -112,42 +127,62 @@ export default function ChatInput({
           />
 
           <div className="docu-chat-composer-actions flex items-center shrink-0">
-            {showSummarize && (
-              <button
-                type="button"
-                onClick={onSummarize}
-                disabled={!canSummarize}
-                className="docu-chat-composer-summarize"
-                aria-label="Summarize selected document"
-              >
-                Summarize
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={isResponding ? onStop : handleSend}
-              disabled={!isResponding && !canSend}
-              className={`w-9 h-9 ${radius.full} flex items-center justify-center transition-colors ${
-                isResponding || canSend
-                  ? 'bg-[#0084ff] hover:bg-[#0077e6]'
-                  : 'bg-[#ececec] cursor-not-allowed'
-              }`}
-              aria-label={isResponding ? 'Stop response' : 'Send message'}
+            <QueryTierDropdown
+              tier={queryTier}
+              onChange={onQueryTierChange}
+              disabled={disabled || isResponding}
+            />
+            <Tooltip
+              title={summarizeDisabledReason ?? undefined}
+              placement="top"
+              mouseEnterDelay={0.2}
             >
-              {isResponding ? (
-                <span className="block w-3 h-3 bg-white rounded-[2px]" aria-hidden />
-              ) : (
-                <ChatSendIcon className={canSend ? '!text-white' : '!text-[#8e8e8e]'} />
-              )}
-            </button>
+              <span className="inline-flex">
+                <button
+                  type="button"
+                  onClick={onSummarize}
+                  disabled={!canSummarize}
+                  className="docu-chat-composer-summarize"
+                  aria-label="Summarize selected document"
+                >
+                  Summarize
+                </button>
+              </span>
+            </Tooltip>
+            <Tooltip
+              title={sendDisabledReason ?? undefined}
+              placement="top"
+              mouseEnterDelay={0.2}
+            >
+              <span className="inline-flex">
+                <button
+                  type="button"
+                  onClick={isResponding ? onStop : handleSend}
+                  disabled={!isResponding && !canSend}
+                  className={`w-9 h-9 ${radius.full} flex items-center justify-center transition-colors ${
+                    isResponding || canSend
+                      ? 'bg-[#0084ff] hover:bg-[#0077e6]'
+                      : 'bg-[#ececec] cursor-not-allowed'
+                  }`}
+                  aria-label={isResponding ? 'Stop response' : 'Send message'}
+                >
+                  {isResponding ? (
+                    <span className="block w-3 h-3 bg-white rounded-[2px]" aria-hidden />
+                  ) : (
+                    <ChatSendIcon className={canSend ? '!text-white' : '!text-[#8e8e8e]'} />
+                  )}
+                </button>
+              </span>
+            </Tooltip>
           </div>
         </div>
 
-        <p className={`${type.caption} ${typeColor.muted} px-1`}>
+        <p className={`docu-chat-input-disclaimer ${type.caption} ${typeColor.muted}`}>
           This chat is{' '}
           <span className={typeColor.primary}>not context-aware</span>. Each question is a{' '}
           <span className={typeColor.primary}>separate question</span>, not a follow-up.
         </p>
+        </div>
       </div>
     </div>
   )

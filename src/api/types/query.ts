@@ -39,15 +39,20 @@ export interface StreamQueryCallbacks {
   onError?: (message: string) => void
 }
 
+/** Per-query accuracy tier — maps to rag-engine accuracy_tier once the adapter forwards it. */
+export type QueryTier = 'fast' | 'standard' | 'accurate'
+
 export interface QueryRequest {
   question: string
   documents: string[]
+  tier?: QueryTier
 }
 
 export interface SendMessageRequest {
   chatId: string
   message: string
   documents: string[]
+  tier?: QueryTier
   signal?: AbortSignal
   callbacks?: StreamQueryCallbacks
 }

@@ -1,4 +1,6 @@
-export type IndexingStatus = 'READY' | 'INDEXING' | 'FAILED' | 'NOT_INDEXED'
+export type IndexingStatus = 'READY' | 'PARTIAL' | 'INDEXING' | 'FAILED' | 'NOT_INDEXED'
+
+export type SummaryStatus = 'READY' | 'PENDING' | 'FAILED' | 'NOT_AVAILABLE'
 
 export interface BrowseFolderNode {
   folder_id: number
@@ -16,6 +18,8 @@ export interface BrowseDocumentItem {
   indexing_status: IndexingStatus
   rag_document_id: string | null
   classification_category?: string | null
+  summary_status?: SummaryStatus | null
+  status_reason?: string | null
   queryable: boolean
 }
 
@@ -47,4 +51,19 @@ export interface QueryScopeResponse {
 
 export interface DocumentViewUrlResponse {
   url: string
+}
+
+export interface BrowseCategoriesRequest {
+  documents: string[]
+}
+
+export interface BrowseCategoryGroup {
+  name: string
+  count: number
+}
+
+export interface BrowseCategoriesResponse {
+  categories: BrowseCategoryGroup[]
+  uncategorized_count: number
+  accessible_document_ids: string[]
 }

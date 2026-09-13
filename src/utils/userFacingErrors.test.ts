@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   QUERY_ALMOST_DONE_ERROR,
   QUERY_PARTIAL_ANSWER_ERROR,
+  QUERY_PERMISSION_DENIED_ERROR,
+  QUERY_SERVER_ERROR,
   toUserFacingQueryError,
 } from './userFacingErrors'
 
@@ -18,5 +20,23 @@ describe('toUserFacingQueryError', () => {
     expect(
       toUserFacingQueryError('stream ended', { hadPartialAnswer: true }),
     ).toBe(QUERY_PARTIAL_ANSWER_ERROR)
+  })
+
+  it('uses permission message for 401 and 403', () => {
+    expect(toUserFacingQueryError('Forbidden', { httpStatus: 401 })).toBe(
+      QUERY_PERMISSION_DENIED_ERROR,
+    )
+    expect(toUserFacingQueryError('Forbidden', { httpStatus: 403 })).toBe(
+      QUERY_PERMISSION_DENIED_ERROR,
+    )
+  })
+
+  it('uses server error message for 5xx before streaming heuristics', () => {
+    expect(
+      toUserFacingQueryError('Internal Server Error', {
+        httpStatus: 500,
+        hadPartialAnswer: true,
+      }),
+    ).toBe(QUERY_SERVER_ERROR)
   })
 })

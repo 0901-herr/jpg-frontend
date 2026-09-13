@@ -13,6 +13,7 @@ import { sectionLabel } from '../styles/theme'
 import { sidebar, typeColor } from '../styles/typography'
 import type { BrowseTreeState } from '../hooks/useBrowseTree'
 import type { DocumentSelection } from '../hooks/useDocumentSelection'
+import { useBrowseCategories } from '../hooks/useBrowseCategories'
 import {
   extractCategories,
   filterDocumentsByCategory,
@@ -43,19 +44,31 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
     handleSelectFolder,
     handleLoadTreeData,
     handleLoadMoreDocuments,
+    refreshActiveFolder,
   } = browse
 
   const folderDocuments = activeFolderContents?.documents ?? []
+
+  const { serverCategories, categoriesLoading } = useBrowseCategories(folderDocuments, {
+    enabled: viewMode === 'category',
+    activeFolderId,
+    refreshActiveFolder,
+  })
 
   const categorySourceDocuments = useMemo(
     () => resolveCategorySourceDocuments(folderDocuments),
     [folderDocuments],
   )
 
-  const categoryOptions = useMemo(
-    () => extractCategories(categorySourceDocuments),
-    [categorySourceDocuments],
-  )
+  const categoryOptions = useMemo(() => {
+    if (serverCategories) {
+      return serverCategories.categories.map((group) => ({
+        name: group.name,
+        count: group.count,
+      }))
+    }
+    return extractCategories(categorySourceDocuments)
+  }, [serverCategories, categorySourceDocuments])
 
   useEffect(() => {
     if (viewMode !== 'category') return
@@ -157,7 +170,11 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
               <ChatAppsIcon />
               Category
             </span>
-            {categoryOptions.length === 0 ? (
+            {categoriesLoading ? (
+              <div className="flex justify-center py-2">
+                <Spin size="small" />
+              </div>
+            ) : categoryOptions.length === 0 ? (
               <p className={`${sidebar.caption} ${typeColor.muted} px-1 py-2 m-0`}>
                 No classification categories in this folder yet.
               </p>
@@ -205,7 +222,10 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
             <DocumentChecklist
               documents={visibleDocuments}
               selectedIds={selection.selectedIds}
-              isLoading={viewMode === 'folder' && isActiveFolderLoading}
+              isLoading={
+                (viewMode === 'folder' && isActiveFolderLoading) ||
+                (viewMode === 'category' && categoriesLoading)
+              }
               hasMore={viewMode === 'folder' && activeFolderContents?.has_more_documents}
               isLoadingMore={loadingMoreFolderId === activeFolderId}
               onToggle={selection.toggleDocument}
