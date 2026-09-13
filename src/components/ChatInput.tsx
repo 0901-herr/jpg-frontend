@@ -1,14 +1,15 @@
 import { Input, Tooltip } from 'antd'
 import { useState } from 'react'
-import { ChatCloseIcon, ChatFileIcon, ChatSendIcon } from '../icons/chat'
-import { sidebar, type, typeColor } from '../styles/typography'
-import { radius, surface } from '../styles/theme'
+import { ChatCloseIcon, ChatSendIcon } from '../icons/chat'
+import { type, typeColor } from '../styles/typography'
+import { radius } from '../styles/theme'
 
 interface ChatInputProps {
   selectedCount: number
   selectedFiles?: string[]
   onClearSelection: () => void
   onSend: (message: string) => void
+  onSummarize: () => void
   onStop: () => void
   isResponding?: boolean
   disabled?: boolean
@@ -33,6 +34,7 @@ export default function ChatInput({
   selectedFiles = [],
   onClearSelection,
   onSend,
+  onSummarize,
   onStop,
   isResponding = false,
   disabled = false,
@@ -41,6 +43,8 @@ export default function ChatInput({
   const [value, setValue] = useState('')
 
   const canSend = !isResponding && !disabled && value.trim().length > 0 && selectedCount > 0
+  const canSummarize = !isResponding && !disabled && selectedCount === 1
+  const showSummarize = selectedCount === 1
 
   const handleSend = () => {
     const trimmed = value.trim()
@@ -59,39 +63,39 @@ export default function ChatInput({
   return (
     <div className="px-6 pb-5 pt-0 bg-[var(--docu-bg-app)]">
       <div className="max-w-3xl mx-auto docu-chat-input space-y-2">
-        {selectedCount > 0 && (
-          <div
-            className={`flex items-center justify-between gap-3 px-3 py-2 ${radius.md} ${surface.inset}`}
-          >
-            <Tooltip
-              title={<SelectedFilesTooltip files={selectedFiles} />}
-              placement="top"
-              mouseEnterDelay={0.2}
-              overlayClassName="docu-selected-files-tooltip"
-            >
-              <span
-                className={`inline-flex items-center gap-1.5 ${type.caption} ${typeColor.secondary} cursor-default`}
-              >
-                <ChatFileIcon className="text-zinc-400" />
-                {selectedCount} {selectedCount === 1 ? 'file' : 'files'} selected
-              </span>
-            </Tooltip>
-            <button
-              type="button"
-              onClick={onClearSelection}
-              className={`inline-flex items-center gap-1 ${sidebar.caption} ${typeColor.muted} hover:text-[#676767] transition-colors`}
-            >
-              <ChatCloseIcon className="text-inherit" />
-              Clear
-            </button>
-          </div>
-        )}
-
         {disabledReason && (
           <p className={`${type.caption} text-amber-700 px-1`}>{disabledReason}</p>
         )}
 
-        <div className="docu-chat-composer flex items-stretch gap-2 px-4 py-2">
+        <div className="docu-chat-composer flex items-center gap-2">
+          <div className="docu-chat-composer-lead flex items-center shrink-0">
+            {selectedCount > 0 && (
+              <div className="docu-chat-composer-files-wrap">
+                <Tooltip
+                  title={<SelectedFilesTooltip files={selectedFiles} />}
+                  placement="top"
+                  mouseEnterDelay={0.2}
+                  overlayClassName="docu-selected-files-tooltip"
+                >
+                  <span
+                    className="docu-chat-composer-files"
+                    aria-label={`${selectedCount} file${selectedCount === 1 ? '' : 's'} selected`}
+                  >
+                    {selectedCount} {selectedCount === 1 ? 'file' : 'files'}
+                  </span>
+                </Tooltip>
+                <button
+                  type="button"
+                  onClick={onClearSelection}
+                  className="docu-chat-composer-files-clear"
+                  aria-label="Clear selection"
+                >
+                  <ChatCloseIcon className="text-inherit" />
+                </button>
+              </div>
+            )}
+          </div>
+
           <Input.TextArea
             value={value}
             onChange={(e) => setValue(e.target.value)}
@@ -104,9 +108,21 @@ export default function ChatInput({
             disabled={disabled || selectedCount === 0}
             autoSize={{ minRows: 1, maxRows: 4 }}
             variant="borderless"
-            className={`flex-1 !px-0 !py-2 ${type.body} !shadow-none resize-none !leading-6`}
+            className={`flex-1 !px-0 !py-0 ${type.body} !shadow-none resize-none !leading-6`}
           />
-          <div className="flex items-center shrink-0">
+
+          <div className="docu-chat-composer-actions flex items-center shrink-0">
+            {showSummarize && (
+              <button
+                type="button"
+                onClick={onSummarize}
+                disabled={!canSummarize}
+                className="docu-chat-composer-summarize"
+                aria-label="Summarize selected document"
+              >
+                Summarize
+              </button>
+            )}
             <button
               type="button"
               onClick={isResponding ? onStop : handleSend}

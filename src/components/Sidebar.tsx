@@ -1,6 +1,7 @@
 import { Avatar, Dropdown, Layout } from 'antd'
 import { ChatAddIcon, ChatLogoutIcon, ChatMessageIcon } from '../icons/chat'
 import type { MenuProps } from 'antd'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { sectionLabel, spacing, surface } from '../styles/theme'
 import { sidebar, typeColor } from '../styles/typography'
@@ -37,16 +38,24 @@ export default function Sidebar({
   onNewChat,
 }: SidebarProps) {
   const { session, logout } = useAuth()
+  const navigate = useNavigate()
 
   const displayName = browse.username ?? session?.username ?? 'User'
   const avatarInitial = displayName.charAt(0).toUpperCase()
+
+  const handleProfileMenuClick: MenuProps['onClick'] = ({ key }) => {
+    if (key !== 'logout') return
+    void logout().then(() => {
+      navigate('/chat', { replace: true })
+    })
+  }
 
   const profileMenu: MenuProps['items'] = [
     {
       key: 'logout',
       label: 'Log out',
       icon: <ChatLogoutIcon />,
-      onClick: () => void logout(),
+      className: 'docu-menu-item-danger',
     },
   ]
 
@@ -93,7 +102,7 @@ export default function Sidebar({
 
           <div className="mt-2 pt-2 border-t border-[#ececec]">
             <Dropdown
-              menu={{ items: profileMenu }}
+              menu={{ items: profileMenu, onClick: handleProfileMenuClick }}
               trigger={['click']}
               placement="topLeft"
               overlayClassName="docu-profile-menu"

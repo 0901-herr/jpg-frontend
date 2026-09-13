@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { buildDocumentQuery } from '../components/admin/DocumentSearch'
 import { computeProgressLabel, getPipelineProgress } from '../utils/lifecycle'
 
 describe('computeProgressLabel', () => {
@@ -42,8 +43,7 @@ describe('getPipelineProgress', () => {
 })
 
 describe('buildDocumentQuery', () => {
-  it('maps search fields to API query', async () => {
-    const { buildDocumentQuery } = await import('../components/admin/DocumentSearch')
+  it('maps search fields to API query', () => {
     const q = buildDocumentQuery(
       { search: '5052', searchBy: 'docId', failedOnly: false },
       1,

@@ -62,7 +62,12 @@ export default function ChatListItem({
   const menuItems: MenuProps['items'] = [
     { key: 'rename', label: 'Rename', icon: <ChatEditIcon /> },
     { type: 'divider' },
-    { key: 'delete', label: 'Delete', danger: true, icon: <ChatDeleteIcon /> },
+    {
+      key: 'delete',
+      label: 'Delete',
+      icon: <ChatDeleteIcon />,
+      className: 'docu-menu-item-danger',
+    },
   ]
 
   return (
@@ -106,6 +111,7 @@ export default function ChatListItem({
           menu={{ items: menuItems, onClick: handleMenuClick }}
           trigger={['click']}
           placement="bottomRight"
+          overlayClassName="docu-chat-options-menu"
           open={menuOpen}
           onOpenChange={setMenuOpen}
         >

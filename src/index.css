@@ -15,6 +15,33 @@ body {
   color: var(--docu-text-primary);
 }
 
+/* Remove Ant Design / browser focus rings on text inputs app-wide */
+.ant-input,
+.ant-input-affix-wrapper,
+.ant-input-textarea,
+textarea.ant-input,
+input.ant-input {
+  outline: none !important;
+}
+
+.ant-input:focus,
+.ant-input:focus-visible,
+.ant-input-focused,
+.ant-input-borderless:focus,
+.ant-input-borderless:focus-visible,
+.ant-input-affix-wrapper:focus,
+.ant-input-affix-wrapper:focus-visible,
+.ant-input-affix-wrapper-focused,
+.ant-input-affix-wrapper:focus-within,
+textarea.ant-input:focus,
+textarea.ant-input:focus-visible,
+textarea.ant-input-focused,
+input.ant-input:focus,
+input.ant-input:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
 /* ChatGPT-inspired tokens */
 :root {
   --docu-bg-app: #fefdfc;
@@ -340,8 +367,9 @@ body {
 
 .docu-chat-composer {
   border: 1px solid var(--docu-border);
-  border-radius: var(--docu-radius-lg);
+  border-radius: 9999px;
   background: var(--docu-bg-surface);
+  padding: 0.625rem;
   transition: border-color 0.15s ease;
   box-shadow: none;
 }
@@ -351,17 +379,143 @@ body {
   box-shadow: none;
 }
 
+.docu-chat-composer-lead {
+  gap: 0;
+}
+
+.docu-chat-composer-actions {
+  gap: 0.5rem;
+}
+
+.docu-chat-composer-files-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding-right: 0.375rem;
+}
+
+.docu-chat-composer-files,
+.docu-chat-composer-summarize {
+  border: none;
+  cursor: pointer;
+  outline: none;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  white-space: nowrap;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.docu-chat-composer-files {
+  display: inline-block;
+  padding: 0.375rem 0.625rem;
+  border-radius: 9999px;
+  color: #0084ff;
+  font-weight: 500;
+  background: transparent;
+}
+
+.docu-chat-composer-files-wrap:hover .docu-chat-composer-files {
+  background: var(--docu-bg-hover);
+}
+
+.docu-chat-composer-files-clear {
+  position: absolute;
+  top: -0.3125rem;
+  right: -0.125rem;
+  width: 1.125rem;
+  height: 1.125rem;
+  border: none;
+  border-radius: 9999px;
+  background: #fff;
+  color: #676767;
+  box-shadow: 0 0 0 1px #ececec;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+  outline: none;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.15s ease,
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.docu-chat-composer-files-wrap:hover .docu-chat-composer-files-clear,
+.docu-chat-composer-files-clear:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.docu-chat-composer-files-clear:hover {
+  background: #f5f5f5;
+  color: #404040;
+}
+
+.docu-chat-composer-summarize {
+  height: 2.25rem;
+  padding: 0 0.75rem;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: #0084ff;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.docu-chat-composer-summarize:hover:not(:disabled) {
+  background: #0077e6;
+}
+
+.docu-chat-composer-summarize:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.docu-chat-composer-files-clear:focus,
+.docu-chat-composer-files-clear:focus-visible,
+.docu-chat-composer-summarize:focus,
+.docu-chat-composer-summarize:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
 .docu-chat-input textarea.ant-input {
   border: none !important;
   background: transparent !important;
   box-shadow: none !important;
   border-radius: 0 !important;
   font-size: var(--docu-body-text) !important;
+  color: var(--docu-text-primary) !important;
+  opacity: 1 !important;
+  min-height: 1.5rem !important;
+}
+
+.docu-chat-input textarea.ant-input:disabled {
+  background: transparent !important;
+  color: var(--docu-text-primary) !important;
+  opacity: 1 !important;
+  cursor: default;
+}
+
+.docu-chat-input textarea.ant-input:disabled::placeholder {
+  color: var(--docu-text-muted) !important;
+  opacity: 1 !important;
+}
+
+.docu-chat-input textarea.ant-input::placeholder {
+  color: var(--docu-text-muted);
 }
 
 .docu-chat-input textarea.ant-input:focus,
+.docu-chat-input textarea.ant-input:focus-visible,
 .docu-chat-input textarea.ant-input-focused {
   border: none !important;
+  outline: none !important;
   box-shadow: none !important;
 }
 
@@ -421,6 +575,40 @@ body {
 .docu-profile-menu .ant-dropdown-menu-item-icon {
   font-size: 14px !important;
   color: var(--docu-text-primary) !important;
+}
+
+.docu-menu-item-danger,
+.docu-menu-item-danger .ant-dropdown-menu-item-icon {
+  color: #dc2626 !important;
+}
+
+.docu-menu-item-danger:hover,
+.docu-menu-item-danger.ant-dropdown-menu-item-active {
+  background: #fee2e2 !important;
+}
+
+.docu-chat-options-menu .ant-dropdown-menu {
+  border-radius: 12px !important;
+  padding: 4px !important;
+  min-width: 200px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12) !important;
+  border: 1px solid var(--docu-border) !important;
+}
+
+.docu-chat-options-menu .ant-dropdown-menu-item {
+  border-radius: 8px !important;
+  padding: 6px 10px !important;
+  font-size: var(--docu-sidebar-text) !important;
+  color: var(--docu-text-primary) !important;
+}
+
+.docu-chat-options-menu .ant-dropdown-menu-item-icon {
+  font-size: 14px !important;
+  color: var(--docu-text-primary) !important;
+}
+
+.docu-chat-options-menu .ant-dropdown-menu-item-divider {
+  margin: 4px 0 !important;
 }
 
 .docu-doc-status-menu .ant-dropdown-menu {

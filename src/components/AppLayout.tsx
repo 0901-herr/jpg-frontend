@@ -4,6 +4,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { validateQueryScope } from '../api/browse'
 import { ApiError } from '../api/http'
 import type { Citation } from '../api/types/query'
+import { AUTH_BYPASS, DEV_USER } from '../config/auth'
+import { useAuth } from '../context/AuthContext'
 import { useSendQuery } from '../hooks/mutations/useSendQuery'
 import type { DocumentsLoadedEvent } from '../hooks/useBrowseTree'
 import { useBrowseTree } from '../hooks/useBrowseTree'
@@ -13,6 +15,8 @@ import { type, typeColor } from '../styles/typography'
 import { citationsToSources, mergeCitations } from '../utils/citations'
 import { appendStreamDelta } from '../utils/appendStreamDelta'
 import { formatProgressStage, formatRouteLabel } from '../utils/queryProgress'
+import { loadChatHistory, persistChatHistory } from '../utils/chatPersistence'
+import { buildSummaryPrompt } from '../utils/summaryPrompt'
 import { toUserFacingQueryError } from '../utils/userFacingErrors'
 import { isCitationDemoEnabled, isCitationLoadingDemoEnabled } from '../config/demo'
 import {
@@ -53,10 +57,16 @@ function createInitialSession(): ChatSession {
   return createEmptySession()
 }
 
+function chatPersistenceEnabled(): boolean {
+  return !isCitationDemoEnabled() && !isCitationLoadingDemoEnabled()
+}
+
 export default function AppLayout() {
+  const { session: authSession, isLoading: authLoading } = useAuth()
   const initialSessionRef = useRef<ChatSession>(createInitialSession())
   const [sessions, setSessions] = useState<ChatSession[]>([initialSessionRef.current])
   const [activeChatId, setActiveChatId] = useState(initialSessionRef.current.id)
+  const [chatHydrated, setChatHydrated] = useState(false)
   const [inputBlockedReason, setInputBlockedReason] = useState<string | undefined>()
   const { width: sidebarWidth, isResizing, startResize, sidebarRef } = useResizableWidth(280)
   const sendQuery = useSendQuery()
@@ -75,6 +85,32 @@ export default function AppLayout() {
   const streamingCitationsRef = useRef<Citation[]>([])
   const lastProgressStageRef = useRef<string | undefined>(undefined)
   const hadPartialAnswerRef = useRef(false)
+
+  const chatUserId = authSession?.userId ?? (AUTH_BYPASS ? DEV_USER.userId : null)
+
+  useEffect(() => {
+    if (authLoading) return
+    if (!chatPersistenceEnabled()) {
+      setChatHydrated(true)
+      return
+    }
+    if (!chatUserId) {
+      setChatHydrated(true)
+      return
+    }
+
+    const stored = loadChatHistory(chatUserId)
+    if (stored?.sessions.length) {
+      setSessions(stored.sessions)
+      setActiveChatId(stored.activeChatId)
+    }
+    setChatHydrated(true)
+  }, [authLoading, chatUserId])
+
+  useEffect(() => {
+    if (!chatHydrated || !chatUserId || !chatPersistenceEnabled()) return
+    persistChatHistory(chatUserId, sessions, activeChatId)
+  }, [chatHydrated, chatUserId, sessions, activeChatId])
 
   useEffect(() => {
     if (sessions.length === 0) {
@@ -187,7 +223,7 @@ export default function AppLayout() {
   )
 
   const handleSend = useCallback(
-    async (text: string) => {
+    async (text: string, options?: { displayText?: string }) => {
       const selectedDocs = [...selection.selectedIds]
       if (selectedDocs.length === 0) {
         message.warning('Select at least one document before asking a question.')
@@ -266,7 +302,7 @@ export default function AppLayout() {
       const userMsg: ChatMessage = {
         id: crypto.randomUUID(),
         role: 'user',
-        content: text,
+        content: options?.displayText ?? text,
       }
 
       const assistantId = crypto.randomUUID()
@@ -385,7 +421,7 @@ export default function AppLayout() {
             s.id === activeChatId
               ? {
                   ...s,
-                  title: s.messages.length <= 2 ? text.slice(0, 40) : s.title,
+                  title: s.messages.length <= 2 ? userMsg.content.slice(0, 40) : s.title,
                   messages: [...s.messages.slice(0, -1), assistantMsg],
                 }
               : s,
@@ -423,6 +459,18 @@ export default function AppLayout() {
     },
     [activeChatId, selection, sendQuery, updateAssistantMessage, scrollToBottom],
   )
+
+  const handleSummarize = useCallback(() => {
+    const count = selection.selectedCount
+    const prompt = buildSummaryPrompt(count)
+    if (!prompt) {
+      message.warning('Select at least one document before summarizing.')
+      return
+    }
+    const displayText =
+      count === 1 ? 'Summarize this document' : `Summarize ${count} documents`
+    void handleSend(prompt, { displayText })
+  }, [handleSend, selection.selectedCount])
 
   return (
     <Layout className="h-screen">
@@ -498,6 +546,7 @@ export default function AppLayout() {
             selectedFiles={selection.selectedFilenames}
             onClearSelection={selection.clearSelection}
             onSend={handleSend}
+            onSummarize={handleSummarize}
             onStop={handleStop}
             isResponding={sendQuery.isPending}
             disabled={browse.sessionExpired}

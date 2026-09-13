@@ -1,6 +1,5 @@
 import { Spin } from 'antd'
 import { Outlet } from 'react-router-dom'
-import { AUTH_BYPASS } from '../config/auth'
 import { isCitationDemoEnabled } from '../config/demo'
 import { useAuth } from '../context/AuthContext'
 import SessionRequiredPage from '../pages/SessionRequiredPage'
@@ -8,7 +7,7 @@ import SessionRequiredPage from '../pages/SessionRequiredPage'
 export function ProtectedRoute() {
   const { isAuthenticated, isLoading } = useAuth()
 
-  if (AUTH_BYPASS || isCitationDemoEnabled()) return <Outlet />
+  if (isCitationDemoEnabled()) return <Outlet />
 
   if (isLoading) {
     return (

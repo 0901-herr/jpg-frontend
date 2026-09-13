@@ -41,7 +41,12 @@ export default function App() {
             primaryShadow: 'none',
             defaultShadow: 'none',
           },
-          Input: { borderRadius: 10 },
+          Input: {
+            borderRadius: 10,
+            activeShadow: 'none',
+            hoverBorderColor: '#ececec',
+            activeBorderColor: '#ececec',
+          },
           TreeSelect: {
             borderRadius: 10,
             nodeSelectedBg: 'transparent',

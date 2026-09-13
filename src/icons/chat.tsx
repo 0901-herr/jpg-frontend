@@ -1,6 +1,9 @@
 import AddIcon from '@mui/icons-material/Add'
+import AttachFileOutlinedIcon from '@mui/icons-material/AttachFileOutlined'
+import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined'
 import AppsIcon from '@mui/icons-material/Apps'
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward'
+import CallMadeIcon from '@mui/icons-material/CallMade'
 import ChatIcon from '@mui/icons-material/Chat'
 import CheckCircleOutlinedIcon from '@mui/icons-material/CheckCircleOutlined'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
@@ -26,12 +29,15 @@ export const ChatAddIcon = appIcon(AddIcon)
 export const ChatLogoutIcon = appIcon(LogoutIcon)
 export const ChatMessageIcon = appIcon(ChatIcon, 14)
 export const ChatFileIcon = appIcon(InsertDriveFileOutlinedIcon, 14)
+export const ChatAttachIcon = appIcon(AttachFileOutlinedIcon, 18)
+export const ChatSummarizeIcon = appIcon(AutoAwesomeOutlinedIcon, 18)
 export const ChatCloseIcon = appIcon(CloseIcon, 12)
 export const ChatSendIcon = appIcon(ArrowUpwardIcon, 16)
 export const ChatExpandIcon = appIcon(ExpandMoreIcon, 12)
 export const ChatChevronIcon = appIcon(ChevronRightIcon, 12)
 export const ChatDescriptionIcon = appIcon(DescriptionOutlinedIcon, 14)
 export const ChatOpenIcon = appIcon(OpenInNewIcon, 12)
+export const ChatRedirectIcon = appIcon(CallMadeIcon, 20)
 export const ChatEditIcon = appIcon(EditOutlinedIcon)
 export const ChatDeleteIcon = appIcon(DeleteOutlinedIcon)
 export const ChatMoreIcon = appIcon(MoreHorizIcon, 14)

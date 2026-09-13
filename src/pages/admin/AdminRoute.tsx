@@ -12,7 +12,7 @@ export function AdminRoute() {
       <Result
         status="403"
         title="Admin not configured"
-        subTitle="Set VITE_ADMIN_API_KEY to match ADAPTER_QUERY_API_KEY on the adapter."
+        subTitle="The admin dashboard is not configured for this deployment."
       />
     )
   }
@@ -47,8 +47,8 @@ function AdminAuthGate() {
             message="Admin authorization failed"
             description={
               ADMIN_API_KEY
-                ? 'The admin API key was rejected. Check VITE_ADMIN_API_KEY matches ADAPTER_QUERY_API_KEY.'
-                : 'Production requires ADAPTER_QUERY_API_KEY on the adapter. Set VITE_ADMIN_API_KEY in .env.local.'
+                ? 'The admin API key was rejected. Contact your administrator.'
+                : 'Admin access is not configured. Contact your administrator.'
             }
           />
         </div>

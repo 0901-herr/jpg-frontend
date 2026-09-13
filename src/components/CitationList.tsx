@@ -1,5 +1,5 @@
 import { message } from 'antd'
-import { ChatChevronIcon, ChatDescriptionIcon, ChatExpandIcon, ChatOpenIcon } from '../icons/chat'
+import { ChatChevronIcon, ChatDescriptionIcon, ChatExpandIcon, ChatRedirectIcon } from '../icons/chat'
 import { useCallback, useId, useState } from 'react'
 import { fetchDocumentViewUrl, withPageHint } from '../api/browse'
 import { type, typeColor } from '../styles/typography'
@@ -119,8 +119,11 @@ export default function CitationList({ sources }: CitationListProps) {
                     disabled={isOpening}
                     className={`w-full text-left flex items-center gap-3 px-3 py-2.5 border border-[#ececec] ${listRow} hover:bg-[#f4f3f2] transition-colors disabled:opacity-60 group`}
                   >
-                    <ChatDescriptionIcon className="text-[#8e8e8e] shrink-0 group-hover:text-[#676767]" />
-                    <span className="min-w-0 flex-1 self-center">
+                    <ChatDescriptionIcon
+                      sx={{ fontSize: 20 }}
+                      className={`${typeColor.primary} shrink-0`}
+                    />
+                    <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-2 flex-wrap">
                         <span className={`${type.body} ${typeColor.body} leading-relaxed`}>
                           {source.filename}
@@ -139,14 +142,14 @@ export default function CitationList({ sources }: CitationListProps) {
                         </span>
                       )}
                     </span>
-                    <ChatOpenIcon
-                      className={`${typeColor.muted} shrink-0 opacity-0 group-hover:opacity-100 transition-opacity`}
+                    <ChatRedirectIcon
+                      className={`${typeColor.primary} shrink-0 opacity-0 group-hover:opacity-100 transition-opacity`}
                       aria-hidden
                     />
                   </button>
                 ) : (
                   <div className="flex items-center gap-3 px-3 py-2.5 border border-[#ececec] rounded-[10px]">
-                    <ChatDescriptionIcon className={`${typeColor.muted} shrink-0`} />
+                    <ChatDescriptionIcon sx={{ fontSize: 20 }} className={`${typeColor.primary} shrink-0`} />
                     <span className="min-w-0 flex-1">
                       <span className={`${type.body} ${typeColor.body} leading-relaxed`}>
                         {source.filename}

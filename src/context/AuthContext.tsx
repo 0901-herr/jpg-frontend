@@ -12,6 +12,7 @@ interface AuthContextValue {
   isAuthenticated: boolean
   isLoading: boolean
   sessionExpired: boolean
+  signedOut: boolean
   logout: () => Promise<void>
 }
 
@@ -34,6 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   })
   const [isLoading, setIsLoading] = useState(!AUTH_BYPASS)
   const [sessionExpired, setSessionExpired] = useState(false)
+  const [signedOut, setSignedOut] = useState(false)
 
   useEffect(() => {
     if (AUTH_BYPASS) return
@@ -42,6 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearStoredAuth()
       setSession(null)
       setSessionExpired(true)
+      setSignedOut(false)
       queryClient.clear()
     })
 
@@ -50,6 +53,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const cookieSession = await checkCookieSession()
       if (cancelled) return
       setSession(cookieSession)
+      if (cookieSession) {
+        setSessionExpired(false)
+        setSignedOut(false)
+      }
       setIsLoading(false)
     })()
 
@@ -60,29 +67,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const logout = useCallback(async () => {
-    if (AUTH_BYPASS) return
     setIsLoading(true)
     try {
-      await apiLogout()
+      if (!AUTH_BYPASS) {
+        await apiLogout()
+      }
     } finally {
       clearStoredAuth()
       setSession(null)
       setSessionExpired(false)
+      setSignedOut(true)
       queryClient.clear()
       setIsLoading(false)
     }
   }, [])
 
-  const value = useMemo(
-    () => ({
-      session: AUTH_BYPASS ? bypassSession() : session,
-      isAuthenticated: AUTH_BYPASS || session !== null,
+  const value = useMemo(() => {
+    const activeSession = AUTH_BYPASS && !signedOut ? bypassSession() : session
+    return {
+      session: activeSession,
+      isAuthenticated: activeSession !== null,
       isLoading,
       sessionExpired,
+      signedOut,
       logout,
-    }),
-    [session, isLoading, sessionExpired, logout],
-  )
+    }
+  }, [session, isLoading, sessionExpired, signedOut, logout])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
