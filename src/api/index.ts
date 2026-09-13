@@ -1,10 +1,18 @@
 export { getCurrentUser, logout, checkCookieSession } from './auth'
-export { fetchBrowseRoot, fetchFolderContents, validateQueryScope, fetchDocumentViewUrl } from './browse'
+export {
+  fetchBrowseRoot,
+  fetchBrowseCategories,
+  fetchFolderContents,
+  validateQueryScope,
+  fetchDocumentViewUrl,
+} from './browse'
 export { browseDocuments } from './documents'
 export { ApiError, getApiBaseUrl } from './http'
 export { sendMessage } from './query'
 export type { AuthSession, CurrentUser, LdHandoffResponse } from './types/auth'
 export type {
+  BrowseCategoriesResponse,
+  BrowseCategoryGroup,
   BrowseDocumentItem,
   BrowseFolderContentsResponse,
   BrowseFolderNode,

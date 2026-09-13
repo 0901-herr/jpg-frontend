@@ -1,10 +1,17 @@
 import type { BrowseDocumentItem } from '../api/types/browse'
 
-export const UNCategorized_LABEL = 'Uncategorized'
-
-export function documentCategoryLabel(doc: BrowseDocumentItem): string {
+export function isUncategorizedDocument(doc: BrowseDocumentItem): boolean {
   const raw = doc.classification_category?.trim()
-  return raw || UNCategorized_LABEL
+  return !raw || raw === 'unknown'
+}
+
+export function getDocumentCategoryName(doc: BrowseDocumentItem): string | null {
+  if (isUncategorizedDocument(doc)) return null
+  return doc.classification_category!.trim()
+}
+
+export function countUncategorizedDocuments(documents: BrowseDocumentItem[]): number {
+  return documents.filter(isUncategorizedDocument).length
 }
 
 export interface CategoryOption {
@@ -15,7 +22,8 @@ export interface CategoryOption {
 export function extractCategories(documents: BrowseDocumentItem[]): CategoryOption[] {
   const counts = new Map<string, number>()
   for (const doc of documents) {
-    const name = documentCategoryLabel(doc)
+    const name = getDocumentCategoryName(doc)
+    if (!name) continue
     counts.set(name, (counts.get(name) ?? 0) + 1)
   }
   return [...counts.entries()]
@@ -27,7 +35,7 @@ export function filterDocumentsByCategory(
   documents: BrowseDocumentItem[],
   category: string,
 ): BrowseDocumentItem[] {
-  return documents.filter((doc) => documentCategoryLabel(doc) === category)
+  return documents.filter((doc) => getDocumentCategoryName(doc) === category)
 }
 
 /** Categories are derived from the open folder, not the current selection. */

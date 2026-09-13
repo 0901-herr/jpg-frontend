@@ -3,9 +3,9 @@ import { useMemo } from 'react'
 import type { BrowseDocumentItem } from '../api/types/browse'
 import { sidebar, typeColor } from '../styles/typography'
 import CategoryTag from './CategoryTag'
-import {
+import IndexingStatusBadge, {
+  getDocumentSelectionHint,
   getSelectableDocumentIds,
-  getSelectionWarning,
   isDocumentSelectable,
 } from './IndexingStatusBadge'
 
@@ -21,8 +21,9 @@ interface DocumentChecklistProps {
   onLoadMore?: () => void
 }
 
-function showsIndexingHoverHint(status: string): boolean {
-  return status === 'NOT_INDEXED' || status === 'FAILED'
+function showsIndexingHoverHint(doc: BrowseDocumentItem): boolean {
+  if (doc.queryable) return false
+  return doc.indexing_status === 'NOT_INDEXED' || doc.indexing_status === 'FAILED'
 }
 
 export default function DocumentChecklist({
@@ -79,11 +80,9 @@ export default function DocumentChecklist({
 
       {documents.map((doc) => {
         const selectable = isDocumentSelectable(doc.indexing_status, doc.queryable)
-        const warning = getSelectionWarning(doc.indexing_status)
+        const hint = getDocumentSelectionHint(doc)
         const checked = selectedIds.has(doc.document_id)
-        const hoverHint = showsIndexingHoverHint(doc.indexing_status)
-          ? (warning ?? 'Not indexed')
-          : null
+        const hoverHint = showsIndexingHoverHint(doc) ? (hint ?? 'Not indexed') : null
 
         const row = (
           <div
@@ -107,13 +106,14 @@ export default function DocumentChecklist({
                   {doc.filename}
                 </span>
                 <CategoryTag category={doc.classification_category} />
-                {warning && checked && (
+                {hint && checked && (
                   <span className={`block ${sidebar.caption} ${typeColor.primary} mt-0.5`}>
-                    {warning}
+                    {hint}
                   </span>
                 )}
               </span>
             </label>
+            <IndexingStatusBadge status={doc.indexing_status} />
           </div>
         )
 

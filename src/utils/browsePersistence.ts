@@ -4,7 +4,7 @@ const ACTIVE_FOLDER_KEY = 'docu_active_folder'
 
 function readJsonArray(key: string): string[] {
   try {
-    const raw = sessionStorage.getItem(key)
+    const raw = localStorage.getItem(key)
     if (!raw) return []
     const parsed = JSON.parse(raw)
     return Array.isArray(parsed) ? parsed.map(String) : []
@@ -15,7 +15,7 @@ function readJsonArray(key: string): string[] {
 
 function readJsonNumber(key: string): number | null {
   try {
-    const raw = sessionStorage.getItem(key)
+    const raw = localStorage.getItem(key)
     if (!raw) return null
     const n = Number.parseInt(raw, 10)
     return Number.isFinite(n) ? n : null
@@ -29,7 +29,7 @@ export function loadPersistedSelection(): Set<string> {
 }
 
 export function persistSelection(ids: Set<string>) {
-  sessionStorage.setItem(SELECTED_DOCS_KEY, JSON.stringify([...ids]))
+  localStorage.setItem(SELECTED_DOCS_KEY, JSON.stringify([...ids]))
 }
 
 export function loadPersistedExpandedFolders(): Set<number> {
@@ -37,7 +37,7 @@ export function loadPersistedExpandedFolders(): Set<number> {
 }
 
 export function persistExpandedFolders(ids: Set<number>) {
-  sessionStorage.setItem(EXPANDED_FOLDERS_KEY, JSON.stringify([...ids].map(String)))
+  localStorage.setItem(EXPANDED_FOLDERS_KEY, JSON.stringify([...ids].map(String)))
 }
 
 export function loadPersistedActiveFolder(): number | null {
@@ -46,14 +46,14 @@ export function loadPersistedActiveFolder(): number | null {
 
 export function persistActiveFolder(folderId: number | null) {
   if (folderId == null) {
-    sessionStorage.removeItem(ACTIVE_FOLDER_KEY)
+    localStorage.removeItem(ACTIVE_FOLDER_KEY)
   } else {
-    sessionStorage.setItem(ACTIVE_FOLDER_KEY, String(folderId))
+    localStorage.setItem(ACTIVE_FOLDER_KEY, String(folderId))
   }
 }
 
 export function clearBrowsePersistence() {
-  sessionStorage.removeItem(SELECTED_DOCS_KEY)
-  sessionStorage.removeItem(EXPANDED_FOLDERS_KEY)
-  sessionStorage.removeItem(ACTIVE_FOLDER_KEY)
+  localStorage.removeItem(SELECTED_DOCS_KEY)
+  localStorage.removeItem(EXPANDED_FOLDERS_KEY)
+  localStorage.removeItem(ACTIVE_FOLDER_KEY)
 }

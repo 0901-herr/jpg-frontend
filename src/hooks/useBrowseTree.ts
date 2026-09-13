@@ -229,6 +229,11 @@ export function useBrowseTree(onDocumentsLoaded?: (event: DocumentsLoadedEvent) 
     await loadFolder(activeFolderId, nextPage)
   }, [activeFolderId, activeFolderContents, cache, loadFolder])
 
+  const refreshActiveFolder = useCallback(async () => {
+    if (activeFolderId == null) return
+    await loadFolder(activeFolderId, 0)
+  }, [activeFolderId, loadFolder])
+
   const isActiveFolderLoading = activeFolderId != null && loadingFolderIds.has(activeFolderId)
 
   return {
@@ -246,6 +251,7 @@ export function useBrowseTree(onDocumentsLoaded?: (event: DocumentsLoadedEvent) 
     handleSelectFolder,
     handleLoadTreeData,
     handleLoadMoreDocuments,
+    refreshActiveFolder,
   }
 }
 

@@ -264,6 +264,7 @@ export async function sendMessage(request: SendMessageRequest): Promise<SendMess
   const payload: QueryRequest = {
     question: request.message,
     documents: request.documents,
+    ...(request.tier ? { tier: request.tier } : {}),
   }
 
   const { content, citations, coverage, durationMs } = await streamQuery(

@@ -11,11 +11,19 @@ export const QUERY_ALMOST_DONE_ERROR =
 export const QUERY_PARTIAL_ANSWER_ERROR =
   "We got part of your answer but couldn't finish. Try again."
 
+export const QUERY_PERMISSION_DENIED_ERROR =
+  "You don't have permission to run this query on the selected documents."
+
+export const QUERY_SERVER_ERROR =
+  'Something went wrong on our side. Wait a moment and try again.'
+
 export interface QueryErrorContext {
   /** Last friendly progress label shown to the user, if any. */
   progressLabel?: string
   /** True when answer tokens had started streaming. */
   hadPartialAnswer?: boolean
+  /** HTTP status when the failure came from an API response. */
+  httpStatus?: number
 }
 
 const LATE_STAGE_HINTS = [
@@ -41,7 +49,15 @@ export function toUserFacingQueryError(
   raw: string | undefined,
   context: QueryErrorContext = {},
 ): string {
-  const { progressLabel, hadPartialAnswer } = context
+  const { progressLabel, hadPartialAnswer, httpStatus } = context
+
+  if (httpStatus === 401 || httpStatus === 403) {
+    return QUERY_PERMISSION_DENIED_ERROR
+  }
+
+  if (httpStatus != null && httpStatus >= 500) {
+    return QUERY_SERVER_ERROR
+  }
 
   if (hadPartialAnswer) {
     return QUERY_PARTIAL_ANSWER_ERROR

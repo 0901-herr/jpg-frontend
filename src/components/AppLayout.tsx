@@ -16,8 +16,11 @@ import { citationsToSources, mergeCitations } from '../utils/citations'
 import { appendStreamDelta } from '../utils/appendStreamDelta'
 import { formatProgressStage, formatRouteLabel } from '../utils/queryProgress'
 import { loadChatHistory, persistChatHistory } from '../utils/chatPersistence'
+import { getSummarizeDisabledReason, isSummaryReady } from '../utils/summaryGate'
 import { buildSummaryPrompt } from '../utils/summaryPrompt'
+import { DEFAULT_QUERY_TIER } from '../utils/queryTier'
 import { toUserFacingQueryError } from '../utils/userFacingErrors'
+import type { QueryTier } from '../api/types/query'
 import { isCitationDemoEnabled, isCitationLoadingDemoEnabled } from '../config/demo'
 import {
   createCitationDemoSession,
@@ -68,6 +71,7 @@ export default function AppLayout() {
   const [activeChatId, setActiveChatId] = useState(initialSessionRef.current.id)
   const [chatHydrated, setChatHydrated] = useState(false)
   const [inputBlockedReason, setInputBlockedReason] = useState<string | undefined>()
+  const [queryTier, setQueryTier] = useState<QueryTier>(DEFAULT_QUERY_TIER)
   const { width: sidebarWidth, isResizing, startResize, sidebarRef } = useResizableWidth(280)
   const sendQuery = useSendQuery()
   const selection = useDocumentSelection()
@@ -75,9 +79,15 @@ export default function AppLayout() {
   const handleDocumentsLoaded = useCallback(
     ({ documents, page }: DocumentsLoadedEvent) => {
       selection.registerDocuments(documents)
-      selection.selectAllSelectable(documents, { replace: page === 0 })
+      if (page === 0) {
+        if (selection.selectedCount === 0) {
+          selection.selectAllSelectable(documents, { replace: true })
+        }
+        return
+      }
+      selection.selectAllSelectable(documents, { replace: false })
     },
-    [selection.registerDocuments, selection.selectAllSelectable],
+    [selection.registerDocuments, selection.selectAllSelectable, selection.selectedCount],
   )
 
   const browse = useBrowseTree(handleDocumentsLoaded)
@@ -241,10 +251,11 @@ export default function AppLayout() {
 
       const elapsedSeconds = () => Math.max(1, Math.round((Date.now() - startedAt) / 1000))
 
-      const friendlyQueryError = (raw: string | undefined) =>
+      const friendlyQueryError = (raw: string | undefined, httpStatus?: number) =>
         toUserFacingQueryError(raw, {
           progressLabel: formatProgressStage(lastProgressStageRef.current),
           hadPartialAnswer: hadPartialAnswerRef.current,
+          httpStatus,
         })
 
       let scopeDocuments = selectedDocs
@@ -294,7 +305,11 @@ export default function AppLayout() {
         }
       } catch (err) {
         if (controller.signal.aborted) return
-        const detail = err instanceof ApiError ? err.detail ?? err.message : 'Validation failed'
+        const httpStatus = err instanceof ApiError ? err.status : undefined
+        const detail = friendlyQueryError(
+          err instanceof ApiError ? err.detail ?? err.message : 'Validation failed',
+          httpStatus,
+        )
         message.error(detail)
         return
       }
@@ -333,6 +348,7 @@ export default function AppLayout() {
           chatId: activeChatId,
           message: text,
           documents: scopeDocuments,
+          tier: queryTier,
           signal: controller.signal,
           callbacks: {
             onCoverage: (c) => {
@@ -439,8 +455,10 @@ export default function AppLayout() {
           return
         }
 
+        const httpStatus = err instanceof ApiError ? err.status : undefined
         const detail = friendlyQueryError(
           err instanceof Error ? err.message : undefined,
+          httpStatus,
         )
         message.error(detail, 8)
         updateAssistantMessage(activeChatId, (msg) => ({
@@ -457,20 +475,41 @@ export default function AppLayout() {
         }
       }
     },
-    [activeChatId, selection, sendQuery, updateAssistantMessage, scrollToBottom],
+    [activeChatId, queryTier, selection, sendQuery, updateAssistantMessage, scrollToBottom],
+  )
+
+  const selectedDocument = useMemo(() => {
+    if (selection.selectedCount !== 1) return undefined
+    const [documentId] = selection.selectedIds
+    return documentId ? selection.documentMeta.get(documentId) : undefined
+  }, [selection.documentMeta, selection.selectedCount, selection.selectedIds])
+
+  const summarizeDisabledReason = useMemo(
+    () =>
+      getSummarizeDisabledReason({
+        selectedCount: selection.selectedCount,
+        document: selectedDocument,
+        isResponding: sendQuery.isPending,
+        disabled: browse.sessionExpired,
+      }),
+    [
+      browse.sessionExpired,
+      selectedDocument,
+      selection.selectedCount,
+      sendQuery.isPending,
+    ],
   )
 
   const handleSummarize = useCallback(() => {
-    const count = selection.selectedCount
-    const prompt = buildSummaryPrompt(count)
-    if (!prompt) {
-      message.warning('Select at least one document before summarizing.')
+    if (summarizeDisabledReason) {
+      message.warning(summarizeDisabledReason)
       return
     }
-    const displayText =
-      count === 1 ? 'Summarize this document' : `Summarize ${count} documents`
-    void handleSend(prompt, { displayText })
-  }, [handleSend, selection.selectedCount])
+    if (!isSummaryReady(selectedDocument)) return
+    const prompt = buildSummaryPrompt(1)
+    if (!prompt) return
+    void handleSend(prompt, { displayText: 'Summarize this document' })
+  }, [handleSend, selectedDocument, summarizeDisabledReason])
 
   return (
     <Layout className="h-screen">
@@ -503,7 +542,7 @@ export default function AppLayout() {
             className="docu-chat-scroll flex-1 overflow-y-auto px-6 pt-6 pb-4 min-h-0 scroll-smooth flex flex-col"
           >
             <div
-              className={`max-w-3xl mx-auto w-full flex-1 flex flex-col space-y-0 ${
+              className={`max-w-4xl mx-auto w-full flex-1 flex flex-col space-y-0 ${
                 messagePairs.length === 0 ? 'justify-center' : ''
               }`}
             >
@@ -551,6 +590,9 @@ export default function AppLayout() {
             isResponding={sendQuery.isPending}
             disabled={browse.sessionExpired}
             disabledReason={inputBlockedReason}
+            summarizeDisabledReason={summarizeDisabledReason}
+            queryTier={queryTier}
+            onQueryTierChange={setQueryTier}
           />
         </Content>
       </Layout>

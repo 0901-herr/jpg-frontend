@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { citationRefForSegment, joinAnswerSegment, sendMessage } from './query'
+import { apiPostStream } from './http'
 import type { SseEvent } from './http'
 import type { Citation } from './types/query'
 
@@ -110,5 +111,53 @@ describe('sendMessage delta handling', () => {
     })
 
     expect(onDelta).not.toHaveBeenCalled()
+  })
+
+  it('includes tier on the query payload when provided', async () => {
+    scriptedEvents = [
+      { event: 'answer', data: { text: 'Done.' } },
+      { event: 'done', data: {} },
+    ]
+
+    await sendMessage({
+      chatId: 'c1',
+      message: 'q',
+      documents: ['doc1'],
+      tier: 'accurate',
+    })
+
+    expect(apiPostStream).toHaveBeenCalledWith(
+      '/query',
+      {
+        question: 'q',
+        documents: ['doc1'],
+        tier: 'accurate',
+      },
+      true,
+      undefined,
+    )
+  })
+
+  it('omits tier from the query payload when not provided', async () => {
+    scriptedEvents = [
+      { event: 'answer', data: { text: 'Done.' } },
+      { event: 'done', data: {} },
+    ]
+
+    await sendMessage({
+      chatId: 'c1',
+      message: 'q',
+      documents: ['doc1'],
+    })
+
+    expect(apiPostStream).toHaveBeenCalledWith(
+      '/query',
+      {
+        question: 'q',
+        documents: ['doc1'],
+      },
+      true,
+      undefined,
+    )
   })
 })

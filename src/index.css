@@ -365,6 +365,22 @@ input.ant-input:focus-visible {
   line-height: 1.4;
 }
 
+.docu-chat-input-footer {
+  padding: 0 1.5rem 1rem;
+  margin-top: -0.75rem;
+}
+
+.docu-chat-input-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.docu-chat-input-disclaimer {
+  margin: 0;
+  padding: 0 0.25rem;
+}
+
 .docu-chat-composer {
   border: 1px solid var(--docu-border);
   border-radius: 9999px;
@@ -472,7 +488,9 @@ input.ant-input:focus-visible {
 }
 
 .docu-chat-composer-summarize:disabled {
-  opacity: 0.45;
+  background: #ececec;
+  color: #8e8e8e;
+  opacity: 1;
   cursor: not-allowed;
 }
 
@@ -722,6 +740,62 @@ input.ant-input:focus-visible {
   .docu-browse-view-toggle button {
     transition: none;
   }
+}
+
+.docu-query-tier-dropdown {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.125rem;
+  border: none;
+  background: transparent;
+  padding: 0 0.25rem;
+  color: #8e8e8e;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.25rem;
+  cursor: pointer;
+  white-space: nowrap;
+  outline: none;
+}
+
+.docu-query-tier-dropdown:hover:not(:disabled) {
+  color: #404040;
+}
+
+.docu-query-tier-dropdown:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.docu-query-tier-dropdown:focus,
+.docu-query-tier-dropdown:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.docu-query-tier-dropdown-chevron {
+  color: inherit !important;
+  font-size: 12px !important;
+}
+
+.docu-query-tier-menu .ant-dropdown-menu {
+  border-radius: 12px !important;
+  padding: 4px !important;
+  min-width: 120px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12) !important;
+  border: 1px solid var(--docu-border) !important;
+}
+
+.docu-query-tier-menu .ant-dropdown-menu-item {
+  border-radius: 8px !important;
+  padding: 6px 12px !important;
+  font-size: var(--docu-sidebar-text) !important;
+  color: var(--docu-text-primary) !important;
+}
+
+.docu-query-tier-menu .ant-dropdown-menu-item-selected {
+  background: var(--docu-bg-hover) !important;
+  font-weight: 500;
 }
 
 /* Admin panel — unified typography */
