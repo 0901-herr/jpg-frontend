@@ -15,7 +15,7 @@ import IngestionSectionNav, {
   getIngestionSection,
 } from '../../components/admin/IngestionSectionNav'
 import IngestionStatusHeader from '../../components/admin/IngestionStatusHeader'
-import ProgressSummary from '../../components/admin/ProgressSummary'
+import PipelineProgressCard from '../../components/admin/PipelineProgressCard'
 import ReclassifyMissingButton from '../../components/admin/ReclassifyMissingButton'
 import ReconciliationStatus from '../../components/admin/ReconciliationStatus'
 import SystemHealth from '../../components/admin/SystemHealth'
@@ -28,7 +28,6 @@ import {
   ADMIN_STACK_SPACE,
 } from '../../config/adminStyles'
 import { ADMIN_OVERVIEW_POLL_ACTIVE_MS, ADMIN_OVERVIEW_POLL_MS } from '../../config/admin'
-import PipelineStatusBanner from '../../components/admin/PipelineStatusBanner'
 import { overviewShouldPollFast } from '../../utils/pipelineStatus'
 import { adminQueryKeys } from '../../lib/adminQueryKeys'
 import { ApiError } from '../../api/http'
@@ -54,7 +53,7 @@ export default function IngestionOverviewPage() {
     queryFn: ({ signal }) => fetchAdminDocuments(docQuery, signal),
     placeholderData: (prev) => prev,
     enabled: section === 'documents' || section === 'overview',
-    refetchInterval: (query) => {
+    refetchInterval: () => {
       if (section !== 'documents') return false
       return overviewShouldPollFast(overviewQuery.data) ? ADMIN_OVERVIEW_POLL_ACTIVE_MS : ADMIN_OVERVIEW_POLL_MS
     },
@@ -124,16 +123,14 @@ export default function IngestionOverviewPage() {
 
           {section === 'overview' && (
             <div className={ADMIN_STACK_SPACE}>
-              <PipelineStatusBanner
+              <PipelineProgressCard
                 overview={overview}
                 dataUpdatedAt={overviewQuery.dataUpdatedAt}
-                isFetching={overviewQuery.isFetching}
+                isRefreshing={overviewQuery.isFetching}
                 onRefresh={() => {
                   void overviewQuery.refetch()
                 }}
               />
-              <ProgressSummary overview={overview} />
-              <ThroughputSummary bulk={overview.bulk_progress} counts={overview.counts} />
               <IngestionControls overview={overview} />
             </div>
           )}
@@ -158,13 +155,13 @@ export default function IngestionOverviewPage() {
 
           {section === 'documents' && (
             <div className={ADMIN_STACK_SPACE}>
-              <PipelineStatusBanner
+              <PipelineProgressCard
                 overview={overview}
-                dataUpdatedAt={documentsQuery.dataUpdatedAt}
-                isFetching={documentsQuery.isFetching}
+                dataUpdatedAt={overviewQuery.dataUpdatedAt}
+                isRefreshing={overviewQuery.isFetching || documentsQuery.isFetching}
                 onRefresh={() => {
-                  void documentsQuery.refetch()
                   void overviewQuery.refetch()
+                  void documentsQuery.refetch()
                 }}
               />
               <div className="flex items-start justify-between gap-3 flex-wrap">

@@ -158,7 +158,10 @@ export function computeProgressLabel(
   }
   const denominator = Math.max(discoveredSoFar, ready)
   if (denominator <= 0) {
-    return { percent: null, label: 'No documents discovered yet' }
+    return { percent: null, label: '' }
+  }
+  if (ready <= 0) {
+    return { percent: 0, label: '' }
   }
   const percent = Math.min(100, Math.round((ready / denominator) * 100))
   return {

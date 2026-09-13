@@ -1,23 +1,21 @@
-import { AdminPauseIcon, AdminPlayIcon } from '../../icons/admin'
+import { AdminOpenIcon, AdminPauseIcon, AdminPlayIcon } from '../../icons/admin'
 import { App, Button, Popconfirm, Select, Switch, Tag, Typography } from 'antd'
 import type { ReactNode } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import {
   classifyMissingDocuments,
   mintAdminChatSession,
   pauseDiscovery,
   pauseIngestion,
-  resumeAllIngestion,
   resumeDiscovery,
   resumeIngestion,
   retryFailedDocuments,
-  startBulkCrawl,
   triggerAuditPoll,
   triggerReconciliation,
   updateIngestionSyncSettings,
 } from '../../api/admin'
 import type { IngestionOverview } from '../../api/types/admin'
-import { adminQueryKeys } from '../../lib/adminQueryKeys'
+import { useInvalidateAdminQueries } from '../../hooks/useInvalidateAdminQueries'
 import {
   ADMIN_STACK_SPACE,
   ADMIN_TEXT_DESC,
@@ -25,7 +23,7 @@ import {
   ADMIN_TEXT_MUTED,
 } from '../../config/adminStyles'
 import { formatRelativeTime } from '../../utils/lifecycle'
-import { derivePipelineStatus } from '../../utils/pipelineStatus'
+import { formatStateLabel } from '../../utils/adminState'
 import AdminCard from './AdminCard'
 
 const { Text } = Typography
@@ -56,7 +54,7 @@ function stateTag(state: string) {
   const tone = stateTone(state)
   const color =
     tone === 'success' ? 'success' : tone === 'warning' ? 'warning' : tone === 'error' ? 'error' : 'default'
-  return <Tag color={color === 'default' ? undefined : color}>{state}</Tag>
+  return <Tag color={color === 'default' ? undefined : color}>{formatStateLabel(state)}</Tag>
 }
 
 function ControlGroup({ children }: { children: ReactNode }) {
@@ -115,14 +113,8 @@ function reconcileLabel(hours: number): string {
 
 export default function IngestionControls({ overview }: IngestionControlsProps) {
   const { message } = App.useApp()
-  const queryClient = useQueryClient()
+  const invalidate = useInvalidateAdminQueries()
   const { sync } = overview
-
-  const invalidate = () => {
-    void queryClient.invalidateQueries({ queryKey: adminQueryKeys.overview })
-    void queryClient.invalidateQueries({ queryKey: adminQueryKeys.activityEvents })
-    void queryClient.invalidateQueries({ queryKey: ['admin'] })
-  }
 
   const pauseIngestionMutation = useMutation({
     mutationFn: () => pauseIngestion(),
@@ -158,45 +150,6 @@ export default function IngestionControls({ overview }: IngestionControlsProps) 
       invalidate()
     },
     onError: (err: Error) => message.error(err.message),
-  })
-
-  const resumeAllMutation = useMutation({
-    mutationFn: () => resumeAllIngestion(),
-    onSuccess: (result) => {
-      if (result.bulk_started) {
-        message.success('Bulk crawl started — documents will appear as they are discovered.')
-      } else if (result.catch_up_scheduled) {
-        message.warning(
-          'Bulk did not start; incremental catch-up is running. See Activity tab for progress and errors.',
-          6,
-        )
-      } else if (result.discovery_resumed || result.ingestion_resumed) {
-        message.success('Pipeline resumed.')
-      } else {
-        message.info('Pipeline already running.')
-      }
-      invalidate()
-    },
-    onError: (err: Error) => {
-      message.error(`Start ingesting failed: ${err.message}`, 8)
-      invalidate()
-    },
-  })
-
-  const bulkStartMutation = useMutation({
-    mutationFn: () => startBulkCrawl(),
-    onSuccess: (result) => {
-      if (result.bulk_started) {
-        message.success('Bulk crawl started — watch the Documents tab for new rows.')
-      } else {
-        message.warning('Bulk crawl did not start — it may already be running. Check Activity tab.', 6)
-      }
-      invalidate()
-    },
-    onError: (err: Error) => {
-      message.error(`Bulk crawl failed: ${err.message}`, 8)
-      invalidate()
-    },
   })
 
   const syncSettingsMutation = useMutation({
@@ -265,52 +218,14 @@ export default function IngestionControls({ overview }: IngestionControlsProps) 
 
   const ingestionPaused = overview.ingestion_state === 'PAUSED'
   const discoveryPaused = overview.discovery_state === 'PAUSED'
-  const bulkJobState = overview.bulk_progress?.job_state ?? 'idle'
-  const bulkRunning = bulkJobState === 'running'
-  const bulkCanStart = !bulkRunning
-  const bulkFailed = bulkJobState === 'failed'
-  const bulkError = overview.bulk_progress?.job_error
-  const bulkStatusLabel =
-    bulkJobState === 'running'
-      ? 'RUNNING'
-      : bulkJobState === 'failed'
-        ? 'ERROR'
-        : bulkJobState === 'completed'
-          ? 'RUNNING'
-          : bulkJobState
-  const bulkFailureNote = bulkFailed
-    ? `Last bulk crawl failed${bulkError ? `: ${bulkError}` : '.'} Play to retry.`
-    : null
-  const pipelineStatus = derivePipelineStatus(overview)
-  const startIngestingActive = pipelineStatus.isActive
 
   return (
     <div className={ADMIN_STACK_SPACE}>
-      <AdminCard title="Pipeline">
+      <AdminCard title="Pipeline gates">
         <ControlGroup>
           <ControlRow
-            title="Start ingesting"
-            description={bulkFailureNote ?? pipelineStatus.detail}
-            status={
-              startIngestingActive ? (
-                <Tag color="processing">{pipelineStatus.label}</Tag>
-              ) : bulkFailed ? (
-                stateTag('ERROR')
-              ) : undefined
-            }
-            action={
-              <IconControlButton
-                label={startIngestingActive ? 'Pipeline running' : 'Start ingesting'}
-                icon={<AdminPlayIcon />}
-                loading={resumeAllMutation.isPending || bulkRunning}
-                disabled={startIngestingActive}
-                onClick={() => resumeAllMutation.mutate()}
-              />
-            }
-          />
-          <ControlRow
             title="Discovery"
-            description="Play: scan folders and register new documents. Pause: stop traversal and registration."
+            description="Scans LogicalDOC folders and registers new documents for ingestion."
             status={stateTag(overview.discovery_state)}
             action={
               discoveryPaused ? (
@@ -337,7 +252,7 @@ export default function IngestionControls({ overview }: IngestionControlsProps) 
           />
           <ControlRow
             title="Ingestion"
-            description="Play: submit documents to RAG. Pause: block new submissions; in-flight jobs continue."
+            description="Submits discovered documents to RAG for indexing."
             status={stateTag(overview.ingestion_state)}
             action={
               ingestionPaused ? (
@@ -381,32 +296,11 @@ export default function IngestionControls({ overview }: IngestionControlsProps) 
         )}
       </AdminCard>
 
-      <AdminCard title="Initial corpus">
-        <ControlGroup>
-          <ControlRow
-            title="Bulk crawl"
-            description={
-              bulkFailureNote ?? 'Play: full folder traversal for initial load or corpus rebuild.'
-            }
-            status={stateTag(bulkStatusLabel)}
-            action={
-              <IconControlButton
-                label="Start bulk crawl"
-                icon={<AdminPlayIcon />}
-                loading={bulkStartMutation.isPending}
-                disabled={!bulkCanStart}
-                onClick={() => bulkStartMutation.mutate()}
-              />
-            }
-          />
-        </ControlGroup>
-      </AdminCard>
-
       <AdminCard title="Change detection">
         <ControlGroup>
           <ControlRow
             title="Audit changelog"
-            description={`Play: poll Audit history now. Auto polls every ${Math.round(sync.audit_poll_interval_seconds)}s when enabled. Last poll ${overview.last_audit_poll_at ? formatRelativeTime(overview.last_audit_poll_at) : 'never'}.`}
+            description={`Polls LogicalDOC Audit history for file changes. Auto polls every ${Math.round(sync.audit_poll_interval_seconds)}s when enabled. Last poll ${overview.last_audit_poll_at ? formatRelativeTime(overview.last_audit_poll_at) : 'never'}.`}
             status={
               <Tag color={sync.audit_sync_enabled ? 'success' : 'default'}>
                 {sync.audit_sync_enabled ? 'Auto on' : 'Auto off'}
@@ -433,7 +327,7 @@ export default function IngestionControls({ overview }: IngestionControlsProps) 
           />
           <ControlRow
             title="Reconciliation"
-            description={`Play: compare LogicalDOC doc IDs vs adapter and queue missing ones. Last run ${overview.last_reconciliation_at ? formatRelativeTime(overview.last_reconciliation_at) : 'never'}. Env default: ${reconcileLabel(sync.reconciliation_env_hours)}.`}
+            description={`Compares LogicalDOC document IDs against the adapter and queues missing ones. Last run ${overview.last_reconciliation_at ? formatRelativeTime(overview.last_reconciliation_at) : 'never'}. Env default: ${reconcileLabel(sync.reconciliation_env_hours)}.`}
             status={
               <Tag color={sync.reconciliation_interval_hours > 0 ? 'processing' : 'default'}>
                 {sync.reconciliation_interval_hours > 0
@@ -469,7 +363,7 @@ export default function IngestionControls({ overview }: IngestionControlsProps) 
         <ControlGroup>
           <ControlRow
             title="Retry failed"
-            description="Play: requeue up to 500 failed documents for another ingest attempt."
+            description="Requeues up to 500 failed documents for another ingest attempt."
             status={<Tag>{overview.counts.failed.toLocaleString()} failed</Tag>}
             action={
               <IconControlButton
@@ -483,7 +377,7 @@ export default function IngestionControls({ overview }: IngestionControlsProps) 
           />
           <ControlRow
             title="Classify missing"
-            description="Play: run the RAG classifier on READY documents without a category label."
+            description="Runs the RAG classifier on READY documents without a category label."
             action={
               <IconControlButton
                 label="Classify missing documents"
@@ -500,11 +394,11 @@ export default function IngestionControls({ overview }: IngestionControlsProps) 
         <ControlGroup>
           <ControlRow
             title="AI chat session"
-            description="Play: open operator chat using adapter LogicalDOC credentials."
+            description="Opens operator chat using adapter LogicalDOC credentials."
             action={
               <IconControlButton
                 label="Open AI chat session"
-                icon={<AdminPlayIcon />}
+                icon={<AdminOpenIcon />}
                 loading={chatSessionMutation.isPending}
                 onClick={() => chatSessionMutation.mutate()}
               />

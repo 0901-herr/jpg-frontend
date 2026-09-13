@@ -9,6 +9,7 @@ import {
   ADMIN_TEXT_EMPHASIS,
   ADMIN_TEXT_MONO,
 } from '../../config/adminStyles'
+import { formatStateLabel } from '../../utils/adminState'
 import { formatRelativeTime } from '../../utils/lifecycle'
 import { formatServiceTarget } from '../../utils/serviceEndpoint'
 import { INGESTION_SECTION_LABELS, type IngestionSection } from './IngestionSectionNav'
@@ -85,7 +86,7 @@ function StatusRow({
           <StatusDot tone={tone} />
           <span>{label}</span>
         </div>
-        <StatusTag label={status} tone={tone} />
+        <StatusTag label={formatStateLabel(status)} tone={tone} />
       </div>
       {detail && <p className="admin-status-popover-detail">{detail}</p>}
     </div>
@@ -115,7 +116,7 @@ function overallDetails(overview: IngestionOverview): ReactNode {
       />
       <StatusRow
         label="RAG circuit"
-        status={overview.circuit_open ? 'OPEN' : 'CLOSED'}
+        status={formatStateLabel(overview.circuit_open ? 'OPEN' : 'CLOSED')}
         tone={circuitTone(overview.circuit_open)}
       />
     </PopoverPanel>
@@ -174,7 +175,7 @@ function circuitDetails(overview: IngestionOverview): ReactNode {
 
   return (
     <PopoverPanel>
-      <StatusRow label="RAG circuit" status="OPEN" tone="error" />
+      <StatusRow label="RAG circuit" status={formatStateLabel('OPEN')} tone="error" />
       <PopoverNote>
         The adapter paused new RAG submissions after consecutive failures. In flight work
         continues. Check System health for RAG availability.
@@ -238,21 +239,21 @@ export default function IngestionStatusHeader({
         <div className="flex flex-wrap items-center gap-2">
           <StatusPill
             label="Overall"
-            value={overview.overall_state}
+            value={formatStateLabel(overview.overall_state)}
             tone={overallTone(overview)}
             title="Overall pipeline"
             details={overallDetails(overview)}
           />
           <StatusPill
             label="Discovery"
-            value={overview.discovery_state}
+            value={formatStateLabel(overview.discovery_state)}
             tone={runTone(overview.discovery_state)}
             title="Discovery"
             details={discoveryDetails(overview)}
           />
           <StatusPill
             label="Ingestion"
-            value={overview.ingestion_state}
+            value={formatStateLabel(overview.ingestion_state)}
             tone={runTone(overview.ingestion_state)}
             title="Ingestion"
             details={ingestionDetails(overview)}
@@ -260,7 +261,7 @@ export default function IngestionStatusHeader({
           {overview.circuit_open && (
             <StatusPill
               label="RAG circuit"
-              value="OPEN"
+              value={formatStateLabel('OPEN')}
               tone="error"
               title="RAG circuit breaker"
               details={circuitDetails(overview)}

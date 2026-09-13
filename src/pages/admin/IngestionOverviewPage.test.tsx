@@ -53,32 +53,32 @@ describe('IngestionOverviewPage', () => {
   it('loads overview', async () => {
     renderPage('/admin/ingestion?tab=overview')
     expect(await screen.findByText('Ingestion Operations')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Overall: RUNNING/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Overall: Running/i })).toBeInTheDocument()
   })
 
   it('shows running state', async () => {
     renderPage('/admin/ingestion?tab=overview')
-    expect(await screen.findByRole('button', { name: /Discovery: RUNNING/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Ingestion: RUNNING/i })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /Discovery: Running/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Ingestion: Running/i })).toBeInTheDocument()
   })
 
   it('shows paused state', async () => {
     vi.mocked(adminApi.fetchIngestionOverview).mockResolvedValue(mockOverviewPaused)
     renderPage('/admin/ingestion?tab=overview')
-    expect(await screen.findByRole('button', { name: /Overall: PAUSED/i })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /Overall: Paused/i })).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: /Resume discovery|Resume ingestion/i }).length).toBeGreaterThan(0)
   })
 
   it('pause action calls backend', async () => {
     renderPage('/admin/ingestion?tab=overview')
-    expect(await screen.findByText('Pipeline')).toBeInTheDocument()
+    expect(await screen.findByText('Pipeline progress')).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: /Pause discovery|Pause ingestion/i }).length).toBeGreaterThan(0)
   })
 
   it('resume action calls backend when paused', async () => {
     vi.mocked(adminApi.fetchIngestionOverview).mockResolvedValue(mockOverviewPaused)
     renderPage('/admin/ingestion?tab=overview')
-    expect(await screen.findByText('Pipeline')).toBeInTheDocument()
+    expect(await screen.findByText('Pipeline progress')).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: /Resume discovery|Resume ingestion/i }).length).toBeGreaterThan(0)
   })
 

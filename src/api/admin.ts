@@ -1,6 +1,5 @@
 import { adminGet, adminPatch, adminPost } from './adminHttp'
 import type {
-  AdminBulkStartResponse,
   AdminChatSessionResponse,
   AdminDocumentDetail,
   AdminDocumentListResponse,
@@ -41,6 +40,15 @@ export function pauseIngestion(signal?: AbortSignal) {
   return adminPost<IngestionControlState>('/admin/ingestion/pause', signal)
 }
 
+/** Pause discovery and ingestion gates together (in-flight work continues). */
+export async function pausePipeline(signal?: AbortSignal) {
+  const [discovery, ingestion] = await Promise.all([
+    pauseDiscovery(signal),
+    pauseIngestion(signal),
+  ])
+  return { discovery, ingestion }
+}
+
 export function resumeIngestion(signal?: AbortSignal) {
   return adminPost<IngestionControlState>('/admin/ingestion/resume', signal)
 }
@@ -75,10 +83,6 @@ export function retryFailedDocuments(signal?: AbortSignal) {
 
 export function resumeAllIngestion(signal?: AbortSignal) {
   return adminPost<AdminResumeAllResponse>('/admin/ingestion/start', signal)
-}
-
-export function startBulkCrawl(signal?: AbortSignal) {
-  return adminPost<AdminBulkStartResponse>('/admin/ingestion/bulk/start', signal)
 }
 
 export function updateIngestionSyncSettings(

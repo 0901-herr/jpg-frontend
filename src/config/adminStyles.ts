@@ -18,9 +18,9 @@ export const ADMIN_STACK_SPACE = 'admin-stack'
 export const ADMIN_STACK_GAP = 'admin-grid'
 
 export const ADMIN_CARD_HEAD_CLASS =
-  '!border-b !border-[#eef1f5] !px-6 !py-4 !min-h-0 admin-card-head'
+  '!border-b-0 !px-6 !pt-5 !pb-1 !min-h-0 admin-card-head'
 
-export const ADMIN_CARD_BODY_CLASS = '!px-6 !py-5'
+export const ADMIN_CARD_BODY_CLASS = '!px-6 !pb-5 !pt-5'
 
 export const ADMIN_PAGE_CLASS = 'flex h-full min-h-0 min-w-0 bg-[#f4f6f9]'
 

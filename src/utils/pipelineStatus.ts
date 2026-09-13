@@ -28,8 +28,8 @@ export function derivePipelineStatus(overview: IngestionOverview): PipelineStatu
   if (bulk?.job_state === 'failed') {
     return {
       phase: 'failed',
-      label: 'Bulk crawl failed',
-      detail: bulk.job_error ?? 'See Activity tab for details. Click Start ingesting to retry.',
+      label: 'Document scan failed',
+      detail: bulk.job_error ?? 'See Activity tab for details. Press start to retry.',
       isActive: false,
     }
   }
@@ -52,7 +52,7 @@ export function derivePipelineStatus(overview: IngestionOverview): PipelineStatu
     return {
       phase: 'ingesting',
       label: 'Ingesting documents',
-      detail: `${parts.join(', ')}. Bulk crawl finished; RAG pipeline still working.`,
+      detail: `${parts.join(', ')}. Folder scan finished; indexing still in progress.`,
       isActive: true,
     }
   }
@@ -79,10 +79,57 @@ export function overviewShouldPollFast(overview: IngestionOverview | undefined):
   if (overview.bulk_progress?.job_state === 'running') return true
   const counts = overview.counts
   const inFlight =
+    counts.discovered + counts.staged + counts.preparing + counts.indexing
+  if (inFlight > 0) return true
+  if (overview.overall_state === 'RUNNING') return true
+  return false
+}
+
+export function pipelineGatesPaused(overview: IngestionOverview): boolean {
+  return overview.discovery_state === 'PAUSED' && overview.ingestion_state === 'PAUSED'
+}
+
+/** Primary pipeline control shown on the progress card. */
+export function pipelinePrimaryAction(overview: IngestionOverview): 'start' | 'pause' | 'resume' {
+  if (pipelineGatesPaused(overview)) return 'resume'
+  if (derivePipelineStatus(overview).isActive) return 'pause'
+  return 'start'
+}
+
+export const PIPELINE_PROGRESS_INTRO =
+  'Documents being prepared for AI search. Press start to begin. Counts below show where each file is.'
+
+/** Short section intro for the progress card — counts carry the detail. */
+export function pipelineProgressIntro(overview: IngestionOverview): string {
+  if (pipelineGatesPaused(overview)) {
+    return 'Ingestion is paused. Files already in progress may still finish. Counts below keep updating.'
+  }
+  if (overview.bulk_progress?.job_state === 'failed') {
+    const error = overview.bulk_progress.job_error
+    return error
+      ? `Last scan failed (${error}). Press start to retry.`
+      : 'Last scan failed. Press start to retry.'
+  }
+  return PIPELINE_PROGRESS_INTRO
+}
+
+export function pipelineCorpusTotal(overview: IngestionOverview): number {
+  const { counts, bulk_progress: bulk } = overview
+  const fromCounts =
     counts.discovered +
     counts.staged +
     counts.preparing +
-    counts.indexing
-  if (inFlight > 0 && counts.ready === 0) return true
-  return counts.preparing + counts.staged + counts.indexing > 0
+    counts.indexing +
+    counts.ready
+  if (bulk?.job_state === 'running') {
+    return Math.max(bulk.total_discovered ?? 0, fromCounts)
+  }
+  return fromCounts
+}
+
+export function shouldShowProgressBar(overview: IngestionOverview): boolean {
+  const { counts, bulk_progress: bulk } = overview
+  if (bulk?.job_state === 'running') return true
+  if (counts.ready <= 0) return false
+  return pipelineCorpusTotal(overview) > 0
 }

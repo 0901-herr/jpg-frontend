@@ -31,25 +31,18 @@ describe('IngestionControls', () => {
   beforeEach(() => {
     vi.mocked(adminApi.pauseIngestion).mockResolvedValue(mockControlPaused)
     vi.mocked(adminApi.resumeIngestion).mockResolvedValue(mockControlRunning)
-    vi.mocked(adminApi.resumeAllIngestion).mockResolvedValue({
-      discovery_resumed: false,
-      ingestion_resumed: false,
-      bulk_started: true,
-    })
   })
 
   it('lists grouped control sections', () => {
     renderControls()
-    expect(screen.getByText('Pipeline')).toBeInTheDocument()
-    expect(screen.getByText('Initial corpus')).toBeInTheDocument()
+    expect(screen.getByText('Pipeline gates')).toBeInTheDocument()
     expect(screen.getByText('Change detection')).toBeInTheDocument()
+    expect(screen.queryByText('Initial corpus')).not.toBeInTheDocument()
+    expect(screen.queryByText('Bulk crawl')).not.toBeInTheDocument()
     expect(screen.getByText('Maintenance')).toBeInTheDocument()
     expect(screen.getByText('Operator')).toBeInTheDocument()
     expect(screen.getByText('Audit changelog')).toBeInTheDocument()
     expect(screen.getByText('Reconciliation')).toBeInTheDocument()
-    expect(
-      screen.getAllByRole('button', { name: /Start ingesting|Pipeline running/i }).length,
-    ).toBeGreaterThan(0)
   })
 
   it('calls resume ingestion API when paused', async () => {
@@ -59,10 +52,4 @@ describe('IngestionControls', () => {
     await waitFor(() => expect(adminApi.resumeIngestion).toHaveBeenCalled())
   })
 
-  it('calls start ingesting API', async () => {
-    const user = userEvent.setup()
-    renderControls(mockOverviewIdle)
-    await user.click(screen.getByRole('button', { name: /Start ingesting/i }))
-    await waitFor(() => expect(adminApi.resumeAllIngestion).toHaveBeenCalled())
-  })
 })
