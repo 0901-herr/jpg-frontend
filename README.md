@@ -82,6 +82,20 @@ src/
 - On failure: plain-language error in the thread (technical detail stays in adapter logs — `query_failed`).
 - **Stop** button uses a square icon; sends abort to cancel streaming.
 
+### Chat history
+
+When a user opens AI Chat from LogicalDOC, the adapter creates an `ai_session` cookie and exposes the LogicalDOC **`userId`** via `GET /api/auth/me`. The frontend uses that id as the persistence key.
+
+| What | Where |
+|------|--------|
+| User identity | Adapter session (`userId` from LogicalDOC handoff) |
+| Chat threads + messages | **Browser `localStorage` only** — key `docu_chat_history_<userId>` |
+| Server database | **Not used for chat history** (adapter Postgres is for ingestion/docs) |
+
+History is restored after session timeout or re-login **in the same browser** for the same user. It is not synced across devices. Logout clears the server session but keeps local history.
+
+There is **no app expiry** (kept until site data is cleared, private browsing ends, or the browser evicts storage). Saves cap at **40 sessions** per user; in-progress streaming replies are not stored.
+
 ## Admin dashboard
 
 Polls adapter admin API every few seconds when open.
