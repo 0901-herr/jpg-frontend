@@ -12,18 +12,22 @@ export function getQueryTierLabel(tier: QueryTier): string {
   return QUERY_TIER_OPTIONS.find((option) => option.value === tier)?.label ?? 'Normal'
 }
 
+export const QUERY_TIER_FAST_TOOLTIP = 'Fastest answer. Uses a smaller model; may miss detail.'
+
+export const QUERY_TIER_NORMAL_TOOLTIP =
+  'Balanced speed and accuracy. Typically under a minute.'
+
 export const QUERY_TIER_ACCURATE_TOOLTIP =
-  'Accurate mode searches more deeply and may take longer to answer.'
+  'Most thorough answer. Can take up to a minute or more on this server.'
 
-export const QUERY_TIER_FAST_TOOLTIP = 'Fast mode answers quickest but may miss details.'
-
-export function getQueryTierTooltip(tier: QueryTier): string | undefined {
+/** Every tier warns about (or reassures on) waiting time — scope item 8. */
+export function getQueryTierTooltip(tier: QueryTier): string {
   switch (tier) {
-    case 'accurate':
-      return QUERY_TIER_ACCURATE_TOOLTIP
     case 'fast':
       return QUERY_TIER_FAST_TOOLTIP
+    case 'accurate':
+      return QUERY_TIER_ACCURATE_TOOLTIP
     default:
-      return undefined
+      return QUERY_TIER_NORMAL_TOOLTIP
   }
 }

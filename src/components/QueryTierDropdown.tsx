@@ -25,30 +25,38 @@ export default function QueryTierDropdown({
   }
 
   return (
-    <Dropdown
-      menu={{
-        items: menuItems,
-        selectable: true,
-        selectedKeys: [tier],
-        onClick: handleMenuClick,
-      }}
-      trigger={['click']}
-      placement="top"
-      disabled={disabled}
-      overlayClassName="docu-query-tier-menu"
-    >
-      <Tooltip title={getQueryTierTooltip(tier)} placement="top">
-        <button
-          type="button"
+    // Tooltip must wrap the Dropdown (not the other way around): antd's
+    // Dropdown suppresses its child's own popups while `disabled`, so a
+    // Tooltip nested *inside* a disabled Dropdown never renders its overlay
+    // even when its own hover target (the <span>) isn't disabled itself.
+    // Wrapping the other way keeps the tooltip's visibility independent of
+    // the dropdown menu's disabled state.
+    <Tooltip title={getQueryTierTooltip(tier)} placement="top" mouseEnterDelay={0.2}>
+      <span className="inline-flex">
+        <Dropdown
+          menu={{
+            items: menuItems,
+            selectable: true,
+            selectedKeys: [tier],
+            onClick: handleMenuClick,
+          }}
+          trigger={['click']}
+          placement="top"
           disabled={disabled}
-          className="docu-query-tier-dropdown"
-          aria-label={`Query speed: ${getQueryTierLabel(tier)}`}
-          aria-haspopup="listbox"
+          overlayClassName="docu-query-tier-menu"
         >
-          <span>{getQueryTierLabel(tier)}</span>
-          <ChatExpandIcon className="docu-query-tier-dropdown-chevron" aria-hidden />
-        </button>
-      </Tooltip>
-    </Dropdown>
+          <button
+            type="button"
+            disabled={disabled}
+            className="docu-query-tier-dropdown"
+            aria-label={`Query speed: ${getQueryTierLabel(tier)}`}
+            aria-haspopup="listbox"
+          >
+            <span>{getQueryTierLabel(tier)}</span>
+            <ChatExpandIcon className="docu-query-tier-dropdown-chevron" aria-hidden />
+          </button>
+        </Dropdown>
+      </span>
+    </Tooltip>
   )
 }

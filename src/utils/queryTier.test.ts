@@ -3,6 +3,7 @@ import {
   getQueryTierTooltip,
   QUERY_TIER_ACCURATE_TOOLTIP,
   QUERY_TIER_FAST_TOOLTIP,
+  QUERY_TIER_NORMAL_TOOLTIP,
 } from './queryTier'
 
 describe('getQueryTierTooltip', () => {
@@ -14,7 +15,7 @@ describe('getQueryTierTooltip', () => {
     expect(getQueryTierTooltip('fast')).toBe(QUERY_TIER_FAST_TOOLTIP)
   })
 
-  it('returns undefined for the standard tier (no tooltip)', () => {
-    expect(getQueryTierTooltip('standard')).toBeUndefined()
+  it('returns the normal-mode tooltip for the standard tier', () => {
+    expect(getQueryTierTooltip('standard')).toBe(QUERY_TIER_NORMAL_TOOLTIP)
   })
 })

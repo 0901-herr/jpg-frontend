@@ -1,9 +1,13 @@
-import { Checkbox, Spin } from 'antd'
+import { Checkbox, Spin, Tooltip } from 'antd'
 import { useMemo } from 'react'
 import type { BrowseDocumentItem } from '../api/types/browse'
 import { sidebar, typeColor } from '../styles/typography'
 import CategoryTag from './CategoryTag'
-import IndexingStatusBadge, { getSelectableDocumentIds, isDocumentSelectable } from './IndexingStatusBadge'
+import IndexingStatusBadge, {
+  getDocumentSelectionHint,
+  getSelectableDocumentIds,
+  isDocumentSelectable,
+} from './IndexingStatusBadge'
 
 interface DocumentChecklistProps {
   documents: BrowseDocumentItem[]
@@ -73,34 +77,50 @@ export default function DocumentChecklist({
         const selectable = isDocumentSelectable(doc.indexing_status, doc.queryable)
         const checked = selectedIds.has(doc.document_id)
 
+        // Selectable rows get no extra tooltip — only a non-selectable row
+        // needs an explanation for why it can't be checked, and that
+        // explanation belongs on the row itself (checkbox + filename), not
+        // just the small status badge underneath (UX P1-2).
+        const selectionHint = selectable ? null : getDocumentSelectionHint(doc)
+
+        const label = (
+          <label
+            className={`docu-document-row-primary flex min-w-0 items-center gap-2.5 ${
+              selectable ? 'cursor-pointer' : 'cursor-not-allowed'
+            }`}
+          >
+            <Checkbox
+              checked={checked}
+              disabled={!selectable}
+              onChange={(e) => onToggle(doc.document_id, e.target.checked)}
+              className="shrink-0"
+            />
+            <span
+              className={`block min-w-0 flex-1 truncate ${sidebar.body} ${typeColor.primary}`}
+              title={doc.filename}
+            >
+              {doc.filename}
+            </span>
+          </label>
+        )
+
         return (
           <div
             key={doc.document_id}
             className={`flex w-full flex-col gap-0.5 py-2 ${!selectable ? 'opacity-45' : ''}`}
           >
-            <label
-              className={`docu-document-row-primary flex min-w-0 items-center gap-2.5 ${
-                selectable ? 'cursor-pointer' : 'cursor-not-allowed'
-              }`}
-            >
-              <Checkbox
-                checked={checked}
-                disabled={!selectable}
-                onChange={(e) => onToggle(doc.document_id, e.target.checked)}
-                className="shrink-0"
-              />
-              <span
-                className={`block min-w-0 flex-1 truncate ${sidebar.body} ${typeColor.primary}`}
-                title={doc.filename}
-              >
-                {doc.filename}
-              </span>
-            </label>
+            {selectionHint ? (
+              <Tooltip title={selectionHint} mouseEnterDelay={0.2}>
+                {label}
+              </Tooltip>
+            ) : (
+              label
+            )}
             {/* Sibling of the filename line (not a parent of it) — the category
                 tag and status badge sit on their own row, wrapping if needed, so
-                a long badge label can never collapse the filename. Status detail
-                is surfaced by the badge's own tooltip (status_reason, else the
-                long label), so no separate hint line is rendered here. */}
+                a long badge label can never collapse the filename. The badge
+                keeps its own tooltip too (status_reason, else the long label)
+                for anyone hovering the badge directly. */}
             <div className="docu-document-row-meta flex flex-wrap items-center gap-1.5 pl-[1.625rem]">
               <CategoryTag category={doc.classification_category} />
               <IndexingStatusBadge

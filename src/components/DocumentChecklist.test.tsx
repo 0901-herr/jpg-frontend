@@ -63,7 +63,10 @@ describe('DocumentChecklist status tooltip', () => {
     expect(tooltips[0]).toHaveTextContent('Waiting for the ingestion queue.')
   })
 
-  it('shows no tooltip when hovering the row outside the badge', async () => {
+  it('shows the selection-reason tooltip when hovering the row label (checkbox + filename) of a non-selectable document', async () => {
+    // UX P1-2: hovering the checkbox/filename — the natural place to ask
+    // "why can't I select this" — must explain why, not just the small
+    // status badge underneath.
     const user = userEvent.setup()
     render(
       <DocumentChecklist
@@ -75,11 +78,48 @@ describe('DocumentChecklist status tooltip', () => {
       />,
     )
 
-    // Previously the whole row was wrapped in its own Tooltip (200ms
-    // mouseEnterDelay) with the same hint text — that row-level tooltip
-    // must be gone now that the badge carries it. Wait past the old
-    // tooltip's real delay before asserting absence, so this actually
-    // catches a regression instead of just checking too early.
+    await user.hover(screen.getByText('contract.pdf'))
+
+    const tooltips = await screen.findAllByRole('tooltip')
+    expect(tooltips.some((t) => t.textContent === 'OCR failed after 3 retries.')).toBe(true)
+  })
+
+  it('falls back to the local selection warning on the row label when there is no status_reason', async () => {
+    const user = userEvent.setup()
+    render(
+      <DocumentChecklist
+        documents={[doc({ indexing_status: 'NOT_INDEXED', status_reason: undefined })]}
+        selectedIds={new Set()}
+        onToggle={vi.fn()}
+        onSelectAll={vi.fn()}
+        onDeselectAll={vi.fn()}
+      />,
+    )
+
+    await user.hover(screen.getByText('contract.pdf'))
+
+    const tooltips = await screen.findAllByRole('tooltip')
+    expect(tooltips.some((t) => t.textContent === 'Not indexed. Not queryable.')).toBe(true)
+  })
+
+  it('shows no row-level tooltip when hovering the label of a selectable document', async () => {
+    const user = userEvent.setup()
+    render(
+      <DocumentChecklist
+        documents={[
+          doc({
+            indexing_status: 'READY',
+            queryable: true,
+            status_reason: 'Ready to query.',
+          }),
+        ]}
+        selectedIds={new Set()}
+        onToggle={vi.fn()}
+        onSelectAll={vi.fn()}
+        onDeselectAll={vi.fn()}
+      />,
+    )
+
     await user.hover(screen.getByText('contract.pdf'))
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 300))
