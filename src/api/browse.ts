@@ -4,6 +4,7 @@ import type {
   BrowseCategoriesResponse,
   BrowseFolderContentsResponse,
   BrowseRootResponse,
+  DocumentSummaryResponse,
   QueryScopeRequest,
   QueryScopeResponse,
 } from './types/browse'
@@ -50,6 +51,13 @@ export async function fetchDocumentViewUrl(documentId: string, page?: number): P
     `/browse/documents/${documentId}/view-url${query}`,
   )
   return response.url
+}
+
+export async function fetchDocumentSummary(
+  documentId: string,
+  signal?: AbortSignal,
+): Promise<DocumentSummaryResponse> {
+  return apiGet<DocumentSummaryResponse>(`/browse/documents/${documentId}/summary`, true, signal)
 }
 
 export function withPageHint(url: string, page?: number): string {

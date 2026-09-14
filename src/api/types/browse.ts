@@ -68,3 +68,11 @@ export interface BrowseCategoriesResponse {
   accessible_document_ids: string[]
   note?: string | null
 }
+
+export interface DocumentSummaryResponse {
+  document_id: string
+  filename: string | null
+  summary: string | null
+  summary_status: SummaryStatus | null
+  status_reason: string | null
+}
