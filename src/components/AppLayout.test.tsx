@@ -270,7 +270,7 @@ describe('AppLayout — Extract metadata', () => {
 
     expect(await screen.findByText('MQA metadata — doc-1.pdf')).toBeInTheDocument()
     expect(screen.getByText('Meeting Minutes')).toBeInTheDocument()
-    expect(screen.getByText('Saved to LogicalDOC as a document comment.')).toBeInTheDocument()
+    expect(screen.getByText('Saved to LogicalDOC as extended properties.')).toBeInTheDocument()
     expect(
       screen.queryByText('Extracting metadata… this can take up to a minute.'),
     ).not.toBeInTheDocument()

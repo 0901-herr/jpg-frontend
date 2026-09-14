@@ -18,13 +18,13 @@ function escapeCell(value: string): string {
 
 /** Builds the Markdown answer shown after a successful extraction: a GFM
  * table of the six fields, followed by a line noting whether the result
- * was saved back to LogicalDOC as a document comment. */
+ * was saved back to LogicalDOC as extended properties. */
 export function buildMqaMetadataAnswer(response: MqaMetadataResponse): string {
   const rows = FIELD_ORDER.map(
     (field) => `| ${escapeCell(field)} | ${escapeCell(response.fields[field])} |`,
   )
   const savedLine = response.pushed
-    ? 'Saved to LogicalDOC as a document comment.'
+    ? 'Saved to LogicalDOC as extended properties.'
     : 'Could not save to LogicalDOC — the values are shown here.'
 
   return [

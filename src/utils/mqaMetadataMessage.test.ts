@@ -48,7 +48,7 @@ describe('buildMqaMetadataAnswer', () => {
 
   it('notes the save to LogicalDOC when pushed is true', () => {
     expect(buildMqaMetadataAnswer(response({ pushed: true }))).toContain(
-      'Saved to LogicalDOC as a document comment.',
+      'Saved to LogicalDOC as extended properties.',
     )
   })
 
