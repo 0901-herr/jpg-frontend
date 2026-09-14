@@ -4,6 +4,7 @@ import {
   QUERY_PARTIAL_ANSWER_ERROR,
   QUERY_PERMISSION_DENIED_ERROR,
   QUERY_SERVER_ERROR,
+  QUERY_SESSION_EXPIRED_ERROR,
   toUserFacingQueryError,
 } from './userFacingErrors'
 
@@ -22,10 +23,13 @@ describe('toUserFacingQueryError', () => {
     ).toBe(QUERY_PARTIAL_ANSWER_ERROR)
   })
 
-  it('uses permission message for 401 and 403', () => {
-    expect(toUserFacingQueryError('Forbidden', { httpStatus: 401 })).toBe(
-      QUERY_PERMISSION_DENIED_ERROR,
+  it('uses the session-expired message for 401', () => {
+    expect(toUserFacingQueryError('Unauthorized', { httpStatus: 401 })).toBe(
+      QUERY_SESSION_EXPIRED_ERROR,
     )
+  })
+
+  it('uses the permission-denied message for 403', () => {
     expect(toUserFacingQueryError('Forbidden', { httpStatus: 403 })).toBe(
       QUERY_PERMISSION_DENIED_ERROR,
     )

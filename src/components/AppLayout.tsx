@@ -1,7 +1,7 @@
 import { Layout, message } from 'antd'
 import { ChatBubbleIconLg } from '../icons/chat'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { validateQueryScope } from '../api/browse'
+import { fetchDocumentSummary, validateQueryScope } from '../api/browse'
 import { ApiError } from '../api/http'
 import type { Citation } from '../api/types/query'
 import { AUTH_BYPASS, DEV_USER } from '../config/auth'
@@ -17,7 +17,7 @@ import { appendStreamDelta } from '../utils/appendStreamDelta'
 import { formatProgressStage, formatRouteLabel } from '../utils/queryProgress'
 import { loadChatHistory, persistChatHistory } from '../utils/chatPersistence'
 import { getSummarizeDisabledReason, isSummaryReady } from '../utils/summaryGate'
-import { buildSummaryPrompt } from '../utils/summaryPrompt'
+import { buildSummaryMessages } from '../utils/summaryMessages'
 import { DEFAULT_QUERY_TIER } from '../utils/queryTier'
 import { toUserFacingQueryError } from '../utils/userFacingErrors'
 import type { QueryTier } from '../api/types/query'
@@ -484,16 +484,20 @@ export default function AppLayout() {
     return documentId ? selection.documentMeta.get(documentId) : undefined
   }, [selection.documentMeta, selection.selectedCount, selection.selectedIds])
 
+  const [isSummarizing, setIsSummarizing] = useState(false)
+  const summarizingRef = useRef(false)
+
   const summarizeDisabledReason = useMemo(
     () =>
       getSummarizeDisabledReason({
         selectedCount: selection.selectedCount,
         document: selectedDocument,
-        isResponding: sendQuery.isPending,
+        isResponding: sendQuery.isPending || isSummarizing,
         disabled: browse.sessionExpired,
       }),
     [
       browse.sessionExpired,
+      isSummarizing,
       selectedDocument,
       selection.selectedCount,
       sendQuery.isPending,
@@ -505,11 +509,49 @@ export default function AppLayout() {
       message.warning(summarizeDisabledReason)
       return
     }
-    if (!isSummaryReady(selectedDocument)) return
-    const prompt = buildSummaryPrompt(1)
-    if (!prompt) return
-    void handleSend(prompt, { displayText: 'Summarize this document' })
-  }, [handleSend, selectedDocument, summarizeDisabledReason])
+    if (!selectedDocument || !isSummaryReady(selectedDocument)) return
+    if (summarizingRef.current) return
+
+    const documentId = selectedDocument.document_id
+    summarizingRef.current = true
+    setIsSummarizing(true)
+
+    void (async () => {
+      try {
+        const response = await fetchDocumentSummary(documentId)
+        const summary = response.summary?.trim()
+
+        if (!summary) {
+          message.warning('Summary is not available for this document')
+          return
+        }
+
+        const { userMessage, assistantMessage } = buildSummaryMessages(summary)
+
+        shouldStickToBottomRef.current = true
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.id === activeChatId
+              ? { ...s, messages: [...s.messages, userMessage, assistantMessage] }
+              : s,
+          ),
+        )
+        requestAnimationFrame(() => scrollToBottom('auto'))
+      } catch (err) {
+        const httpStatus = err instanceof ApiError ? err.status : undefined
+        const raw =
+          err instanceof ApiError
+            ? (err.detail ?? err.message)
+            : err instanceof Error
+              ? err.message
+              : undefined
+        message.error(toUserFacingQueryError(raw, { httpStatus }))
+      } finally {
+        summarizingRef.current = false
+        setIsSummarizing(false)
+      }
+    })()
+  }, [activeChatId, scrollToBottom, selectedDocument, summarizeDisabledReason])
 
   return (
     <Layout className="h-screen">

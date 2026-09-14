@@ -178,7 +178,7 @@ export default function ChatInput({
         </div>
 
         <p className={`docu-chat-input-disclaimer ${type.caption} ${typeColor.muted}`}>
-          This chat is{' '}
+          Single question mode: this chat is{' '}
           <span className={typeColor.primary}>not context-aware</span>. Each question is a{' '}
           <span className={typeColor.primary}>separate question</span>, not a follow-up.
         </p>

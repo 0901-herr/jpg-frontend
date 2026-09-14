@@ -1,8 +1,8 @@
-import { Dropdown } from 'antd'
+import { Dropdown, Tooltip } from 'antd'
 import type { MenuProps } from 'antd'
 import { ChatExpandIcon } from '../icons/chat'
 import type { QueryTier } from '../api/types/query'
-import { getQueryTierLabel, QUERY_TIER_OPTIONS } from '../utils/queryTier'
+import { getQueryTierLabel, getQueryTierTooltip, QUERY_TIER_OPTIONS } from '../utils/queryTier'
 
 interface QueryTierDropdownProps {
   tier: QueryTier
@@ -37,16 +37,18 @@ export default function QueryTierDropdown({
       disabled={disabled}
       overlayClassName="docu-query-tier-menu"
     >
-      <button
-        type="button"
-        disabled={disabled}
-        className="docu-query-tier-dropdown"
-        aria-label={`Query speed: ${getQueryTierLabel(tier)}`}
-        aria-haspopup="listbox"
-      >
-        <span>{getQueryTierLabel(tier)}</span>
-        <ChatExpandIcon className="docu-query-tier-dropdown-chevron" aria-hidden />
-      </button>
+      <Tooltip title={getQueryTierTooltip(tier)} placement="top">
+        <button
+          type="button"
+          disabled={disabled}
+          className="docu-query-tier-dropdown"
+          aria-label={`Query speed: ${getQueryTierLabel(tier)}`}
+          aria-haspopup="listbox"
+        >
+          <span>{getQueryTierLabel(tier)}</span>
+          <ChatExpandIcon className="docu-query-tier-dropdown-chevron" aria-hidden />
+        </button>
+      </Tooltip>
     </Dropdown>
   )
 }

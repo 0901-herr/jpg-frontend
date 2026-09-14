@@ -37,8 +37,10 @@ function resolveCredentials(auth: boolean): RequestCredentials | undefined {
 
 async function parseErrorDetail(response: Response): Promise<string | undefined> {
   try {
-    const errorBody = (await response.json()) as { detail?: string }
-    return typeof errorBody.detail === 'string' ? errorBody.detail : undefined
+    const errorBody = (await response.json()) as { detail?: string; error?: string }
+    if (typeof errorBody.detail === 'string') return errorBody.detail
+    if (typeof errorBody.error === 'string') return errorBody.error
+    return undefined
   } catch {
     return undefined
   }

@@ -1,4 +1,4 @@
-import { apiPostStream, consumeSseStream } from './http'
+import { ApiError, apiPostStream, consumeSseStream } from './http'
 import type {
   Citation,
   CoverageEvent,
@@ -134,7 +134,22 @@ async function streamQuery(
   callbacks: StreamQueryCallbacks,
   signal?: AbortSignal,
 ): Promise<{ content: string; citations: Citation[]; coverage?: CoverageEvent; durationMs?: number }> {
-  const { response, coverageFromHeaders } = await apiPostStream('/query', payload, true, signal)
+  const toFriendlyStreamError = (err: unknown): string => {
+    const httpStatus = err instanceof ApiError ? err.status : undefined
+    return toUserFacingQueryError(err instanceof Error ? err.message : undefined, { httpStatus })
+  }
+
+  let response: Response
+  let coverageFromHeaders: { total?: number; ready?: number; indexing?: number }
+
+  try {
+    ;({ response, coverageFromHeaders } = await apiPostStream('/query', payload, true, signal))
+  } catch (err) {
+    if (signal?.aborted) throw err
+    const message = toFriendlyStreamError(err)
+    callbacks.onError?.(message)
+    throw new Error(message)
+  }
 
   if (
     coverageFromHeaders.total != null ||
@@ -239,9 +254,7 @@ async function streamQuery(
     )
   } catch (err) {
     if (signal?.aborted) throw err
-    const message = toUserFacingQueryError(
-      err instanceof Error ? err.message : undefined,
-    )
+    const message = toFriendlyStreamError(err)
     callbacks.onError?.(message)
     throw new Error(message)
   }

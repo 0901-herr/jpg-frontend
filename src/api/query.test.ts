@@ -1,20 +1,25 @@
 import { describe, expect, it, vi } from 'vitest'
 import { citationRefForSegment, joinAnswerSegment, sendMessage } from './query'
-import { apiPostStream } from './http'
+import { apiPostStream, ApiError } from './http'
 import type { SseEvent } from './http'
 import type { Citation } from './types/query'
+import { QUERY_PERMISSION_DENIED_ERROR } from '../utils/userFacingErrors'
 
-vi.mock('./http', () => ({
-  apiPostStream: vi.fn(async () => ({
-    response: {} as Response,
-    coverageFromHeaders: {},
-  })),
-  consumeSseStream: vi.fn(
-    async (_response: Response, onEvent: (event: SseEvent) => void) => {
-      for (const event of scriptedEvents) onEvent(event)
-    },
-  ),
-}))
+vi.mock('./http', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./http')>()
+  return {
+    ...actual,
+    apiPostStream: vi.fn(async () => ({
+      response: {} as Response,
+      coverageFromHeaders: {},
+    })),
+    consumeSseStream: vi.fn(
+      async (_response: Response, onEvent: (event: SseEvent) => void) => {
+        for (const event of scriptedEvents) onEvent(event)
+      },
+    ),
+  }
+})
 
 let scriptedEvents: SseEvent[] = []
 
@@ -159,5 +164,19 @@ describe('sendMessage delta handling', () => {
       true,
       undefined,
     )
+  })
+})
+
+describe('sendMessage error handling', () => {
+  it('produces the permission-denied message for a 403 response from the query endpoint', async () => {
+    vi.mocked(apiPostStream).mockRejectedValueOnce(new ApiError('Forbidden', 403))
+
+    await expect(
+      sendMessage({
+        chatId: 'c1',
+        message: 'q',
+        documents: ['doc1'],
+      }),
+    ).rejects.toThrow(QUERY_PERMISSION_DENIED_ERROR)
   })
 })
