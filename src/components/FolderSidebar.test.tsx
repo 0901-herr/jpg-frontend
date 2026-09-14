@@ -48,6 +48,7 @@ function createBrowseFixture(overrides: Partial<BrowseTreeState> = {}): BrowseTr
     handleLoadMoreDocuments: vi.fn(),
     refreshActiveFolder: vi.fn(),
     refreshDocumentStatuses: vi.fn(),
+    applyStatusPatches: vi.fn(),
     ...overrides,
   }
 }

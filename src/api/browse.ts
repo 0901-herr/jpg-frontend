@@ -4,10 +4,15 @@ import type {
   BrowseCategoriesResponse,
   BrowseFolderContentsResponse,
   BrowseRootResponse,
+  BrowseStatusRequest,
+  BrowseStatusResponse,
   DocumentSummaryResponse,
   QueryScopeRequest,
   QueryScopeResponse,
 } from './types/browse'
+
+/** LogicalDOC document ids per /browse/status call — enforced by the adapter. */
+const BROWSE_STATUS_MAX_IDS = 500
 
 export async function fetchBrowseRoot(): Promise<BrowseRootResponse> {
   return apiGet<BrowseRootResponse>('/browse/root')
@@ -31,6 +36,37 @@ export async function fetchBrowseCategories(
     true,
     signal,
   )
+}
+
+/**
+ * Cheap status-only lookup for the auto-refresh poll — one bulk call
+ * instead of a full per-folder browse fetch (~3 LogicalDOC REST calls
+ * each). Chunks into batches of BROWSE_STATUS_MAX_IDS since the adapter
+ * caps each call; ids without a mapping are simply omitted by the adapter.
+ */
+export async function fetchBrowseStatus(
+  documentIds: string[],
+  signal?: AbortSignal,
+): Promise<BrowseStatusResponse> {
+  if (documentIds.length === 0) return { documents: [] }
+
+  const chunks: string[][] = []
+  for (let i = 0; i < documentIds.length; i += BROWSE_STATUS_MAX_IDS) {
+    chunks.push(documentIds.slice(i, i + BROWSE_STATUS_MAX_IDS))
+  }
+
+  const results = await Promise.all(
+    chunks.map((chunk) =>
+      apiPost<BrowseStatusResponse>(
+        '/browse/status',
+        { document_ids: chunk } satisfies BrowseStatusRequest,
+        true,
+        signal,
+      ),
+    ),
+  )
+
+  return { documents: results.flatMap((result) => result.documents) }
 }
 
 export async function validateQueryScope(

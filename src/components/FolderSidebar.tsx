@@ -48,6 +48,7 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
     handleLoadMoreDocuments,
     refreshActiveFolder,
     refreshDocumentStatuses,
+    applyStatusPatches,
   } = browse
 
   const [isRefreshingStatus, setIsRefreshingStatus] = useState(false)
@@ -68,6 +69,7 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
     enabled: viewMode === 'category',
     activeFolderId,
     refreshActiveFolder,
+    applyStatusPatches,
   })
 
   const categorySourceDocuments = useMemo(

@@ -1,17 +1,19 @@
-import { useEffect, useMemo, useState } from 'react'
-import { fetchBrowseCategories } from '../api/browse'
-import type { BrowseCategoriesResponse, BrowseDocumentItem } from '../api/types/browse'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { fetchBrowseCategories, fetchBrowseStatus } from '../api/browse'
+import type { BrowseCategoriesResponse, BrowseDocumentItem, BrowseStatusItem } from '../api/types/browse'
 import { BROWSE_IDLE_REFRESH_SECONDS, BROWSE_REFRESH_SECONDS } from '../config/browse'
 
 interface UseBrowseCategoriesOptions {
   enabled: boolean
   activeFolderId: number | null
   refreshActiveFolder: () => Promise<void>
+  /** Merges cheap /browse/status patches into the sidebar tree's cache (from useBrowseTree). */
+  applyStatusPatches: (patches: BrowseStatusItem[]) => void
 }
 
 export function useBrowseCategories(
   folderDocuments: BrowseDocumentItem[],
-  { enabled, activeFolderId, refreshActiveFolder }: UseBrowseCategoriesOptions,
+  { enabled, activeFolderId, refreshActiveFolder, applyStatusPatches }: UseBrowseCategoriesOptions,
 ) {
   const [serverCategories, setServerCategories] = useState<BrowseCategoriesResponse | null>(null)
   const [categoriesLoading, setCategoriesLoading] = useState(false)
@@ -61,11 +63,16 @@ export function useBrowseCategories(
     // eslint-disable-next-line react-hooks/exhaustive-deps -- documentIdsKey tracks folderDocuments ids
   }, [enabled, documentIdsKey, activeFolderId, refreshActiveFolder])
 
-  // Auto-refresh: re-fetch category groupings on the same schedule as the
-  // sidebar tree while in category mode, so counts stay current as
-  // classification finishes. Cadence is VITE_BROWSE_REFRESH_SECONDS (0
-  // disables) while a document hasn't settled, else the slower idle
-  // cadence. Paused while the tab is hidden.
+  // Only one poll tick runs at a time — a slow request spanning multiple
+  // ticks must not fire a second, overlapping one.
+  const inFlightRef = useRef<Promise<void> | null>(null)
+
+  // Auto-refresh while in category mode, on the same cadence as the
+  // sidebar tree. LogicalDOC load: the fast cadence calls ONLY the cheap
+  // /browse/status endpoint for the ids currently listed here, merging
+  // into the shared tree cache (so badges update without a full re-fetch);
+  // the full/expensive fetchBrowseCategories re-fetch (existing browse
+  // function) runs only at the slower idle cadence. Paused while hidden.
   useEffect(() => {
     if (!enabled || folderDocuments.length === 0) return undefined
     if (BROWSE_REFRESH_SECONDS <= 0) return undefined
@@ -74,14 +81,35 @@ export function useBrowseCategories(
       (doc) => doc.indexing_status !== 'READY' && doc.indexing_status !== 'FAILED',
     )
     const seconds = hasUnsettled ? BROWSE_REFRESH_SECONDS : BROWSE_IDLE_REFRESH_SECONDS
+    const documentIds = folderDocuments.map((doc) => doc.document_id)
+
+    const runExclusive = async (task: () => Promise<void>) => {
+      if (inFlightRef.current) {
+        await inFlightRef.current
+        return
+      }
+      const promise = task()
+      inFlightRef.current = promise
+      try {
+        await promise
+      } finally {
+        inFlightRef.current = null
+      }
+    }
 
     const poll = () => {
       if (document.hidden) return
-      fetchBrowseCategories(folderDocuments.map((doc) => doc.document_id))
-        .then((result) => setServerCategories(result))
-        .catch(() => {
-          // Transient poll failure — keep showing the last-known categories.
-        })
+      void runExclusive(async () => {
+        if (hasUnsettled) {
+          const result = await fetchBrowseStatus(documentIds)
+          applyStatusPatches(result.documents)
+        } else {
+          const result = await fetchBrowseCategories(documentIds)
+          setServerCategories(result)
+        }
+      }).catch(() => {
+        // Transient poll failure — keep showing the last-known categories/status.
+      })
     }
 
     const intervalId = setInterval(poll, seconds * 1000)
@@ -95,7 +123,7 @@ export function useBrowseCategories(
       document.removeEventListener('visibilitychange', handleVisibility)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- documentIdsKey tracks folderDocuments ids
-  }, [enabled, documentIdsKey, folderDocuments])
+  }, [enabled, documentIdsKey, folderDocuments, applyStatusPatches])
 
   return { serverCategories, categoriesLoading }
 }

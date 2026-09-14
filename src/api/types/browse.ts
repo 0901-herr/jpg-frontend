@@ -76,3 +76,22 @@ export interface DocumentSummaryResponse {
   summary_status: SummaryStatus | null
   status_reason: string | null
 }
+
+export interface BrowseStatusRequest {
+  document_ids: string[]
+}
+
+/** Cheap per-document status patch — a subset of BrowseDocumentItem's fields. */
+export interface BrowseStatusItem {
+  document_id: string
+  indexing_status: IndexingStatus
+  status_reason: string | null
+  queryable: boolean
+  summary_status: SummaryStatus | null
+  classification_category: string | null
+  rag_document_id: string | null
+}
+
+export interface BrowseStatusResponse {
+  documents: BrowseStatusItem[]
+}

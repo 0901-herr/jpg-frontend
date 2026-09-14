@@ -1,13 +1,56 @@
 import type { TreeSelectProps } from 'antd'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError } from '../api/http'
-import { fetchBrowseRoot, fetchFolderContents } from '../api/browse'
-import type { BrowseDocumentItem, BrowseFolderContentsResponse } from '../api/types/browse'
+import { fetchBrowseRoot, fetchBrowseStatus, fetchFolderContents } from '../api/browse'
+import type {
+  BrowseDocumentItem,
+  BrowseFolderContentsResponse,
+  BrowseStatusItem,
+} from '../api/types/browse'
 import { BROWSE_IDLE_REFRESH_SECONDS, BROWSE_REFRESH_SECONDS } from '../config/browse'
 import {
   loadPersistedActiveFolder,
   persistActiveFolder,
 } from '../utils/browsePersistence'
+
+/** Fields the cheap /browse/status endpoint can patch onto a cached document. */
+type DocumentStatusPatch = Pick<
+  BrowseDocumentItem,
+  | 'document_id'
+  | 'indexing_status'
+  | 'status_reason'
+  | 'queryable'
+  | 'rag_document_id'
+  | 'summary_status'
+  | 'classification_category'
+>
+
+function patchDocumentStatus(
+  doc: BrowseDocumentItem,
+  fresh: DocumentStatusPatch,
+): { doc: BrowseDocumentItem; changed: boolean } {
+  const sameStatus =
+    fresh.indexing_status === doc.indexing_status &&
+    fresh.status_reason === doc.status_reason &&
+    fresh.queryable === doc.queryable &&
+    fresh.rag_document_id === doc.rag_document_id &&
+    fresh.summary_status === doc.summary_status &&
+    fresh.classification_category === doc.classification_category
+  if (sameStatus) return { doc, changed: false }
+
+  return {
+    doc: {
+      ...doc,
+      indexing_status: fresh.indexing_status,
+      status_reason: fresh.status_reason,
+      queryable: fresh.queryable,
+      rag_document_id: fresh.rag_document_id,
+      summary_status: fresh.summary_status,
+      classification_category: fresh.classification_category,
+    },
+    changed: true,
+  }
+}
 
 interface FolderCacheEntry {
   contents: BrowseFolderContentsResponse
@@ -126,25 +169,9 @@ export function useBrowseTree(onDocumentsLoaded?: (event: DocumentsLoadedEvent) 
           if (!fresh) return doc
           freshById.delete(doc.document_id)
 
-          const sameStatus =
-            fresh.indexing_status === doc.indexing_status &&
-            fresh.status_reason === doc.status_reason &&
-            fresh.queryable === doc.queryable &&
-            fresh.rag_document_id === doc.rag_document_id &&
-            fresh.summary_status === doc.summary_status &&
-            fresh.classification_category === doc.classification_category
-          if (sameStatus) return doc
-
-          changed = true
-          return {
-            ...doc,
-            indexing_status: fresh.indexing_status,
-            status_reason: fresh.status_reason,
-            queryable: fresh.queryable,
-            rag_document_id: fresh.rag_document_id,
-            summary_status: fresh.summary_status,
-            classification_category: fresh.classification_category,
-          }
+          const result = patchDocumentStatus(doc, fresh)
+          if (result.changed) changed = true
+          return result.doc
         })
 
         const newlySeen = [...freshById.values()]
@@ -164,6 +191,46 @@ export function useBrowseTree(onDocumentsLoaded?: (event: DocumentsLoadedEvent) 
     },
     [],
   )
+
+  /**
+   * Apply a batch of cheap /browse/status patches across every cached
+   * folder, keyed by document id. Reuses the same non-destructive merge
+   * semantics as mergeStatusUpdates above (only patches known status
+   * fields; never drops or replaces a folder's document list) — just
+   * scoped to a flat id-keyed patch list spanning every expanded folder
+   * instead of one folder's full contents response. This is what the
+   * cheap fast-cadence poll uses instead of a full per-folder re-fetch.
+   */
+  const applyStatusPatches = useCallback((patches: BrowseStatusItem[]) => {
+    if (patches.length === 0) return
+    const patchById = new Map(patches.map((patch) => [patch.document_id, patch]))
+
+    setCache((prev) => {
+      let changedAny = false
+      const next = new Map(prev)
+
+      for (const [folderId, entry] of prev) {
+        let changed = false
+        const mergedDocs = entry.contents.documents.map((doc) => {
+          const patch = patchById.get(doc.document_id)
+          if (!patch) return doc
+          const result = patchDocumentStatus(doc, patch)
+          if (result.changed) changed = true
+          return result.doc
+        })
+
+        if (changed) {
+          changedAny = true
+          next.set(folderId, {
+            ...entry,
+            contents: { ...entry.contents, documents: mergedDocs },
+          })
+        }
+      }
+
+      return changedAny ? next : prev
+    })
+  }, [])
 
   const loadFolder = useCallback(
     async (folderId: number, page = 0) => {
@@ -310,6 +377,16 @@ export function useBrowseTree(onDocumentsLoaded?: (event: DocumentsLoadedEvent) 
 
   const expandedFolderIds = useMemo(() => [...cache.keys()], [cache])
 
+  // Every document id currently held in the cached (expanded) folders —
+  // what the cheap fast-cadence status poll asks about.
+  const cachedDocumentIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const entry of cache.values()) {
+      for (const doc of entry.contents.documents) ids.add(doc.document_id)
+    }
+    return [...ids]
+  }, [cache])
+
   const fetchAndMergeStatuses = useCallback(
     async (folderIds: number[]) => {
       await Promise.all(
@@ -326,18 +403,45 @@ export function useBrowseTree(onDocumentsLoaded?: (event: DocumentsLoadedEvent) 
     [mergeStatusUpdates],
   )
 
+  // Only one browse fetch (auto poll or manual refresh) runs at a time.
+  // LogicalDOC's box is small — a full folder re-fetch costs ~3 REST
+  // calls per folder, so overlapping ticks (or a manual click while a
+  // poll is still outstanding) must never fire a second, redundant
+  // request. A later caller just waits for the in-flight one instead.
+  const inFlightRef = useRef<Promise<void> | null>(null)
+
+  const runExclusive = useCallback(async (task: () => Promise<void>) => {
+    if (inFlightRef.current) {
+      await inFlightRef.current
+      return
+    }
+    const promise = task()
+    inFlightRef.current = promise
+    try {
+      await promise
+    } finally {
+      inFlightRef.current = null
+    }
+  }, [])
+
   /** Manual refresh: re-fetch the root plus every folder the user has expanded. */
   const refreshDocumentStatuses = useCallback(async () => {
-    const ids = new Set(expandedFolderIds)
-    if (rootFolderId != null) ids.add(rootFolderId)
-    if (ids.size === 0) return
-    await fetchAndMergeStatuses([...ids])
-  }, [expandedFolderIds, rootFolderId, fetchAndMergeStatuses])
+    await runExclusive(async () => {
+      const ids = new Set(expandedFolderIds)
+      if (rootFolderId != null) ids.add(rootFolderId)
+      if (ids.size === 0) return
+      await fetchAndMergeStatuses([...ids])
+    })
+  }, [runExclusive, expandedFolderIds, rootFolderId, fetchAndMergeStatuses])
 
-  // Auto-refresh: poll expanded folders' contents while the /chat page is
-  // open. Cadence is VITE_BROWSE_REFRESH_SECONDS (0 disables) whenever a
-  // visible document hasn't settled, else the slower idle cadence. Paused
-  // while the tab is hidden; resumes immediately on visibilitychange.
+  // Auto-refresh: poll while the /chat page is open. Cadence is
+  // VITE_BROWSE_REFRESH_SECONDS (0 disables) whenever a visible document
+  // hasn't settled, else the slower idle cadence. LogicalDOC load: the
+  // fast cadence only calls the cheap /browse/status endpoint for ids
+  // already in the cached tree; the expensive full per-folder re-fetch
+  // (existing browse functions) runs only at the idle cadence and on the
+  // manual refresh button above. Paused while the tab is hidden; resumes
+  // immediately on visibilitychange.
   useEffect(() => {
     if (BROWSE_REFRESH_SECONDS <= 0) return undefined
     if (rootFolderId == null || expandedFolderIds.length === 0) return undefined
@@ -346,7 +450,15 @@ export function useBrowseTree(onDocumentsLoaded?: (event: DocumentsLoadedEvent) 
 
     const pollNow = () => {
       if (document.hidden) return
-      void fetchAndMergeStatuses(expandedFolderIds)
+      void runExclusive(async () => {
+        if (hasUnsettledDocument) {
+          if (cachedDocumentIds.length === 0) return
+          const response = await fetchBrowseStatus(cachedDocumentIds)
+          applyStatusPatches(response.documents)
+        } else {
+          await fetchAndMergeStatuses(expandedFolderIds)
+        }
+      })
     }
 
     const intervalId = setInterval(pollNow, seconds * 1000)
@@ -360,7 +472,15 @@ export function useBrowseTree(onDocumentsLoaded?: (event: DocumentsLoadedEvent) 
       clearInterval(intervalId)
       document.removeEventListener('visibilitychange', handleVisibility)
     }
-  }, [rootFolderId, expandedFolderIds, hasUnsettledDocument, fetchAndMergeStatuses])
+  }, [
+    rootFolderId,
+    expandedFolderIds,
+    hasUnsettledDocument,
+    cachedDocumentIds,
+    fetchAndMergeStatuses,
+    applyStatusPatches,
+    runExclusive,
+  ])
 
   return {
     username,
@@ -379,6 +499,7 @@ export function useBrowseTree(onDocumentsLoaded?: (event: DocumentsLoadedEvent) 
     handleLoadMoreDocuments,
     refreshActiveFolder,
     refreshDocumentStatuses,
+    applyStatusPatches,
   }
 }
 

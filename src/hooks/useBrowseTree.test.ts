@@ -2,14 +2,16 @@ import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BrowseFolderContentsResponse, BrowseRootResponse } from '../api/types/browse'
 
-const { fetchBrowseRoot, fetchFolderContents } = vi.hoisted(() => ({
+const { fetchBrowseRoot, fetchFolderContents, fetchBrowseStatus } = vi.hoisted(() => ({
   fetchBrowseRoot: vi.fn(),
   fetchFolderContents: vi.fn(),
+  fetchBrowseStatus: vi.fn(),
 }))
 
 vi.mock('../api/browse', () => ({
   fetchBrowseRoot,
   fetchFolderContents,
+  fetchBrowseStatus,
 }))
 
 const root: BrowseRootResponse = { root_folder_id: 1, username: 'dev' }
@@ -35,6 +37,31 @@ function rootContents(status: 'INDEXING' | 'READY'): BrowseFolderContentsRespons
   }
 }
 
+/** The cheap /browse/status shape used by the fast-cadence poll. */
+function statusResponse(status: 'INDEXING' | 'READY', documentId = 'doc-1') {
+  return {
+    documents: [
+      {
+        document_id: documentId,
+        indexing_status: status,
+        status_reason: null,
+        queryable: status === 'READY',
+        summary_status: null,
+        classification_category: null,
+        rag_document_id: status === 'READY' ? 'rag-1' : null,
+      },
+    ],
+  }
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((res) => {
+    resolve = res
+  })
+  return { promise, resolve }
+}
+
 async function initHook() {
   const { useBrowseTree } = await import('./useBrowseTree')
   const { result } = renderHook(() => useBrowseTree())
@@ -55,22 +82,29 @@ describe('useBrowseTree auto-refresh', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+    // vi.doMock registrations outlive vi.resetModules() — unregister
+    // explicitly so the "VITE_BROWSE_REFRESH_SECONDS is 0" test's override
+    // doesn't leak into later tests in this file.
+    vi.doUnmock('../config/browse')
   })
 
-  it('polls the active folder on the default cadence and merges status without collapsing', async () => {
+  it('fast cadence calls the cheap status endpoint (not a full folder fetch) while unsettled, and merges the result', async () => {
     fetchFolderContents.mockResolvedValueOnce(rootContents('INDEXING'))
     const result = await initHook()
 
     expect(result.current.activeFolderContents?.documents[0].indexing_status).toBe('INDEXING')
     expect(fetchFolderContents).toHaveBeenCalledTimes(1)
 
-    fetchFolderContents.mockResolvedValueOnce(rootContents('READY'))
+    fetchBrowseStatus.mockResolvedValueOnce(statusResponse('READY'))
     await act(async () => {
       await vi.advanceTimersByTimeAsync(15_000)
     })
 
-    expect(fetchFolderContents).toHaveBeenCalledTimes(2)
-    expect(fetchFolderContents).toHaveBeenLastCalledWith(1, 0)
+    expect(fetchBrowseStatus).toHaveBeenCalledTimes(1)
+    expect(fetchBrowseStatus).toHaveBeenLastCalledWith(['doc-1'])
+    // the expensive full-folder fetch must NOT fire at the fast cadence
+    expect(fetchFolderContents).toHaveBeenCalledTimes(1)
+
     expect(result.current.activeFolderContents?.documents[0].indexing_status).toBe('READY')
     expect(result.current.activeFolderContents?.documents[0].queryable).toBe(true)
     // folder tree/active selection preserved — not collapsed
@@ -78,22 +112,25 @@ describe('useBrowseTree auto-refresh', () => {
     expect(result.current.activeFolderContents?.folders).toHaveLength(1)
   })
 
-  it('slows to the 60s idle cadence once every visible document has settled', async () => {
+  it('idle cadence performs the full folder re-fetch once every document has settled', async () => {
     fetchFolderContents.mockResolvedValueOnce(rootContents('READY'))
     const result = await initHook()
     expect(result.current.activeFolderContents?.documents[0].indexing_status).toBe('READY')
 
-    fetchFolderContents.mockResolvedValueOnce(rootContents('READY'))
     await act(async () => {
       await vi.advanceTimersByTimeAsync(15_000)
     })
-    // still settled/all-READY -> should not have polled again at the fast cadence
+    // settled -> no fast-cadence status poll, no extra full fetch either
+    expect(fetchBrowseStatus).not.toHaveBeenCalled()
     expect(fetchFolderContents).toHaveBeenCalledTimes(1)
 
+    fetchFolderContents.mockResolvedValueOnce(rootContents('READY'))
     await act(async () => {
       await vi.advanceTimersByTimeAsync(45_000)
     })
     expect(fetchFolderContents).toHaveBeenCalledTimes(2)
+    expect(fetchFolderContents).toHaveBeenLastCalledWith(1, 0)
+    expect(fetchBrowseStatus).not.toHaveBeenCalled()
   })
 
   it('pauses polling while the document is hidden and resumes on visibilitychange', async () => {
@@ -102,19 +139,18 @@ describe('useBrowseTree auto-refresh', () => {
     expect(fetchFolderContents).toHaveBeenCalledTimes(1)
 
     Object.defineProperty(document, 'hidden', { configurable: true, value: true })
-    fetchFolderContents.mockResolvedValueOnce(rootContents('INDEXING'))
     await act(async () => {
       await vi.advanceTimersByTimeAsync(15_000)
     })
-    expect(fetchFolderContents).toHaveBeenCalledTimes(1)
+    expect(fetchBrowseStatus).not.toHaveBeenCalled()
 
     Object.defineProperty(document, 'hidden', { configurable: true, value: false })
-    fetchFolderContents.mockResolvedValueOnce(rootContents('READY'))
+    fetchBrowseStatus.mockResolvedValueOnce(statusResponse('READY'))
     await act(async () => {
       document.dispatchEvent(new Event('visibilitychange'))
       await vi.advanceTimersByTimeAsync(0)
     })
-    expect(fetchFolderContents).toHaveBeenCalledTimes(2)
+    expect(fetchBrowseStatus).toHaveBeenCalledTimes(1)
   })
 
   it('does not poll when VITE_BROWSE_REFRESH_SECONDS is 0', async () => {
@@ -130,9 +166,10 @@ describe('useBrowseTree auto-refresh', () => {
       await vi.advanceTimersByTimeAsync(120_000)
     })
     expect(fetchFolderContents).toHaveBeenCalledTimes(1)
+    expect(fetchBrowseStatus).not.toHaveBeenCalled()
   })
 
-  it('refreshDocumentStatuses re-fetches the root and every expanded folder on demand', async () => {
+  it('refreshDocumentStatuses re-fetches the root and every expanded folder via the full fetch, on demand', async () => {
     fetchFolderContents.mockImplementation(async (folderId: number) => ({
       folder: {
         folder_id: folderId,
@@ -170,5 +207,57 @@ describe('useBrowseTree auto-refresh', () => {
     expect(fetchFolderContents).toHaveBeenCalledWith(1, 0)
     expect(fetchFolderContents).toHaveBeenCalledWith(2, 0)
     expect(fetchFolderContents).toHaveBeenCalledTimes(4)
+    expect(fetchBrowseStatus).not.toHaveBeenCalled()
+  })
+
+  it('skips a fast-cadence tick while the previous one is still in flight', async () => {
+    fetchFolderContents.mockResolvedValueOnce(rootContents('INDEXING'))
+    const result = await initHook()
+    expect(fetchFolderContents).toHaveBeenCalledTimes(1)
+
+    const slow = deferred<ReturnType<typeof statusResponse>>()
+    fetchBrowseStatus.mockReturnValueOnce(slow.promise)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000) // tick 1 — starts the slow status fetch
+    })
+    expect(fetchBrowseStatus).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000) // tick 2 — must be skipped, still in flight
+    })
+    expect(fetchBrowseStatus).toHaveBeenCalledTimes(1)
+
+    slow.resolve(statusResponse('READY'))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(result.current.activeFolderContents?.documents[0].indexing_status).toBe('READY')
+  })
+
+  it('manual refresh waits for an in-flight auto poll instead of double-fetching', async () => {
+    fetchFolderContents.mockResolvedValueOnce(rootContents('INDEXING'))
+    const result = await initHook()
+    expect(fetchFolderContents).toHaveBeenCalledTimes(1)
+
+    const slow = deferred<ReturnType<typeof statusResponse>>()
+    fetchBrowseStatus.mockReturnValueOnce(slow.promise)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000) // starts the in-flight status poll
+    })
+    expect(fetchBrowseStatus).toHaveBeenCalledTimes(1)
+
+    const manualRefreshPromise = result.current.refreshDocumentStatuses()
+
+    slow.resolve(statusResponse('INDEXING'))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    await manualRefreshPromise
+
+    // Piggy-backed on the in-flight poll instead of starting its own
+    // full folder re-fetch.
+    expect(fetchFolderContents).toHaveBeenCalledTimes(1)
   })
 })
