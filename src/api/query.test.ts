@@ -523,3 +523,54 @@ describe('sendMessage error handling', () => {
     ).rejects.toThrow(QUERY_PERMISSION_DENIED_ERROR)
   })
 })
+
+describe('sendMessage progress forwarding', () => {
+  it('forwards the full progress event payload (stage included) to onProgress', async () => {
+    scriptedEvents = [
+      { event: 'progress', data: { stage: 'retrieved', candidates: 3, distinct_items: 2 } },
+      { event: 'answer', data: { text: 'Done.' } },
+      { event: 'done', data: { duration_ms: 5 } },
+    ]
+
+    const onProgress = vi.fn()
+
+    await sendMessage({
+      chatId: 'c1',
+      message: 'What is in the contract?',
+      documents: ['doc1'],
+      callbacks: { onProgress },
+    })
+
+    expect(onProgress).toHaveBeenCalledWith('retrieved', {
+      stage: 'retrieved',
+      candidates: 3,
+      distinct_items: 2,
+    })
+  })
+
+  it('forwards a nested "message" progress event payload the same way', async () => {
+    scriptedEvents = [
+      {
+        event: 'message',
+        data: { type: 'progress', stage: 'reranking', total: 4 },
+      },
+      { event: 'answer', data: { text: 'Done.' } },
+      { event: 'done', data: { duration_ms: 5 } },
+    ]
+
+    const onProgress = vi.fn()
+
+    await sendMessage({
+      chatId: 'c1',
+      message: 'What is in the contract?',
+      documents: ['doc1'],
+      callbacks: { onProgress },
+    })
+
+    expect(onProgress).toHaveBeenCalledWith('reranking', {
+      type: 'progress',
+      stage: 'reranking',
+      total: 4,
+    })
+  })
+})

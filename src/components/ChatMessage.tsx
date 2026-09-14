@@ -1,27 +1,40 @@
 import { Typography } from 'antd'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useRef } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { type, typeColor } from '../styles/typography'
 import { radius } from '../styles/theme'
 import { createAnswerMarkdownComponents, createStreamingTailPlugin } from '../utils/markdownRenderers'
+import { useElapsedSeconds } from '../hooks/useElapsedSeconds'
 import type { ChatMessage, CoverageInfo, Source } from '../types'
 import CitationList from './CitationList'
 
 const { Text } = Typography
 
-function ThinkingIndicator({ label }: { label?: string }) {
-  const [elapsed, setElapsed] = useState(0)
+/** The long, silent phase (mostly `generating`, on CPU) is when a bare
+ * label starts looking stuck — this is when to start ticking a
+ * " · {n}s" suffix onto it, driven by the message's own `startedAt` (via
+ * `useElapsedSeconds`) rather than a per-component mount time, so the count
+ * matches however long the whole answer has actually been in flight. */
+function shouldTickLabel(stage: string | undefined, elapsedSeconds: number): boolean {
+  return stage === 'generating' || elapsedSeconds >= 4
+}
 
-  useEffect(() => {
-    const startedAt = Date.now()
-    const tick = () => setElapsed(Math.floor((Date.now() - startedAt) / 1000))
-    tick()
-    const id = window.setInterval(tick, 1000)
-    return () => window.clearInterval(id)
-  }, [])
+function ThinkingIndicator({ message }: { message: ChatMessage }) {
+  // `message.startedAt` is set by AppLayout when the placeholder assistant
+  // message is created; a flow that doesn't set it (e.g. Extract metadata)
+  // falls back to this component's own mount time so the indicator still
+  // counts up from something sensible.
+  const fallbackStartedAtRef = useRef(Date.now())
+  const startedAt = message.startedAt ?? fallbackStartedAtRef.current
+  const elapsed = useElapsedSeconds(startedAt, true)
 
-  const headline = label ?? 'Getting started…'
+  const label = message.progressLabel
+  const headline = label
+    ? shouldTickLabel(message.progressStage, elapsed)
+      ? `${label} · ${elapsed}s`
+      : label
+    : 'Getting started…'
 
   return (
     <div className="space-y-1" aria-live="polite">
@@ -31,6 +44,23 @@ function ThinkingIndicator({ label }: { label?: string }) {
       <span className={`${type.caption} ${typeColor.muted} block`}>{elapsed}s</span>
     </div>
   )
+}
+
+/** The short progress label shown above the answer once streaming has
+ * started but no content has arrived yet (between citation and generating
+ * events, say). Ticks the same " · {n}s" suffix as `ThinkingIndicator` once
+ * the silent phase has run long enough — using the same `startedAt` so the
+ * two never disagree about how long the query has been running. */
+function StreamingProgressLabel({ message }: { message: ChatMessage }) {
+  const active = message.status === 'streaming' && !message.content
+  const elapsed = useElapsedSeconds(message.startedAt, active)
+  const label = message.progressLabel
+  if (!label) return null
+
+  const text =
+    active && shouldTickLabel(message.progressStage, elapsed) ? `${label} · ${elapsed}s` : label
+
+  return <p className={`${type.caption} ${typeColor.muted}`}>{text}</p>
 }
 
 function ErrorMessage({
@@ -148,7 +178,7 @@ function AssistantMessage({ message }: AssistantMessageProps) {
     return (
       <div className="space-y-2">
         <CoverageNotice coverage={message.coverage} />
-        <ThinkingIndicator label={message.progressLabel} />
+        <ThinkingIndicator message={message} />
       </div>
     )
   }
@@ -156,9 +186,7 @@ function AssistantMessage({ message }: AssistantMessageProps) {
   return (
     <div className="space-y-3">
       <CoverageNotice coverage={message.coverage} />
-      {message.status === 'streaming' && message.progressLabel && (
-        <p className={`${type.caption} ${typeColor.muted}`}>{message.progressLabel}</p>
-      )}
+      {message.status === 'streaming' && <StreamingProgressLabel message={message} />}
       <AnswerContent message={message} />
       {message.interrupted && <InterruptedNote />}
 

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import React from 'react'
 import ChatMessageItem from './ChatMessage'
 import type { ChatMessage, Source } from '../types'
@@ -187,5 +187,100 @@ describe('interrupted answer note', () => {
     )
 
     expect(screen.queryByText('Answer interrupted.')).not.toBeInTheDocument()
+  })
+})
+
+describe('progress label elapsed-time ticker', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('appends " · {n}s" to the thinking headline once the generating stage has been reached', () => {
+    const startedAt = Date.now()
+    render(
+      <ChatMessageItem
+        message={assistantMessage({
+          status: 'thinking',
+          progressLabel: 'Writing your answer…',
+          progressStage: 'generating',
+          startedAt,
+        })}
+      />,
+    )
+
+    expect(screen.getByText('Writing your answer… · 0s')).toBeInTheDocument()
+
+    act(() => {
+      vi.advanceTimersByTime(2000)
+    })
+    expect(screen.getByText('Writing your answer… · 2s')).toBeInTheDocument()
+  })
+
+  it('does not tick a non-generating stage until 4 seconds have elapsed', () => {
+    const startedAt = Date.now()
+    render(
+      <ChatMessageItem
+        message={assistantMessage({
+          status: 'thinking',
+          progressLabel: 'Understanding your question…',
+          progressStage: 'classifying',
+          startedAt,
+        })}
+      />,
+    )
+
+    expect(screen.getByText('Understanding your question…')).toBeInTheDocument()
+    expect(screen.queryByText(/Understanding your question… ·/)).not.toBeInTheDocument()
+
+    act(() => {
+      vi.advanceTimersByTime(4000)
+    })
+    expect(screen.getByText('Understanding your question… · 4s')).toBeInTheDocument()
+  })
+
+  it('ticks the streaming progress label the same way while no content has arrived yet', () => {
+    const startedAt = Date.now()
+    render(
+      <ChatMessageItem
+        message={assistantMessage({
+          status: 'streaming',
+          content: '',
+          progressLabel: 'Writing your answer from A.pdf…',
+          progressStage: 'generating',
+          startedAt,
+        })}
+      />,
+    )
+
+    expect(screen.getByText('Writing your answer from A.pdf… · 0s')).toBeInTheDocument()
+
+    act(() => {
+      vi.advanceTimersByTime(3000)
+    })
+    expect(screen.getByText('Writing your answer from A.pdf… · 3s')).toBeInTheDocument()
+  })
+
+  it('does not append the ticker suffix to the streaming label once content has arrived', () => {
+    render(
+      <ChatMessageItem
+        message={assistantMessage({
+          status: 'streaming',
+          content: 'Partial answer',
+          progressLabel: 'Writing your answer…',
+          progressStage: 'generating',
+          startedAt: Date.now(),
+        })}
+      />,
+    )
+
+    // The label itself may still be shown (cleared separately once a delta
+    // arrives, in AppLayout), but the elapsed-time ticker only applies to
+    // the silent, content-free phase.
+    expect(screen.getByText('Writing your answer…')).toBeInTheDocument()
+    expect(screen.queryByText(/Writing your answer… ·/)).not.toBeInTheDocument()
   })
 })

@@ -12,7 +12,7 @@ import { useBrowseTree } from '../hooks/useBrowseTree'
 import { useDocumentSelection } from '../hooks/useDocumentSelection'
 import { useResizableWidth } from '../hooks/useResizableWidth'
 import { type, typeColor } from '../styles/typography'
-import { citationsToSources, mergeCitations } from '../utils/citations'
+import { citationLabel, citationsToSources, displayFilename, mergeCitations } from '../utils/citations'
 import { appendStreamDelta } from '../utils/appendStreamDelta'
 import { formatProgressStage, formatRouteLabel } from '../utils/queryProgress'
 import { loadChatHistory, persistChatHistory } from '../utils/chatPersistence'
@@ -96,6 +96,11 @@ export default function AppLayout() {
   const browse = useBrowseTree(handleDocumentsLoaded)
   const abortControllerRef = useRef<AbortController | null>(null)
   const streamingCitationsRef = useRef<Citation[]>([])
+  // Distinct display names from citation events received so far this
+  // query — a Set to de-duplicate while preserving first-seen order, fed
+  // into the "generating" progress label ("Writing your answer from
+  // A.pdf and B.pdf…").
+  const citationFilenamesRef = useRef<Set<string>>(new Set())
   const lastProgressStageRef = useRef<string | undefined>(undefined)
   const hadPartialAnswerRef = useRef(false)
 
@@ -345,6 +350,10 @@ export default function AppLayout() {
         })
 
       let scopeDocuments = selectedDocs
+      // Display names of the documents actually in scope for this query —
+      // resolved once scope validation succeeds, used to personalize the
+      // "retrieving" progress label ("Searching A.pdf and B.pdf…").
+      let scopeFilenames: string[] = []
 
       try {
         const scope = await validateQueryScope(selectedDocs, controller.signal)
@@ -359,6 +368,10 @@ export default function AppLayout() {
         }
 
         scopeDocuments = scope.accessible_document_ids
+        scopeFilenames = scopeDocuments
+          .map((id) => selection.documentMeta.get(id)?.filename)
+          .filter((name): name is string => Boolean(name))
+          .map(displayFilename)
 
         if (scopeDocuments.length === 0) {
           const reason =
@@ -412,6 +425,7 @@ export default function AppLayout() {
         role: 'assistant',
         content: '',
         status: 'thinking',
+        startedAt,
       }
 
       shouldStickToBottomRef.current = true
@@ -427,6 +441,11 @@ export default function AppLayout() {
       requestAnimationFrame(() => scrollToBottom('auto'))
 
       streamingCitationsRef.current = []
+      citationFilenamesRef.current = new Set()
+      const progressContext = () => ({
+        filenames: scopeFilenames,
+        citationFilenames: [...citationFilenamesRef.current],
+      })
       let coverage: CoverageInfo | undefined
 
       try {
@@ -445,12 +464,13 @@ export default function AppLayout() {
                 coverage: c,
               }))
             },
-            onProgress: (stage) => {
+            onProgress: (stage, payload) => {
               lastProgressStageRef.current = stage
               updateAssistantMessage(activeChatId, (msg) => ({
                 ...msg,
                 status: msg.content ? 'streaming' : 'thinking',
-                progressLabel: formatProgressStage(stage),
+                progressLabel: formatProgressStage(stage, payload, progressContext()),
+                progressStage: stage,
               }))
             },
             onRoute: (strategy) => {
@@ -498,10 +518,24 @@ export default function AppLayout() {
                 batch,
               )
               const citations = streamingCitationsRef.current
-              updateAssistantMessage(activeChatId, (msg) => ({
-                ...msg,
-                sources: citationsToSources(citations),
-              }))
+              for (const c of batch) {
+                citationFilenamesRef.current.add(citationLabel(c))
+              }
+              updateAssistantMessage(activeChatId, (msg) => {
+                const next: ChatMessage = {
+                  ...msg,
+                  sources: citationsToSources(citations),
+                }
+                // Citations arrive right before the "generating" progress
+                // event — if nothing has streamed in yet, show the
+                // generating label with the citation names now instead of
+                // waiting for that event.
+                if (!msg.content) {
+                  next.progressLabel = formatProgressStage('generating', {}, progressContext())
+                  next.progressStage = 'generating'
+                }
+                return next
+              })
             },
           },
         })

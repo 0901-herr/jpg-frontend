@@ -26,6 +26,13 @@ export interface ChatMessage {
   status?: 'thinking' | 'streaming' | 'complete' | 'error'
   /** Live pipeline stage while status is thinking (from RAG progress SSE). */
   progressLabel?: string
+  /** Raw stage name behind `progressLabel` (e.g. "generating") — lets the
+   * component that renders the label decide when to append an elapsed-time
+   * ticker without re-parsing the formatted sentence. */
+  progressStage?: string
+  /** Epoch ms when this assistant placeholder was created — the basis for
+   * the elapsed-time ticker shown during the silent generation phase. */
+  startedAt?: number
   /** Raw, unattributed preview text from `delta` SSE events for the
    * segment currently being generated — rendered dimmed, ahead of
    * `content`. Reset to '' each time an `answer` segment finalizes that

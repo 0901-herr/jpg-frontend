@@ -25,7 +25,11 @@ export interface CoverageEvent {
 
 export interface StreamQueryCallbacks {
   onCoverage?: (coverage: CoverageEvent) => void
-  onProgress?: (stage: string) => void
+  /** `payload` is the full progress event data (stage included) — e.g.
+   * `{ stage: 'retrieved', candidates: 3, distinct_items: 2 }` — so callers
+   * can build a detailed, stage-specific label instead of a fixed sentence
+   * per stage. */
+  onProgress?: (stage: string, payload: Record<string, unknown>) => void
   onRoute?: (strategy: string) => void
   /** Raw, safe-to-reveal token text from a `delta` SSE event — a live
    * preview of the segment currently being generated. Never accumulated

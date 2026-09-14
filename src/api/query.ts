@@ -134,7 +134,7 @@ function dispatchNestedMessageEvent(
   if (nestedType === 'progress') {
     const stage =
       readString(obj, 'stage') ?? readString(obj, 'status') ?? readString(obj, 'phase')
-    if (stage) callbacks.onProgress?.(stage)
+    if (stage) callbacks.onProgress?.(stage, obj)
     return true
   }
 
@@ -224,7 +224,7 @@ async function streamQuery(
           case 'progress': {
             const obj = asRecord(data)
             const stage = obj ? readString(obj, 'stage') : undefined
-            if (stage) callbacks.onProgress?.(stage)
+            if (stage) callbacks.onProgress?.(stage, obj ?? {})
             break
           }
           case 'route': {
