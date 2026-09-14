@@ -139,8 +139,8 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
       <Alert
         type="warning"
         showIcon
-        message="Could not load folders"
-        description={initError}
+        message={initError.title}
+        description={initError.body}
         className="!text-xs !m-0"
       />
     )

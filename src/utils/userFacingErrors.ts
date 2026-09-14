@@ -118,3 +118,32 @@ export function toUserFacingQueryError(
 
   return QUERY_GENERIC_ERROR
 }
+
+/** Title + body shown when the sidebar's folder tree fails to load
+ * initially (`useBrowseTree`'s `initError` path) — UX P1-5 / scope item 12.
+ * Distinct from `toUserFacingQueryError` above (query-flow errors are a
+ * single string, not a title+body pair) but deliberately similar in shape:
+ * a permission problem and a server/network problem must never render the
+ * same copy, and neither ever surfaces the raw `err.message`. */
+export interface FolderLoadError {
+  title: string
+  body: string
+}
+
+export const FOLDER_LOAD_PERMISSION_ERROR: FolderLoadError = {
+  title: 'You do not have access',
+  body: 'Your LogicalDOC session does not allow browsing these folders. Reopen AI Chat from LogicalDOC.',
+}
+
+export const FOLDER_LOAD_SERVER_ERROR: FolderLoadError = {
+  title: 'Could not load folders',
+  body: 'The document service is temporarily unavailable. Try again in a moment.',
+}
+
+/** 401 is handled separately (routes to the session-expired page) before
+ * this is ever called — `httpStatus` here is only 403 or anything else
+ * (5xx, a network failure, or an unexpected non-ApiError exception). */
+export function toUserFacingFolderLoadError(httpStatus: number | undefined): FolderLoadError {
+  if (httpStatus === 403) return FOLDER_LOAD_PERMISSION_ERROR
+  return FOLDER_LOAD_SERVER_ERROR
+}

@@ -14,10 +14,13 @@ function storageKey(userId: string): string {
   return `docu_chat_history_${userId}`
 }
 
-function sanitizeMessage(message: ChatMessage): ChatMessage | null {
-  if (message.status === 'thinking' || message.status === 'streaming') {
-    return null
-  }
+function sanitizeMessage(message: ChatMessage): ChatMessage {
+  // UX P1-4: a message still mid-stream at persist time (page reload,
+  // browser hiccup) must be kept, not silently dropped — with whatever
+  // text had arrived so far, plus a note explaining it was interrupted so
+  // it renders as *something happened here*, not a vanished answer. If
+  // nothing had arrived yet, this is just the question with the note.
+  const wasInterrupted = message.status === 'thinking' || message.status === 'streaming'
   return {
     id: message.id,
     role: message.role,
@@ -25,15 +28,14 @@ function sanitizeMessage(message: ChatMessage): ChatMessage | null {
     fileTags: message.fileTags,
     sources: message.sources,
     status: message.status === 'error' ? 'error' : 'complete',
+    interrupted: wasInterrupted || message.interrupted,
     thinkingSeconds: message.thinkingSeconds,
     coverage: message.coverage,
   }
 }
 
 function sanitizeSession(session: ChatSession): ChatSession {
-  const messages = session.messages
-    .map(sanitizeMessage)
-    .filter((message): message is ChatMessage => message !== null)
+  const messages = session.messages.map(sanitizeMessage)
   return {
     id: session.id,
     title: session.title.trim() || 'New chat',

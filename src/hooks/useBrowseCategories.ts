@@ -47,9 +47,16 @@ export function useBrowseCategories(
         if (activeFolderId != null) {
           await refreshActiveFolder()
         }
-      } catch (err) {
+      } catch {
         if (controller.signal.aborted) return
-        setServerCategories(null)
+        // A transient failure on this fetch (e.g. one flaky call while
+        // documents are still settling, which re-triggers this effect on
+        // every status change) must keep showing the last-known categories
+        // rather than blanking the list to "no categories" (UX P1-3).
+        // Since the initial state is already `null`, an actual *first*
+        // load failure still correctly falls through to the empty state —
+        // there's simply nothing earlier to preserve.
+        setServerCategories((prev) => prev)
       } finally {
         if (!controller.signal.aborted) {
           setCategoriesLoading(false)

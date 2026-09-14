@@ -60,6 +60,63 @@ describe('useBrowseCategories', () => {
     ])
   })
 
+  it('keeps the last-known categories (and note) when a later re-fetch fails transiently', async () => {
+    vi.mocked(fetchBrowseCategories).mockResolvedValueOnce({
+      categories: [{ name: 'Contracts', count: 1 }],
+      uncategorized_count: 2,
+      accessible_document_ids: ['1'],
+    })
+    const refreshActiveFolder = vi.fn(async () => {})
+
+    const { result, rerender } = renderHook(
+      ({ documents }: { documents: BrowseDocumentItem[] }) =>
+        useBrowseCategories(documents, {
+          enabled: true,
+          activeFolderId: 4,
+          refreshActiveFolder,
+        }),
+      { initialProps: { documents: [doc('1')] } },
+    )
+
+    await waitFor(() =>
+      expect(result.current.serverCategories?.categories).toEqual([
+        { name: 'Contracts', count: 1 },
+      ]),
+    )
+
+    // A second document appears (e.g. the fast status poll just resolved
+    // its indexing) — the effect re-runs, and this time the call fails.
+    vi.mocked(fetchBrowseCategories).mockRejectedValueOnce(new Error('network blip'))
+    rerender({ documents: [doc('1'), doc('2')] })
+
+    await waitFor(() => expect(fetchBrowseCategories).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(result.current.categoriesLoading).toBe(false))
+
+    // Still showing the last-known good list, not "no categories".
+    expect(result.current.serverCategories?.categories).toEqual([
+      { name: 'Contracts', count: 1 },
+    ])
+    expect(result.current.serverCategories?.uncategorized_count).toBe(2)
+  })
+
+  it('shows no categories only when the very first load fails (nothing to fall back on)', async () => {
+    vi.mocked(fetchBrowseCategories).mockRejectedValueOnce(new Error('boom'))
+    // Stable across re-renders — see the auto-refresh describe block's own
+    // note on why an inline `vi.fn()` here would re-trigger the effect.
+    const refreshActiveFolder = vi.fn(async () => {})
+
+    const { result } = renderHook(() =>
+      useBrowseCategories([doc('1')], {
+        enabled: true,
+        activeFolderId: 4,
+        refreshActiveFolder,
+      }),
+    )
+
+    await waitFor(() => expect(result.current.categoriesLoading).toBe(false))
+    expect(result.current.serverCategories).toBeNull()
+  })
+
   it('does not fetch when category view is disabled', () => {
     renderHook(() =>
       useBrowseCategories([doc('1')], {

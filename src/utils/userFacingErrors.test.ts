@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
+  FOLDER_LOAD_PERMISSION_ERROR,
+  FOLDER_LOAD_SERVER_ERROR,
   QUERY_ALMOST_DONE_ERROR,
   QUERY_PARTIAL_ANSWER_ERROR,
   QUERY_PERMISSION_DENIED_ERROR,
   QUERY_SERVER_ERROR,
   QUERY_SESSION_EXPIRED_ERROR,
+  toUserFacingFolderLoadError,
   toUserFacingQueryError,
 } from './userFacingErrors'
 
@@ -42,5 +45,19 @@ describe('toUserFacingQueryError', () => {
         hadPartialAnswer: true,
       }),
     ).toBe(QUERY_SERVER_ERROR)
+  })
+})
+
+describe('toUserFacingFolderLoadError', () => {
+  it('maps 403 to the permission-denied title and body', () => {
+    expect(toUserFacingFolderLoadError(403)).toEqual(FOLDER_LOAD_PERMISSION_ERROR)
+  })
+
+  it('maps a 5xx status to the server-unavailable title and body', () => {
+    expect(toUserFacingFolderLoadError(502)).toEqual(FOLDER_LOAD_SERVER_ERROR)
+  })
+
+  it('maps an unknown/network failure (no HTTP status) to the server-unavailable copy', () => {
+    expect(toUserFacingFolderLoadError(undefined)).toEqual(FOLDER_LOAD_SERVER_ERROR)
   })
 })

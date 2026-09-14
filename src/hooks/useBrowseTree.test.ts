@@ -332,3 +332,62 @@ describe('useBrowseTree auto-refresh', () => {
     debugSpy.mockRestore()
   })
 })
+
+describe('useBrowseTree init error copy', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.doUnmock('../config/browse')
+  })
+
+  it('shows the permission-denied title/body for a 403 on the initial root load, never the raw message', async () => {
+    const ApiError = await importApiError()
+    fetchBrowseRoot.mockRejectedValueOnce(new ApiError('Forbidden: no access to root folder', 403))
+
+    const result = await initHook()
+
+    expect(result.current.sessionExpired).toBe(false)
+    expect(result.current.initError).toEqual({
+      title: 'You do not have access',
+      body: 'Your LogicalDOC session does not allow browsing these folders. Reopen AI Chat from LogicalDOC.',
+    })
+  })
+
+  it('shows the server-unavailable title/body for a 5xx on the initial root load, never the raw message', async () => {
+    const ApiError = await importApiError()
+    fetchBrowseRoot.mockRejectedValueOnce(new ApiError('Bad Gateway', 502))
+
+    const result = await initHook()
+
+    expect(result.current.initError).toEqual({
+      title: 'Could not load folders',
+      body: 'The document service is temporarily unavailable. Try again in a moment.',
+    })
+  })
+
+  it('shows the server-unavailable copy for an unexpected non-ApiError exception too', async () => {
+    fetchBrowseRoot.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+
+    const result = await initHook()
+
+    expect(result.current.initError).toEqual({
+      title: 'Could not load folders',
+      body: 'The document service is temporarily unavailable. Try again in a moment.',
+    })
+  })
+
+  it('still routes a 401 to the session-expired state, not initError', async () => {
+    const ApiError = await importApiError()
+    fetchBrowseRoot.mockRejectedValueOnce(new ApiError('Unauthorized', 401))
+
+    const result = await initHook()
+
+    expect(result.current.sessionExpired).toBe(true)
+    expect(result.current.initError).toBeNull()
+  })
+})

@@ -12,6 +12,7 @@ import {
   loadPersistedActiveFolder,
   persistActiveFolder,
 } from '../utils/browsePersistence'
+import { toUserFacingFolderLoadError, type FolderLoadError } from '../utils/userFacingErrors'
 
 /** Fields the cheap /browse/status endpoint can patch onto a cached document. */
 type DocumentStatusPatch = Pick<
@@ -97,7 +98,7 @@ export function useBrowseTree(onDocumentsLoaded?: (event: DocumentsLoadedEvent) 
   )
   const [loadingFolderIds, setLoadingFolderIds] = useState<Set<number>>(new Set())
   const [loadingMoreFolderId, setLoadingMoreFolderId] = useState<number | null>(null)
-  const [initError, setInitError] = useState<string | null>(null)
+  const [initError, setInitError] = useState<FolderLoadError | null>(null)
   const [sessionExpired, setSessionExpired] = useState(false)
   const [isInitializing, setIsInitializing] = useState(true)
 
@@ -288,7 +289,11 @@ export function useBrowseTree(onDocumentsLoaded?: (event: DocumentsLoadedEvent) 
         if (err instanceof ApiError && err.status === 401) {
           setSessionExpired(true)
         } else {
-          setInitError(err instanceof Error ? err.message : 'Could not load folders')
+          // 403/5xx/network/unexpected — never the raw err.message (UX
+          // P1-5 / scope item 12): a permission problem and a server
+          // problem must read as clearly different, plain-language copy.
+          const httpStatus = err instanceof ApiError ? err.status : undefined
+          setInitError(toUserFacingFolderLoadError(httpStatus))
         }
       } finally {
         if (!cancelled) setIsInitializing(false)
