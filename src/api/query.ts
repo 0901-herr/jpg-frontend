@@ -164,6 +164,10 @@ async function streamQuery(
   }
 
   let content = ''
+  // Tracks the previous `answer` segment's citation ref (e.g. "[Doc3]") so
+  // a segment that switches to a different source starts a new paragraph
+  // instead of running on from the last one — see the 'answer' case below.
+  let lastAnswerRef: string | null = null
   let citations: Citation[] = []
   let coverage: CoverageEvent | undefined
   let durationMs: number | undefined
@@ -205,9 +209,19 @@ async function streamQuery(
             if (segmentText) {
               const ref = citationRefForSegment(data, citations)
               const rawDelta = ref ? joinAnswerSegment(segmentText, ref) : segmentText
-              const joined = joinAnswerSegment(content, rawDelta)
+              // Each `answer` event is a whole citation-attributed fact
+              // (see joinAnswerSegment's own doc comment) — when this
+              // segment cites a different source than the last one, it's
+              // a new fact, not a continuation of the same sentence, so
+              // start a new paragraph rather than running it on with a
+              // single space (the flat "wall of text" readability bug).
+              const startsNewParagraph =
+                content.length > 0 && lastAnswerRef !== null && ref !== lastAnswerRef
+              const delta = startsNewParagraph ? `\n\n${rawDelta}` : rawDelta
+              const joined = joinAnswerSegment(content, delta)
               const appended = joined.slice(content.length)
               content = joined
+              lastAnswerRef = ref
               if (appended) callbacks.onAnswer?.(appended)
             }
             break

@@ -99,6 +99,63 @@ describe('sendMessage delta handling', () => {
     expect(result.content).toBe('The sky is blue.')
   })
 
+  it('starts a new paragraph when consecutive answer segments cite different sources', async () => {
+    // Regression: multi-fact answers (e.g. a meeting-minutes summary with
+    // separate "topics"/"decisions"/"actions" segments, each citing a
+    // different chunk) used to run on into one unreadable block, since
+    // every answer segment was joined with a single space regardless of
+    // whether it started a genuinely new fact.
+    scriptedEvents = [
+      { event: 'citation', data: { doc_ref: '[Doc1]', chunk_id: 'c1', item_id: 'doc1', page: 1 } },
+      { event: 'citation', data: { doc_ref: '[Doc2]', chunk_id: 'c2', item_id: 'doc1', page: 2 } },
+      {
+        event: 'answer',
+        data: { text: 'Topics discussed included X.', chunk_id: 'c1', item_id: 'doc1', page: 1 },
+      },
+      {
+        event: 'answer',
+        data: { text: 'Decisions made included Y.', chunk_id: 'c2', item_id: 'doc1', page: 2 },
+      },
+      { event: 'done', data: {} },
+    ]
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'Summarize the meeting.',
+      documents: ['doc1'],
+      callbacks: {},
+    })
+
+    expect(result.content).toContain('\n\n')
+    expect(result.content.indexOf('Decisions made')).toBeGreaterThan(
+      result.content.indexOf('\n\n')
+    )
+  })
+
+  it('does not insert a paragraph break between consecutive segments citing the same source', async () => {
+    scriptedEvents = [
+      { event: 'citation', data: { doc_ref: '[Doc1]', chunk_id: 'c1', item_id: 'doc1', page: 1 } },
+      {
+        event: 'answer',
+        data: { text: 'The sky is blue', chunk_id: 'c1', item_id: 'doc1', page: 1 },
+      },
+      {
+        event: 'answer',
+        data: { text: ' during the day.', chunk_id: 'c1', item_id: 'doc1', page: 1 },
+      },
+      { event: 'done', data: {} },
+    ]
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'What color is the sky?',
+      documents: ['doc1'],
+      callbacks: {},
+    })
+
+    expect(result.content).not.toContain('\n\n')
+  })
+
   it('ignores a delta event with no text field', async () => {
     scriptedEvents = [
       { event: 'delta', data: {} },
