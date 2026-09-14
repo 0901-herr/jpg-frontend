@@ -1,4 +1,4 @@
-import { Checkbox, Spin, Tooltip } from 'antd'
+import { Checkbox, Spin } from 'antd'
 import { useMemo } from 'react'
 import type { BrowseDocumentItem } from '../api/types/browse'
 import { sidebar, typeColor } from '../styles/typography'
@@ -19,11 +19,6 @@ interface DocumentChecklistProps {
   onSelectAll: () => void
   onDeselectAll: () => void
   onLoadMore?: () => void
-}
-
-function showsIndexingHoverHint(doc: BrowseDocumentItem): boolean {
-  if (doc.queryable) return false
-  return doc.indexing_status === 'NOT_INDEXED' || doc.indexing_status === 'FAILED'
 }
 
 export default function DocumentChecklist({
@@ -82,10 +77,10 @@ export default function DocumentChecklist({
         const selectable = isDocumentSelectable(doc.indexing_status, doc.queryable)
         const hint = getDocumentSelectionHint(doc)
         const checked = selectedIds.has(doc.document_id)
-        const hoverHint = showsIndexingHoverHint(doc) ? (hint ?? 'Not indexed') : null
 
-        const row = (
+        return (
           <div
+            key={doc.document_id}
             className={`flex w-full items-center gap-2.5 py-2 ${
               !selectable ? 'opacity-45' : ''
             }`}
@@ -113,22 +108,10 @@ export default function DocumentChecklist({
                 )}
               </span>
             </label>
+            {/* Status detail is surfaced by the badge's own tooltip (status_reason) —
+                no separate row-level tooltip, to avoid showing the same text twice. */}
             <IndexingStatusBadge status={doc.indexing_status} statusReason={doc.status_reason} />
           </div>
-        )
-
-        if (!hoverHint) return <div key={doc.document_id}>{row}</div>
-
-        return (
-          <Tooltip
-            key={doc.document_id}
-            title={hoverHint}
-            placement="right"
-            mouseEnterDelay={0.2}
-            overlayClassName="docu-doc-status-tooltip"
-          >
-            {row}
-          </Tooltip>
         )
       })}
 
