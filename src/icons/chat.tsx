@@ -19,6 +19,7 @@ import LockOutlinedIcon from '@mui/icons-material/LockOutlined'
 import LogoutIcon from '@mui/icons-material/Logout'
 import MoreHorizIcon from '@mui/icons-material/MoreHoriz'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
+import RefreshOutlinedIcon from '@mui/icons-material/RefreshOutlined'
 import RemoveCircleOutlinedIcon from '@mui/icons-material/RemoveCircleOutlined'
 import ScheduleOutlinedIcon from '@mui/icons-material/ScheduleOutlined'
 import { appIcon } from './AppIcon'
@@ -46,6 +47,7 @@ export const ChatFolderIcon = appIcon(FolderOpenOutlinedIcon, 14)
 export const ChatAppsIcon = appIcon(AppsIcon, 14)
 export const ChatFolderSuffixIcon = appIcon(FolderOpenOutlinedIcon, 'inherit')
 export const ChatAppsSuffixIcon = appIcon(AppsIcon, 'inherit')
+export const ChatRefreshIcon = appIcon(RefreshOutlinedIcon, 14)
 
 export const StatusReadyIcon = appIcon(CheckCircleOutlinedIcon, 12)
 export const StatusIndexingIcon = appIcon(ScheduleOutlinedIcon, 12)

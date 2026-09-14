@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
-import { vi } from 'vitest'
+import { beforeEach, vi } from 'vitest'
 import FolderSidebar from './FolderSidebar'
 import * as useBrowseCategoriesModule from '../hooks/useBrowseCategories'
 import type { BrowseTreeState } from '../hooks/useBrowseTree'
@@ -47,6 +47,7 @@ function createBrowseFixture(overrides: Partial<BrowseTreeState> = {}): BrowseTr
     handleLoadTreeData: vi.fn(),
     handleLoadMoreDocuments: vi.fn(),
     refreshActiveFolder: vi.fn(),
+    refreshDocumentStatuses: vi.fn(),
     ...overrides,
   }
 }
@@ -135,5 +136,44 @@ describe('FolderSidebar category note', () => {
     expect(
       screen.getByText('No classification categories in this folder yet.'),
     ).toBeInTheDocument()
+  })
+})
+
+describe('FolderSidebar manual status refresh', () => {
+  beforeEach(() => {
+    vi.mocked(useBrowseCategoriesModule.useBrowseCategories).mockReturnValue({
+      serverCategories: null,
+      categoriesLoading: false,
+    })
+  })
+
+  it('re-fetches document status when the refresh button is clicked', async () => {
+    const refreshDocumentStatuses = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <FolderSidebar
+        browse={createBrowseFixture({ refreshDocumentStatuses })}
+        selection={createSelectionFixture()}
+      />,
+    )
+
+    const button = screen.getByRole('button', { name: 'Refresh document status' })
+    await user.click(button)
+
+    expect(refreshDocumentStatuses).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows a tooltip on hover', async () => {
+    const user = userEvent.setup()
+    render(
+      <FolderSidebar
+        browse={createBrowseFixture({ refreshDocumentStatuses: vi.fn() })}
+        selection={createSelectionFixture()}
+      />,
+    )
+
+    await user.hover(screen.getByRole('button', { name: 'Refresh document status' }))
+
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Refresh document status')
   })
 })

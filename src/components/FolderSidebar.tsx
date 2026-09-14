@@ -1,4 +1,4 @@
-import { Alert, Select, Spin, TreeSelect } from 'antd'
+import { Alert, Select, Spin, Tooltip, TreeSelect } from 'antd'
 import {
   ChatAppsIcon,
   ChatAppsSuffixIcon,
@@ -6,9 +6,10 @@ import {
   ChatDescriptionIcon,
   ChatFolderIcon,
   ChatFolderSuffixIcon,
+  ChatRefreshIcon,
 } from '../icons/chat'
 import type { AntTreeNodeProps } from 'antd/es/tree'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { sectionLabel } from '../styles/theme'
 import { sidebar, typeColor } from '../styles/typography'
 import type { BrowseTreeState } from '../hooks/useBrowseTree'
@@ -46,7 +47,20 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
     handleLoadTreeData,
     handleLoadMoreDocuments,
     refreshActiveFolder,
+    refreshDocumentStatuses,
   } = browse
+
+  const [isRefreshingStatus, setIsRefreshingStatus] = useState(false)
+
+  const handleRefreshStatus = useCallback(async () => {
+    if (isRefreshingStatus) return
+    setIsRefreshingStatus(true)
+    try {
+      await refreshDocumentStatuses()
+    } finally {
+      setIsRefreshingStatus(false)
+    }
+  }, [isRefreshingStatus, refreshDocumentStatuses])
 
   const folderDocuments = activeFolderContents?.documents ?? []
 
@@ -213,14 +227,27 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
             <ChatDescriptionIcon />
             Documents
           </span>
-          {documentsContextLabel && (
-            <span
-              className={`${sidebar.caption} ${typeColor.muted} truncate max-w-[45%]`}
-              title={documentsContextLabel}
-            >
-              {documentsContextLabel}
-            </span>
-          )}
+          <div className="flex min-w-0 items-center gap-1.5">
+            {documentsContextLabel && (
+              <span
+                className={`${sidebar.caption} ${typeColor.muted} truncate max-w-[110px]`}
+                title={documentsContextLabel}
+              >
+                {documentsContextLabel}
+              </span>
+            )}
+            <Tooltip title="Refresh document status" mouseEnterDelay={0.3}>
+              <button
+                type="button"
+                aria-label="Refresh document status"
+                onClick={() => void handleRefreshStatus()}
+                disabled={isRefreshingStatus}
+                className="flex shrink-0 items-center justify-center w-6 h-6 rounded-full text-[#8e8e8e] transition-colors hover:bg-[#ececec] hover:text-[#0d0d0d] disabled:opacity-50"
+              >
+                <ChatRefreshIcon />
+              </button>
+            </Tooltip>
+          </div>
         </div>
         <div className="flex flex-1 min-h-0 flex-col overflow-y-auto -mx-2.5 px-2.5">
           {viewMode === 'category' && categoryOptions.length === 0 ? (
