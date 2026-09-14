@@ -410,6 +410,13 @@ export function useBrowseTree(onDocumentsLoaded?: (event: DocumentsLoadedEvent) 
   // request.
   const inFlightRef = useRef<Promise<void> | null>(null)
 
+  // Set once the fast-cadence /browse/status call comes back 404 (the
+  // endpoint disabled on the adapter) — stops calling it again for the
+  // rest of the session instead of throwing on every tick. Other errors
+  // (network blips, 5xx) don't set this: they're transient, so the next
+  // tick should still try again.
+  const fastStatusPollDisabledRef = useRef(false)
+
   /**
    * Auto-poll ticks: it's fine to silently skip a tick entirely if a
    * fetch (another tick, or a manual refresh) is already outstanding —
@@ -474,12 +481,25 @@ export function useBrowseTree(onDocumentsLoaded?: (event: DocumentsLoadedEvent) 
       if (document.hidden) return
       void runIfIdle(async () => {
         if (hasUnsettledDocument) {
+          if (fastStatusPollDisabledRef.current) return
           if (cachedDocumentIds.length === 0) return
           const response = await fetchBrowseStatus(cachedDocumentIds)
           applyStatusPatches(response.documents)
         } else {
           await fetchAndMergeStatuses(expandedFolderIds)
         }
+      }).catch((error: unknown) => {
+        if (error instanceof ApiError && error.status === 404) {
+          if (!fastStatusPollDisabledRef.current) {
+            fastStatusPollDisabledRef.current = true
+            console.debug(
+              '[useBrowseTree] /browse/status returned 404 — disabling the fast status poll for this session.',
+            )
+          }
+          return
+        }
+        // Transient poll failure (network error, 5xx, etc.) — keep
+        // showing the last-known status and try again on the next tick.
       })
     }
 

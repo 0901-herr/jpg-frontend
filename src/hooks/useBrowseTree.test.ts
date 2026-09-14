@@ -62,6 +62,15 @@ function deferred<T>() {
   return { promise, resolve }
 }
 
+/** `vi.resetModules()` (in `beforeEach`) means `useBrowseTree.ts`'s own
+ * `../api/http` import resolves to a fresh module instance each test —
+ * `ApiError` must be fetched the same way so `instanceof` checks inside
+ * the hook actually match the errors these tests throw. */
+async function importApiError() {
+  const { ApiError } = await import('../api/http')
+  return ApiError
+}
+
 async function initHook() {
   const { useBrowseTree } = await import('./useBrowseTree')
   const { result } = renderHook(() => useBrowseTree())
@@ -263,5 +272,63 @@ describe('useBrowseTree auto-refresh', () => {
     expect(fetchFolderContents).toHaveBeenCalledTimes(2)
     expect(fetchFolderContents).toHaveBeenLastCalledWith(1, 0)
     expect(result.current.activeFolderContents?.documents[0].indexing_status).toBe('READY')
+  })
+
+  it('a rejecting fast-cadence poll never becomes an unhandled rejection, and keeps ticking on a non-404 error', async () => {
+    const unhandledRejections: unknown[] = []
+    const onUnhandledRejection = (reason: unknown) => unhandledRejections.push(reason)
+    process.on('unhandledRejection', onUnhandledRejection)
+
+    try {
+      fetchFolderContents.mockResolvedValueOnce(rootContents('INDEXING'))
+      await initHook()
+      const ApiError = await importApiError()
+
+      fetchBrowseStatus.mockRejectedValueOnce(new ApiError('Network error', 0))
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000)
+      })
+      expect(fetchBrowseStatus).toHaveBeenCalledTimes(1)
+
+      // Polling keeps ticking after a transient (non-404) failure.
+      fetchBrowseStatus.mockResolvedValueOnce(statusResponse('READY'))
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000)
+      })
+      expect(fetchBrowseStatus).toHaveBeenCalledTimes(2)
+
+      // Let any leftover microtasks (an unhandled rejection included) flush.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(unhandledRejections).toHaveLength(0)
+    } finally {
+      process.off('unhandledRejection', onUnhandledRejection)
+    }
+  })
+
+  it('stops the fast poll for the rest of the session after a 404 (endpoint disabled), logging once at debug level', async () => {
+    const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {})
+
+    fetchFolderContents.mockResolvedValueOnce(rootContents('INDEXING'))
+    await initHook()
+    const ApiError = await importApiError()
+
+    fetchBrowseStatus.mockRejectedValue(new ApiError('Not Found', 404))
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000) // tick 1 — 404s, disables the fast poll
+    })
+    expect(fetchBrowseStatus).toHaveBeenCalledTimes(1)
+    expect(debugSpy).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000) // tick 2 — must not call the endpoint again
+    })
+    expect(fetchBrowseStatus).toHaveBeenCalledTimes(1)
+    // Logged only once, not on every subsequent tick.
+    expect(debugSpy).toHaveBeenCalledTimes(1)
+
+    debugSpy.mockRestore()
   })
 })
