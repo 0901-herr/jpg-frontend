@@ -55,7 +55,11 @@ export async function fetchBrowseStatus(
     chunks.push(documentIds.slice(i, i + BROWSE_STATUS_MAX_IDS))
   }
 
-  const results = await Promise.all(
+  // Merge whatever chunks succeed — a single slow/failed chunk (out of
+  // potentially several hundred ids' worth) shouldn't blank out the status
+  // of every other document that DID come back. Only reject if every chunk
+  // failed, so callers can still tell a total outage from a partial one.
+  const settled = await Promise.allSettled(
     chunks.map((chunk) =>
       apiPost<BrowseStatusResponse>(
         '/browse/status',
@@ -66,7 +70,14 @@ export async function fetchBrowseStatus(
     ),
   )
 
-  return { documents: results.flatMap((result) => result.documents) }
+  const fulfilled = settled.filter(
+    (result): result is PromiseFulfilledResult<BrowseStatusResponse> => result.status === 'fulfilled',
+  )
+  if (fulfilled.length === 0) {
+    throw (settled[0] as PromiseRejectedResult).reason
+  }
+
+  return { documents: fulfilled.flatMap((result) => result.value.documents) }
 }
 
 export async function validateQueryScope(

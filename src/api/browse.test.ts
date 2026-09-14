@@ -101,6 +101,39 @@ describe('fetchBrowseStatus', () => {
     expect(apiPost).toHaveBeenNthCalledWith(2, '/browse/status', { document_ids: secondChunk }, true, undefined)
     expect(result.documents).toHaveLength(502)
   })
+
+  it('merges successful chunks and ignores a failed chunk', async () => {
+    const firstChunk = Array.from({ length: 500 }, (_, i) => String(i))
+    const secondChunk = ['500', '501']
+    vi.mocked(apiPost).mockImplementation(async (_path, body) => {
+      const ids = (body as { document_ids: string[] }).document_ids
+      if (ids === secondChunk || ids[0] === '500') throw new Error('adapter timeout')
+      return {
+        documents: ids.map((id) => ({
+          document_id: id,
+          indexing_status: 'READY' as const,
+          status_reason: null,
+          queryable: true,
+          summary_status: null,
+          classification_category: null,
+          rag_document_id: null,
+        })),
+      }
+    })
+
+    const result = await fetchBrowseStatus([...firstChunk, ...secondChunk])
+
+    expect(result.documents).toHaveLength(500)
+    expect(result.documents.map((doc) => doc.document_id)).not.toContain('500')
+  })
+
+  it('rejects only when every chunk fails', async () => {
+    const firstChunk = Array.from({ length: 500 }, (_, i) => String(i))
+    const secondChunk = ['500', '501']
+    vi.mocked(apiPost).mockRejectedValue(new Error('adapter down'))
+
+    await expect(fetchBrowseStatus([...firstChunk, ...secondChunk])).rejects.toThrow('adapter down')
+  })
 })
 
 describe('fetchDocumentSummary', () => {

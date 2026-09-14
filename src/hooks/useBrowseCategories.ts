@@ -83,11 +83,17 @@ export function useBrowseCategories(
     const seconds = hasUnsettled ? BROWSE_REFRESH_SECONDS : BROWSE_IDLE_REFRESH_SECONDS
     const documentIds = folderDocuments.map((doc) => doc.document_id)
 
-    const runExclusive = async (task: () => Promise<void>) => {
-      if (inFlightRef.current) {
-        await inFlightRef.current
-        return
-      }
+    // Skip-if-busy: `poll` is the ONLY caller of this guard (interval tick
+    // or a visibilitychange resume) — there is no separate "manual, must
+    // never no-op" caller here the way useBrowseTree's refreshDocumentStatuses
+    // is for its own poll. The manual refresh button re-fetches through
+    // useBrowseTree.refreshDocumentStatuses directly and never touches this
+    // guard, so silently skipping an overlapping tick is safe: the next
+    // interval tick (or the next visibilitychange) still runs and no
+    // user-initiated action is ever dropped. Named to match useBrowseTree's
+    // runIfIdle for the same skip-if-busy semantics.
+    const runIfIdle = async (task: () => Promise<void>) => {
+      if (inFlightRef.current) return
       const promise = task()
       inFlightRef.current = promise
       try {
@@ -99,7 +105,7 @@ export function useBrowseCategories(
 
     const poll = () => {
       if (document.hidden) return
-      void runExclusive(async () => {
+      void runIfIdle(async () => {
         if (hasUnsettled) {
           const result = await fetchBrowseStatus(documentIds)
           applyStatusPatches(result.documents)

@@ -235,7 +235,7 @@ describe('useBrowseTree auto-refresh', () => {
     expect(result.current.activeFolderContents?.documents[0].indexing_status).toBe('READY')
   })
 
-  it('manual refresh waits for an in-flight auto poll instead of double-fetching', async () => {
+  it('manual refresh waits for an in-flight auto poll, then still performs its own full fetch', async () => {
     fetchFolderContents.mockResolvedValueOnce(rootContents('INDEXING'))
     const result = await initHook()
     expect(fetchFolderContents).toHaveBeenCalledTimes(1)
@@ -248,6 +248,7 @@ describe('useBrowseTree auto-refresh', () => {
     })
     expect(fetchBrowseStatus).toHaveBeenCalledTimes(1)
 
+    fetchFolderContents.mockResolvedValueOnce(rootContents('READY'))
     const manualRefreshPromise = result.current.refreshDocumentStatuses()
 
     slow.resolve(statusResponse('INDEXING'))
@@ -256,8 +257,11 @@ describe('useBrowseTree auto-refresh', () => {
     })
     await manualRefreshPromise
 
-    // Piggy-backed on the in-flight poll instead of starting its own
-    // full folder re-fetch.
-    expect(fetchFolderContents).toHaveBeenCalledTimes(1)
+    // Manual refresh never silently no-ops: it waited for the in-flight
+    // status tick to settle, then still ran its own full folder re-fetch
+    // exactly once.
+    expect(fetchFolderContents).toHaveBeenCalledTimes(2)
+    expect(fetchFolderContents).toHaveBeenLastCalledWith(1, 0)
+    expect(result.current.activeFolderContents?.documents[0].indexing_status).toBe('READY')
   })
 })

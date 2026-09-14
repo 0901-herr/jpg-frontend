@@ -406,14 +406,36 @@ export function useBrowseTree(onDocumentsLoaded?: (event: DocumentsLoadedEvent) 
   // Only one browse fetch (auto poll or manual refresh) runs at a time.
   // LogicalDOC's box is small — a full folder re-fetch costs ~3 REST
   // calls per folder, so overlapping ticks (or a manual click while a
-  // poll is still outstanding) must never fire a second, redundant
-  // request. A later caller just waits for the in-flight one instead.
+  // poll is still outstanding) must never fire a second, concurrent
+  // request.
   const inFlightRef = useRef<Promise<void> | null>(null)
 
+  /**
+   * Auto-poll ticks: it's fine to silently skip a tick entirely if a
+   * fetch (another tick, or a manual refresh) is already outstanding —
+   * the next tick will pick up any change.
+   */
+  const runIfIdle = useCallback(async (task: () => Promise<void>) => {
+    if (inFlightRef.current) return
+    const promise = task()
+    inFlightRef.current = promise
+    try {
+      await promise
+    } finally {
+      inFlightRef.current = null
+    }
+  }, [])
+
+  /**
+   * Manual refresh: the user explicitly asked for fresh data, so this
+   * must always actually run — it may never silently no-op. If a poll
+   * tick is already in flight it waits for that one to finish first (so
+   * the two never run concurrently), then still performs its own full
+   * re-fetch.
+   */
   const runExclusive = useCallback(async (task: () => Promise<void>) => {
     if (inFlightRef.current) {
-      await inFlightRef.current
-      return
+      await inFlightRef.current.catch(() => {})
     }
     const promise = task()
     inFlightRef.current = promise
@@ -450,7 +472,7 @@ export function useBrowseTree(onDocumentsLoaded?: (event: DocumentsLoadedEvent) 
 
     const pollNow = () => {
       if (document.hidden) return
-      void runExclusive(async () => {
+      void runIfIdle(async () => {
         if (hasUnsettledDocument) {
           if (cachedDocumentIds.length === 0) return
           const response = await fetchBrowseStatus(cachedDocumentIds)
@@ -479,7 +501,7 @@ export function useBrowseTree(onDocumentsLoaded?: (event: DocumentsLoadedEvent) 
     cachedDocumentIds,
     fetchAndMergeStatuses,
     applyStatusPatches,
-    runExclusive,
+    runIfIdle,
   ])
 
   return {
