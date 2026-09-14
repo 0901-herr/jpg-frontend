@@ -63,6 +63,18 @@ export function joinAnswerSegment(existing: string, next: string): string {
   return needsSpace ? `${existing} ${next}` : existing + next
 }
 
+/** Matches a Markdown list-item marker ("- ", "* ", "• ", "1. ", "2) ") at
+ * the start of a line. */
+const LIST_MARKER_RE = /^\s*([-*•]|\d+[.)])\s/
+
+/** True if the last line of `text` is itself a Markdown list item — used to
+ * decide whether a following list-item segment continues the same list
+ * (single newline) or starts a new one (blank line first). */
+function endsWithListItemLine(text: string): boolean {
+  const lastLine = text.slice(text.lastIndexOf('\n') + 1)
+  return LIST_MARKER_RE.test(lastLine)
+}
+
 /** Find the citation an `answer` segment belongs to, by chunk_id (falling
  * back to item_id+page for segments without one), and return its doc_ref
  * (e.g. "[Doc1]") — the exact literal token splitAnswerByDocRefs (utils/
@@ -215,9 +227,38 @@ async function streamQuery(
               // a new fact, not a continuation of the same sentence, so
               // start a new paragraph rather than running it on with a
               // single space (the flat "wall of text" readability bug).
-              const startsNewParagraph =
+              const citationChanged =
                 content.length > 0 && lastAnswerRef !== null && ref !== lastAnswerRef
-              const delta = startsNewParagraph ? `\n\n${rawDelta}` : rawDelta
+              // rag-engine's AnswerSegmenter strips each segment's leading
+              // whitespace, so a Markdown list ("- item one\n- item two")
+              // arrives here as separate segments *without* the newline
+              // that kept them on their own lines ("- item one", then
+              // "- item two"). Reinsert it: a single newline continues the
+              // same list, a blank line starts a new one (either because
+              // this is the first item after non-list prose, or because
+              // the backend hasn't sent a list item yet at all).
+              const isListItem = LIST_MARKER_RE.test(segmentText)
+              const alreadySeparated = /^\s*\n/.test(segmentText)
+
+              let delta: string
+              if (alreadySeparated || content.length === 0) {
+                // The backend already separated this segment itself (or
+                // it's the first segment) — joinAnswerSegment's own
+                // whitespace check already avoids adding a stray space
+                // here, so don't inject another separator on top of it.
+                delta = rawDelta
+              } else if (isListItem) {
+                delta = endsWithListItemLine(content) ? `\n${rawDelta}` : `\n\n${rawDelta}`
+              } else if (endsWithListItemLine(content) || citationChanged) {
+                // Leaving a list block for non-list prose needs the same
+                // blank-line break as a citation change: without it, a
+                // bare join here reads to CommonMark as a "lazy
+                // continuation" line and merges into the last <li>.
+                delta = `\n\n${rawDelta}`
+              } else {
+                delta = rawDelta
+              }
+
               const joined = joinAnswerSegment(content, delta)
               const appended = joined.slice(content.length)
               content = joined

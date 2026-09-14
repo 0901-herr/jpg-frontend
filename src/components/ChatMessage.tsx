@@ -1,10 +1,12 @@
 import { Typography } from 'antd'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import Markdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { type, typeColor } from '../styles/typography'
 import { radius } from '../styles/theme'
-import { citationDisplayLabel, splitAnswerByDocRefs } from '../utils/citations'
-import type { ChatMessage, CoverageInfo } from '../types'
-import CitationList, { CitationLink } from './CitationList'
+import { createAnswerMarkdownComponents } from '../utils/markdownRenderers'
+import type { ChatMessage, CoverageInfo, Source } from '../types'
+import CitationList from './CitationList'
 
 const { Text } = Typography
 
@@ -78,31 +80,35 @@ function CoverageNotice({ coverage }: { coverage?: CoverageInfo }) {
   )
 }
 
+/** Renders `message.content` as Markdown (short paragraphs, bullet/numbered
+ * lists, tables — whatever the LLM produced) while keeping `[DocN]`
+ * citation markers as clickable `CitationLink`s wherever they land in the
+ * tree, including nested inside list items or bold text. Raw HTML is never
+ * rendered: only remark-gfm is enabled, and rehype-raw is deliberately not
+ * added. */
+export function MarkdownAnswer({ content, sources }: { content: string; sources: Source[] }) {
+  const components = useMemo(() => createAnswerMarkdownComponents(sources), [sources])
+  return (
+    <Markdown remarkPlugins={[remarkGfm]} components={components}>
+      {content}
+    </Markdown>
+  )
+}
+
 function AnswerContent({ message }: { message: ChatMessage }) {
   const sources = message.sources ?? []
-  const segments = splitAnswerByDocRefs(message.content, sources)
   const isStreaming = message.status === 'streaming'
 
   return (
-    <div className={`${type.body} ${typeColor.body} leading-relaxed whitespace-pre-wrap`}>
-      {segments.map((segment, i) => {
-        if (segment.type === 'ref') {
-          return (
-            <CitationLink
-              key={`ref-${i}`}
-              source={segment.source}
-              label={citationDisplayLabel(segment.source)}
-            />
-          )
-        }
-        return <span key={`text-${i}`}>{segment.value}</span>
-      })}
+    <div className={`${type.body} ${typeColor.body} leading-relaxed`}>
+      <MarkdownAnswer content={message.content} sources={sources} />
       {isStreaming && message.liveText && (
         // Raw, unattributed preview of the segment still being generated —
-        // finalized `content` above already covers everything earlier,
-        // so this is deliberately not run through splitAnswerByDocRefs
-        // (no citation markers to reconstruct in live token text).
-        <span className="opacity-60">{message.liveText}</span>
+        // finalized `content` above already covers everything earlier, so
+        // this stays plain text (whitespace-pre-wrap, no Markdown parsing):
+        // it's live token text, not yet a complete citation-attributed
+        // segment to reconstruct markers or block structure from.
+        <span className="opacity-60 whitespace-pre-wrap">{message.liveText}</span>
       )}
       {isStreaming && (
         <span className="inline-block w-1.5 h-4 ml-0.5 bg-zinc-400 animate-pulse align-middle rounded-sm" />

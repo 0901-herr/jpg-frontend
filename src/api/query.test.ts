@@ -156,6 +156,73 @@ describe('sendMessage delta handling', () => {
     expect(result.content).not.toContain('\n\n')
   })
 
+  it('joins consecutive list-item answer segments with a newline, not a space', async () => {
+    // Regression: rag-engine's AnswerSegmenter strips each segment's
+    // leading whitespace, so a Markdown list ("- item one\n- item two")
+    // arrives here as separate segments *without* the newline that
+    // separated them on the wire ("- item one", "- item two"). Joining
+    // them with the default single space ran the bullets onto one line
+    // ("- item one - item two"), which no longer parses as a list.
+    scriptedEvents = [
+      { event: 'citation', data: { doc_ref: '[Doc1]', chunk_id: 'c1', item_id: 'doc1', page: 1 } },
+      { event: 'answer', data: { text: '- item one', chunk_id: 'c1', item_id: 'doc1', page: 1 } },
+      { event: 'answer', data: { text: '- item two', chunk_id: 'c1', item_id: 'doc1', page: 1 } },
+      { event: 'answer', data: { text: '- item three', chunk_id: 'c1', item_id: 'doc1', page: 1 } },
+      { event: 'done', data: {} },
+    ]
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'List the items.',
+      documents: ['doc1'],
+      callbacks: {},
+    })
+
+    expect(result.content).toContain('item one')
+    expect(result.content).toContain('\n- item two')
+    expect(result.content).toContain('\n- item three')
+    expect(result.content).not.toContain(' - item two')
+    expect(result.content).not.toContain(' - item three')
+  })
+
+  it('separates a list from preceding prose with a blank line, even across a citation change', async () => {
+    scriptedEvents = [
+      { event: 'citation', data: { doc_ref: '[Doc2]', chunk_id: 'c2', item_id: 'doc1', page: 2 } },
+      { event: 'answer', data: { text: 'Here are the items:' } },
+      { event: 'answer', data: { text: '- item one', chunk_id: 'c2', item_id: 'doc1', page: 2 } },
+      { event: 'done', data: {} },
+    ]
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'List the items.',
+      documents: ['doc1'],
+      callbacks: {},
+    })
+
+    expect(result.content).toBe('Here are the items:\n\n- item one [Doc2]')
+  })
+
+  it('does not add a space before a segment that already starts with a newline', async () => {
+    scriptedEvents = [
+      { event: 'citation', data: { doc_ref: '[Doc1]', chunk_id: 'c1', item_id: 'doc1', page: 1 } },
+      { event: 'answer', data: { text: '- item one', chunk_id: 'c1', item_id: 'doc1', page: 1 } },
+      { event: 'answer', data: { text: '\n- item two', chunk_id: 'c1', item_id: 'doc1', page: 1 } },
+      { event: 'done', data: {} },
+    ]
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'List the items.',
+      documents: ['doc1'],
+      callbacks: {},
+    })
+
+    expect(result.content).toContain('\n- item two')
+    expect(result.content).not.toContain(' \n- item two')
+    expect(result.content).not.toContain('\n\n- item two')
+  })
+
   it('ignores a delta event with no text field', async () => {
     scriptedEvents = [
       { event: 'delta', data: {} },

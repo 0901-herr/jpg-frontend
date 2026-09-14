@@ -1,0 +1,115 @@
+import { render, screen } from '@testing-library/react'
+import React from 'react'
+import ChatMessageItem from './ChatMessage'
+import type { ChatMessage, Source } from '../types'
+
+function assistantMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
+  return {
+    id: 'm1',
+    role: 'assistant',
+    content: '',
+    status: 'complete',
+    ...overrides,
+  }
+}
+
+describe('AnswerContent Markdown rendering', () => {
+  it('renders paragraphs and a bullet list as <p> and <li> elements', () => {
+    const content = 'First paragraph.\n\nSecond paragraph:\n\n- item one\n- item two'
+    render(<ChatMessageItem message={assistantMessage({ content })} />)
+
+    expect(screen.getByText('First paragraph.').tagName).toBe('P')
+    expect(screen.getByText('Second paragraph:').tagName).toBe('P')
+
+    const items = screen.getAllByRole('listitem')
+    expect(items).toHaveLength(2)
+    expect(items[0]).toHaveTextContent('item one')
+    expect(items[1]).toHaveTextContent('item two')
+  })
+
+  it('renders a [DocN] marker inside a list item as a clickable CitationLink', () => {
+    const source: Source = {
+      index: 1,
+      filename: 'Report.pdf',
+      docRef: '[Doc1]',
+      documentId: 'doc-1',
+      page: 3,
+      reference: 'Page 3',
+    }
+    const content = '- The finding is described here [Doc1]\n- Another item'
+    render(
+      <ChatMessageItem
+        message={assistantMessage({ content, sources: [source] })}
+      />,
+    )
+
+    const link = screen.getByRole('button', { name: /Report\.pdf, Page 3/ })
+    expect(link.closest('li')).not.toBeNull()
+    expect(link.tagName).toBe('BUTTON')
+  })
+
+  it('renders a [DocN] marker inside a paragraph as a CitationLink (non-list regression check)', () => {
+    const source: Source = {
+      index: 1,
+      filename: 'Report.pdf',
+      docRef: '[Doc1]',
+      documentId: 'doc-1',
+    }
+    const content = 'The answer cites a source [Doc1] directly.'
+    render(
+      <ChatMessageItem
+        message={assistantMessage({ content, sources: [source] })}
+      />,
+    )
+
+    const link = screen.getByRole('button', { name: /Report\.pdf/ })
+    expect(link.closest('p')).not.toBeNull()
+  })
+
+  it('renders inline code, bold text, and demotes an h1 heading to a styled paragraph', () => {
+    const content = '# Heading\n\nSome **bold** text and `inline code`.'
+    const { container } = render(
+      <ChatMessageItem message={assistantMessage({ content })} />,
+    )
+
+    expect(container.querySelector('h1')).toBeNull()
+    const heading = screen.getByText('Heading')
+    expect(heading.tagName).toBe('P')
+    expect(heading.className).toContain('font-medium')
+
+    expect(screen.getByText('bold').tagName).toBe('STRONG')
+    expect(screen.getByText('inline code').tagName).toBe('CODE')
+  })
+
+  it('renders a Markdown table as a bordered table', () => {
+    const content = '| A | B |\n| --- | --- |\n| 1 | 2 |'
+    render(<ChatMessageItem message={assistantMessage({ content })} />)
+
+    expect(screen.getByRole('table')).toBeInTheDocument()
+    expect(screen.getAllByRole('columnheader')).toHaveLength(2)
+    expect(screen.getByRole('cell', { name: '1' })).toBeInTheDocument()
+  })
+
+  it('does not render raw HTML embedded in the answer', () => {
+    const content = 'Before <img src=x onerror="window.__pwned = true"> after'
+    const { container } = render(
+      <ChatMessageItem message={assistantMessage({ content })} />,
+    )
+
+    expect(container.querySelector('img')).toBeNull()
+    expect((window as unknown as { __pwned?: boolean }).__pwned).toBeUndefined()
+  })
+
+  it('keeps the streaming live-text preview as plain, pre-wrapped text', () => {
+    const message = assistantMessage({
+      content: 'Finished part.',
+      status: 'streaming',
+      liveText: 'still *typing*',
+    })
+    render(<ChatMessageItem message={message} />)
+
+    const preview = screen.getByText('still *typing*')
+    expect(preview.tagName).toBe('SPAN')
+    expect(preview.className).toContain('whitespace-pre-wrap')
+  })
+})
