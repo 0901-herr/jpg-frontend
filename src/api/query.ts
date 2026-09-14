@@ -273,22 +273,38 @@ async function streamQuery(
               // as any other two-clause join.
               const isListItem = LIST_MARKER_RE.test(segmentText) || BARE_LIST_MARKER_RE.test(segmentText)
               const alreadySeparated = /^\s*\n/.test(segmentText)
+              // A *complete* blank line already at the start of the
+              // segment (two-or-more newlines) — as opposed to a lone "\n"
+              // — is the one case where the segment's own separator can be
+              // trusted outright even when leaving a list block: CommonMark
+              // only folds a *single* trailing newline into "lazy
+              // continuation" of the previous list item, not a blank line.
+              const alreadyBlankSeparated = /^\s*\n\s*\n/.test(segmentText)
 
               let delta: string
-              if (alreadySeparated || content.length === 0) {
-                // The backend already separated this segment itself (or
-                // it's the first segment) — joinAnswerSegment's own
-                // whitespace check already avoids adding a stray space
-                // here, so don't inject another separator on top of it.
+              if (content.length === 0) {
                 delta = rawDelta
               } else if (isListItem) {
-                delta = endsWithListItemLine(content) ? `\n${rawDelta}` : `\n\n${rawDelta}`
+                // The backend already separated this segment itself —
+                // joinAnswerSegment's own whitespace check already avoids
+                // adding a stray space here, so don't inject another
+                // separator on top of it.
+                delta = alreadySeparated
+                  ? rawDelta
+                  : endsWithListItemLine(content)
+                    ? `\n${rawDelta}`
+                    : `\n\n${rawDelta}`
               } else if (endsWithListItemLine(content) || citationChanged) {
                 // Leaving a list block for non-list prose needs the same
                 // blank-line break as a citation change: without it, a
                 // bare join here reads to CommonMark as a "lazy
-                // continuation" line and merges into the last <li>.
-                delta = `\n\n${rawDelta}`
+                // continuation" line and merges into the last <li>. This
+                // still applies even when the segment carries its own
+                // single leading newline — that lone "\n" IS the
+                // lazy-continuation case, so it can't be trusted here the
+                // way `isListItem`'s own separator can; only a segment
+                // that already supplies a full blank line is left alone.
+                delta = alreadyBlankSeparated ? rawDelta : `\n\n${rawDelta.replace(/^\s*\n+\s*/, '')}`
               } else {
                 delta = rawDelta
               }

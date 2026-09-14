@@ -223,6 +223,64 @@ describe('sendMessage delta handling', () => {
     expect(result.content).not.toContain('\n\n- item two')
   })
 
+  it('upgrades a single leading newline to a blank line when leaving a list for a non-list segment', async () => {
+    // Regression: `alreadySeparated` used to short-circuit before the
+    // "leaving a list needs a blank line" rule ever ran, so a paragraph
+    // segment that happened to carry its own lone leading "\n" (and is
+    // not itself a list-item continuation) only got that single "\n" —
+    // which CommonMark folds into a lazy continuation of the previous
+    // <li> instead of starting a new paragraph.
+    scriptedEvents = [
+      { event: 'citation', data: { doc_ref: '[Doc1]', chunk_id: 'c1', item_id: 'doc1', page: 1 } },
+      { event: 'answer', data: { text: '- item one', chunk_id: 'c1', item_id: 'doc1', page: 1 } },
+      { event: 'answer', data: { text: '\nParagraph after' } },
+      { event: 'done', data: {} },
+    ]
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'List the items, then explain.',
+      documents: ['doc1'],
+      callbacks: {},
+    })
+
+    expect(result.content).toBe('- item one [Doc1]\n\nParagraph after')
+  })
+
+  it('keeps a single newline between two list items even when the second is not itself the joined segment', async () => {
+    scriptedEvents = [
+      { event: 'answer', data: { text: '- item one' } },
+      { event: 'answer', data: { text: '\n- item two' } },
+      { event: 'done', data: {} },
+    ]
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'List the items.',
+      documents: ['doc1'],
+      callbacks: {},
+    })
+
+    expect(result.content).toBe('- item one\n- item two')
+  })
+
+  it('does not add an extra blank line when leaving a list and the segment already starts with one', async () => {
+    scriptedEvents = [
+      { event: 'answer', data: { text: '- item one' } },
+      { event: 'answer', data: { text: '\n\nParagraph' } },
+      { event: 'done', data: {} },
+    ]
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'List the items, then explain.',
+      documents: ['doc1'],
+      callbacks: {},
+    })
+
+    expect(result.content).toBe('- item one\n\nParagraph')
+  })
+
   it('joins prose ending in a digit-and-period with the next sentence using a single space', async () => {
     // Regression guard for the list-marker heuristic: a segment ending in
     // e.g. "2021." must not make the *following* segment look like it's
