@@ -484,16 +484,20 @@ export default function AppLayout() {
     return documentId ? selection.documentMeta.get(documentId) : undefined
   }, [selection.documentMeta, selection.selectedCount, selection.selectedIds])
 
+  const [isSummarizing, setIsSummarizing] = useState(false)
+  const summarizingRef = useRef(false)
+
   const summarizeDisabledReason = useMemo(
     () =>
       getSummarizeDisabledReason({
         selectedCount: selection.selectedCount,
         document: selectedDocument,
-        isResponding: sendQuery.isPending,
+        isResponding: sendQuery.isPending || isSummarizing,
         disabled: browse.sessionExpired,
       }),
     [
       browse.sessionExpired,
+      isSummarizing,
       selectedDocument,
       selection.selectedCount,
       sendQuery.isPending,
@@ -506,8 +510,11 @@ export default function AppLayout() {
       return
     }
     if (!selectedDocument || !isSummaryReady(selectedDocument)) return
+    if (summarizingRef.current) return
 
     const documentId = selectedDocument.document_id
+    summarizingRef.current = true
+    setIsSummarizing(true)
 
     void (async () => {
       try {
@@ -532,10 +539,16 @@ export default function AppLayout() {
         requestAnimationFrame(() => scrollToBottom('auto'))
       } catch (err) {
         const httpStatus = err instanceof ApiError ? err.status : undefined
-        const detail = toUserFacingQueryError(err instanceof Error ? err.message : undefined, {
-          httpStatus,
-        })
-        message.error(detail)
+        const raw =
+          err instanceof ApiError
+            ? (err.detail ?? err.message)
+            : err instanceof Error
+              ? err.message
+              : undefined
+        message.error(toUserFacingQueryError(raw, { httpStatus }))
+      } finally {
+        summarizingRef.current = false
+        setIsSummarizing(false)
       }
     })()
   }, [activeChatId, scrollToBottom, selectedDocument, summarizeDisabledReason])
