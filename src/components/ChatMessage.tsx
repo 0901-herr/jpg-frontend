@@ -41,7 +41,6 @@ function ThinkingIndicator({ message }: { message: ChatMessage }) {
       <span className={`${type.body} ${typeColor.muted} docu-thinking-shimmer block`}>
         {headline}
       </span>
-      <span className={`${type.caption} ${typeColor.muted} block`}>{elapsed}s</span>
     </div>
   )
 }

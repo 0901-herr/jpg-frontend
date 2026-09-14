@@ -388,4 +388,108 @@ describe('AppLayout — selection hydration trim', () => {
     )
     expect(trimSelectionSpy).toHaveBeenCalledWith(['300'])
   })
+
+  it('still applies the trim exactly once under React StrictMode (mount, effect, cleanup, effect again)', async () => {
+    initialSelectedIds = new Set(['5001', '300'])
+    initialDocumentMeta = new Map([
+      [
+        '300',
+        {
+          document_id: '300',
+          filename: '300.pdf',
+          file_type: 'pdf',
+          updated_at: '2026-09-13T00:00:00Z',
+          folder_id: 1,
+          indexing_status: 'READY',
+          rag_document_id: 'rag-300',
+          queryable: true,
+          summary_status: 'READY',
+        },
+      ],
+    ])
+    validateQueryScope.mockResolvedValue({
+      total_files: 1,
+      ready_files: 1,
+      indexing_files: 0,
+      failed_files: 0,
+      missing_files: 0,
+      accessible_document_ids: ['300'],
+    })
+
+    // React.StrictMode (dev only) double-invokes effects synchronously on
+    // mount: mount -> run effect -> run its cleanup -> run effect again,
+    // all before any awaited work settles. If the hydration effect marked
+    // itself "done" before the request resolved, the cleanup's abort would
+    // kill the only request that ever ran and the second invocation would
+    // skip retrying — the fix under test is that "done" is only set on an
+    // attempt that actually completes, so the first (aborted) attempt is a
+    // no-op and the second one applies the trim exactly once.
+    render(
+      <React.StrictMode>
+        <AppLayout />
+      </React.StrictMode>,
+    )
+
+    await screen.findByLabelText('1 file selected')
+
+    expect(trimSelectionSpy).toHaveBeenCalledTimes(1)
+    expect(trimSelectionSpy).toHaveBeenCalledWith(['300'])
+  })
+
+  it('retries after an unmount + remount so a real interruption is not left permanently un-applied', async () => {
+    initialSelectedIds = new Set(['5001', '300'])
+    initialDocumentMeta = new Map([
+      [
+        '300',
+        {
+          document_id: '300',
+          filename: '300.pdf',
+          file_type: 'pdf',
+          updated_at: '2026-09-13T00:00:00Z',
+          folder_id: 1,
+          indexing_status: 'READY',
+          rag_document_id: 'rag-300',
+          queryable: true,
+          summary_status: 'READY',
+        },
+      ],
+    ])
+
+    let resolveFirst: ((value: QueryScopeResponse) => void) | undefined
+    validateQueryScope.mockImplementationOnce(
+      () =>
+        new Promise<QueryScopeResponse>((resolve) => {
+          resolveFirst = resolve
+        }),
+    )
+    validateQueryScope.mockResolvedValueOnce({
+      total_files: 1,
+      ready_files: 1,
+      indexing_files: 0,
+      failed_files: 0,
+      missing_files: 0,
+      accessible_document_ids: ['300'],
+    })
+
+    const view = render(<AppLayout />)
+    // Unmount before the first request ever resolves — a genuine
+    // interruption, not just a StrictMode remount.
+    view.unmount()
+    resolveFirst?.({
+      total_files: 1,
+      ready_files: 1,
+      indexing_files: 0,
+      failed_files: 0,
+      missing_files: 0,
+      accessible_document_ids: ['300'],
+    })
+    expect(trimSelectionSpy).not.toHaveBeenCalled()
+
+    // A fresh mount (fresh refs) must still try the reconciliation rather
+    // than having been silently marked "done" by the interrupted attempt.
+    render(<AppLayout />)
+    await screen.findByLabelText('1 file selected')
+    expect(trimSelectionSpy).toHaveBeenCalledTimes(1)
+    expect(trimSelectionSpy).toHaveBeenCalledWith(['300'])
+  })
 })

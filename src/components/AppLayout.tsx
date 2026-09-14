@@ -154,6 +154,18 @@ export default function AppLayout() {
   // depending on it directly would re-run the effect's cleanup — aborting
   // the in-flight request — on unrelated re-renders instead of only on
   // unmount.
+  //
+  // The "done" ref is set only once the request actually *succeeds* (or
+  // there was nothing to check), never just because one was started. React
+  // StrictMode (dev only) double-invokes this effect synchronously —
+  // mount, run, cleanup, run again — and if "done" were set up front, the
+  // cleanup's abort would kill the one-and-only request that ever ran and
+  // the second invocation would see "done" and skip retrying, so the
+  // reconciliation would silently never complete. Marking done only on
+  // success means an aborted attempt (StrictMode's first invocation, or a
+  // genuine unmount mid-flight) leaves the flag false, so a remounted
+  // effect instance tries again — the cleanup's `cancelled` guard just
+  // stops the aborted attempt from also calling `trimSelection` itself.
   const selectionRef = useRef(selection)
   selectionRef.current = selection
   const hasAuthSession = Boolean(authSession)
@@ -162,23 +174,34 @@ export default function AppLayout() {
     if (authLoading) return
     if (!hasAuthSession) return
     if (hydrationScopeCheckedRef.current) return
-    hydrationScopeCheckedRef.current = true
 
     const ids = [...selectionRef.current.selectedIds]
-    if (ids.length === 0) return
+    if (ids.length === 0) {
+      hydrationScopeCheckedRef.current = true
+      return
+    }
 
+    let cancelled = false
     const controller = new AbortController()
     void (async () => {
       try {
         const scope = await validateQueryScope(ids, controller.signal)
-        if (controller.signal.aborted) return
+        if (cancelled) return
+        hydrationScopeCheckedRef.current = true
         selectionRef.current.trimSelection(scope.accessible_document_ids)
       } catch {
         // Best-effort reconciliation only — keep the persisted selection.
+        // Deliberately left "not done" on abort/failure: a StrictMode
+        // remount (or any other retry) tries again; a genuine, permanent
+        // failure just means this reconciliation never happens on this
+        // app load, same as before.
       }
     })()
 
-    return () => controller.abort()
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
   }, [authLoading, hasAuthSession])
 
   const activeSession = useMemo(

@@ -96,6 +96,7 @@ const LIST_CLASS = `${PARAGRAPH_SPACING} pl-5 space-y-1`
 // MQA metadata field, say) wraps inside its cell instead of forcing the
 // whole table — and with it the chat pane — wider.
 const CELL_CLASS = 'border border-[#ececec] px-2 py-1 text-left align-top break-words [overflow-wrap:anywhere]'
+const INLINE_CODE_CLASS = 'rounded bg-black/[0.05] px-1 py-0.5 font-mono text-[0.9em]'
 
 /** Builds the react-markdown `components` map for one answer render —
  * `sources` closes over the citations available for this specific message,
@@ -136,22 +137,38 @@ export function createAnswerMarkdownComponents(sources: Source[]): Components {
     tr: plainBlock('tr', ''),
     th: citationAwareBlock('th', `${CELL_CLASS} font-medium`, sources, 'th'),
     td: citationAwareBlock('td', CELL_CLASS, sources, 'td'),
-    code: ({ children }) => (
-      <code className="rounded bg-black/[0.05] px-1 py-0.5 font-mono text-[0.9em]">
-        {children}
-      </code>
+    // `className` is honored when supplied (by the `pre` override below,
+    // via `cloneElement`) and otherwise defaults to the inline-code chip
+    // style — a component element isn't executed until React actually
+    // renders it, so `pre` cloning this element with a new `className`
+    // prop only has any effect because this function reads that prop
+    // instead of always hard-coding its own classes.
+    code: ({ className, children }: { className?: string; children?: ReactNode }) => (
+      <code className={className ?? INLINE_CODE_CLASS}>{children}</code>
     ),
     // Fenced code blocks default to `white-space: pre`, which — unlike
     // inline `code` — can force the whole chat pane to scroll sideways on a
     // long line. `pre-wrap` + `break-words` keep it wrapped inside the
-    // bubble instead; the nested `code` element above still renders inside
-    // it (a small amount of doubled padding/background, not worth a second
-    // code path just to avoid).
-    pre: ({ children }) => (
-      <pre className="whitespace-pre-wrap break-words rounded bg-black/[0.05] p-3 text-[0.9em] font-mono">
-        {children}
-      </pre>
-    ),
+    // bubble instead. `children` here is the (not-yet-rendered) `code`
+    // element the override above will produce — react-markdown always
+    // nests fenced code as `<pre><code>` — re-styled via `cloneElement`
+    // with a plain `className` so it doesn't fall back to the inline
+    // chip's own padding/background doubled up inside `pre`'s.
+    pre: ({ children }) => {
+      // `children` may arrive as a bare element or as a single-item array
+      // depending on the tree shape, so both are handled the same way.
+      const childArray = Array.isArray(children) ? children : [children]
+      const content = childArray.map((child, i) =>
+        isValidElement<{ className?: string }>(child)
+          ? cloneElement(child, { className: 'font-mono', key: child.key ?? i })
+          : child,
+      )
+      return (
+        <pre className="whitespace-pre-wrap break-words rounded bg-black/[0.05] p-3 text-[0.9em] font-mono">
+          {content}
+        </pre>
+      )
+    },
     a: ({ href, children }) => (
       <a
         href={href}

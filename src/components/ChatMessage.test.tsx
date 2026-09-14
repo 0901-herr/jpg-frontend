@@ -220,6 +220,31 @@ describe('progress label elapsed-time ticker', () => {
     expect(screen.getByText('Writing your answer… · 2s')).toBeInTheDocument()
   })
 
+  it('shows the elapsed count exactly once — no separate standalone "{n}s" caption alongside the ticked headline', () => {
+    const startedAt = Date.now()
+    render(
+      <ChatMessageItem
+        message={assistantMessage({
+          status: 'thinking',
+          progressLabel: 'Writing your answer…',
+          progressStage: 'generating',
+          startedAt,
+        })}
+      />,
+    )
+
+    act(() => {
+      vi.advanceTimersByTime(2000)
+    })
+
+    // Only the compound headline carries the elapsed count — no standalone
+    // "2s" caption below it duplicating the same number in a different
+    // format (the MAJOR-2 regression: both used to render at once).
+    expect(screen.getByText('Writing your answer… · 2s')).toBeInTheDocument()
+    expect(screen.queryByText('2s')).not.toBeInTheDocument()
+    expect(screen.getAllByText(/2s/)).toHaveLength(1)
+  })
+
   it('does not tick a non-generating stage until 4 seconds have elapsed', () => {
     const startedAt = Date.now()
     render(
@@ -305,6 +330,32 @@ describe('chat pane never scrolls horizontally', () => {
     expect(answerRoot).not.toBeNull()
 
     expect(screen.getAllByText(new RegExp(longWord)).length).toBeGreaterThan(0)
+  })
+
+  it('does not double up padding/background on the code nested inside a fenced block', () => {
+    const content = '```\nconsole.log("hi")\n```'
+    const { container } = render(
+      <ChatMessageItem message={assistantMessage({ content, status: 'complete' })} />,
+    )
+
+    const nestedCode = container.querySelector('pre code')
+    expect(nestedCode).not.toBeNull()
+    // The inline-code style (padding + its own rounded background) stays
+    // on standalone inline code only — nested inside `pre`, which already
+    // supplies the background/padding for the whole block, it would
+    // otherwise double up.
+    expect(nestedCode?.className).not.toContain('px-1')
+    expect(nestedCode?.className).not.toContain('bg-black/[0.05]')
+  })
+
+  it('keeps the inline-code style unaffected for standalone inline code', () => {
+    const content = 'Some `inline code` here.'
+    render(<ChatMessageItem message={assistantMessage({ content, status: 'complete' })} />)
+
+    const inlineCode = screen.getByText('inline code')
+    expect(inlineCode.tagName).toBe('CODE')
+    expect(inlineCode.className).toContain('px-1')
+    expect(inlineCode.className).toContain('bg-black/[0.05]')
   })
 
   it('wraps a Markdown table inside its own horizontally-scrollable box', () => {
