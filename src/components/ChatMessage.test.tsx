@@ -284,3 +284,51 @@ describe('progress label elapsed-time ticker', () => {
     expect(screen.queryByText(/Writing your answer… ·/)).not.toBeInTheDocument()
   })
 })
+
+describe('chat pane never scrolls horizontally', () => {
+  it('wraps a 3,000-char unbroken string and a fenced code block instead of widening the page', () => {
+    const longWord = 'a'.repeat(3000)
+    const content = `Here is a very long value: ${longWord}\n\n\`\`\`\nconsole.log("${longWord}")\n\`\`\``
+    const { container } = render(
+      <ChatMessageItem message={assistantMessage({ content, status: 'complete' })} />,
+    )
+
+    // jsdom can't measure layout (no real scrollWidth), so the classes that
+    // constrain width are the contract here — verified visually with
+    // scrollWidth in a real browser separately.
+    const pre = container.querySelector('pre')
+    expect(pre).not.toBeNull()
+    expect(pre?.className).toContain('whitespace-pre-wrap')
+    expect(pre?.className).toContain('break-words')
+
+    const answerRoot = container.querySelector('.min-w-0.break-words')
+    expect(answerRoot).not.toBeNull()
+
+    expect(screen.getAllByText(new RegExp(longWord)).length).toBeGreaterThan(0)
+  })
+
+  it('wraps a Markdown table inside its own horizontally-scrollable box', () => {
+    const content = '| Field | Value |\n| --- | --- |\n| A | ' + 'b'.repeat(500) + ' |'
+    render(<ChatMessageItem message={assistantMessage({ content, status: 'complete' })} />)
+
+    const table = screen.getByRole('table')
+    const wrapper = table.parentElement
+    expect(wrapper?.className).toContain('overflow-x-auto')
+    expect(wrapper?.className).toContain('max-w-full')
+
+    const cell = screen.getByRole('cell', { name: new RegExp('b'.repeat(20)) })
+    expect(cell.className).toContain('break-words')
+  })
+
+  it('lets a long unbroken user message wrap instead of forcing the bubble wider', () => {
+    const longWord = 'x'.repeat(3000)
+    render(
+      <ChatMessageItem
+        message={{ id: 'u1', role: 'user', content: longWord }}
+      />,
+    )
+
+    const bubble = screen.getByText(new RegExp(longWord)).closest('div')
+    expect(bubble?.className).toContain('break-words')
+  })
+})

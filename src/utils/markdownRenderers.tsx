@@ -92,7 +92,10 @@ function plainBlock<Tag extends keyof JSX.IntrinsicElements>(tag: Tag, className
 const PARAGRAPH_SPACING = 'mb-[0.75em] last:mb-0'
 const HEADING_CLASS = `font-medium ${PARAGRAPH_SPACING}`
 const LIST_CLASS = `${PARAGRAPH_SPACING} pl-5 space-y-1`
-const CELL_CLASS = 'border border-[#ececec] px-2 py-1 text-left align-top'
+// `break-words` + `overflow-wrap: anywhere` so a long unbroken value (an
+// MQA metadata field, say) wraps inside its cell instead of forcing the
+// whole table — and with it the chat pane — wider.
+const CELL_CLASS = 'border border-[#ececec] px-2 py-1 text-left align-top break-words [overflow-wrap:anywhere]'
 
 /** Builds the react-markdown `components` map for one answer render —
  * `sources` closes over the citations available for this specific message,
@@ -118,7 +121,16 @@ export function createAnswerMarkdownComponents(sources: Source[]): Components {
       sources,
       'bq',
     ),
-    table: plainBlock('table', `border-collapse border border-[#ececec] w-full text-sm ${PARAGRAPH_SPACING}`),
+    // A wide table (the MQA metadata table, especially) must scroll inside
+    // its own box, never the whole chat pane — the wrapper carries the
+    // overflow, the `<table>` itself keeps its existing sizing.
+    table: ({ children }) => (
+      <div className={`max-w-full overflow-x-auto ${PARAGRAPH_SPACING}`}>
+        <table className="border-collapse border border-[#ececec] w-full text-sm">
+          {children}
+        </table>
+      </div>
+    ),
     thead: plainBlock('thead', ''),
     tbody: plainBlock('tbody', ''),
     tr: plainBlock('tr', ''),
@@ -128,6 +140,17 @@ export function createAnswerMarkdownComponents(sources: Source[]): Components {
       <code className="rounded bg-black/[0.05] px-1 py-0.5 font-mono text-[0.9em]">
         {children}
       </code>
+    ),
+    // Fenced code blocks default to `white-space: pre`, which — unlike
+    // inline `code` — can force the whole chat pane to scroll sideways on a
+    // long line. `pre-wrap` + `break-words` keep it wrapped inside the
+    // bubble instead; the nested `code` element above still renders inside
+    // it (a small amount of doubled padding/background, not worth a second
+    // code path just to avoid).
+    pre: ({ children }) => (
+      <pre className="whitespace-pre-wrap break-words rounded bg-black/[0.05] p-3 text-[0.9em] font-mono">
+        {children}
+      </pre>
     ),
     a: ({ href, children }) => (
       <a
@@ -211,7 +234,11 @@ export function createStreamingTailPlugin(liveText: string): Plugin<[], Root> {
     const target = findStreamingTailTarget(tree)
     const tail: ElementContent[] = []
     if (liveText) {
-      tail.push(streamingTailSpan('opacity-60 whitespace-pre-wrap', [{ type: 'text', value: liveText }]))
+      tail.push(
+        streamingTailSpan('opacity-60 whitespace-pre-wrap break-words', [
+          { type: 'text', value: liveText },
+        ]),
+      )
     }
     tail.push(
       streamingTailSpan(

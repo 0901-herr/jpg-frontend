@@ -157,7 +157,9 @@ function AnswerContent({ message }: { message: ChatMessage }) {
   const isStreaming = message.status === 'streaming'
 
   return (
-    <div className={`${type.body} ${typeColor.body} leading-relaxed`}>
+    <div
+      className={`${type.body} ${typeColor.body} leading-relaxed min-w-0 break-words [overflow-wrap:anywhere]`}
+    >
       <MarkdownAnswer
         content={message.content}
         sources={sources}
@@ -212,9 +214,11 @@ interface ChatMessageItemProps {
 
 export default function ChatMessageItem({ message, showDivider }: ChatMessageItemProps) {
   return (
-    <div>
+    <div className="min-w-0">
       {message.role === 'user' ? (
-        <div className={`inline-block bg-[#f4f4f4] ${radius.lg} px-4 py-3 mt-6 mb-4 max-w-xl`}>
+        <div
+          className={`inline-block bg-[#f4f4f4] ${radius.lg} px-4 py-3 mt-6 mb-4 max-w-[min(36rem,100%)] min-w-0 break-words [overflow-wrap:anywhere]`}
+        >
           <Text className={`${type.body} ${typeColor.body}`}>{message.content}</Text>
         </div>
       ) : (

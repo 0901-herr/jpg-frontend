@@ -15,6 +15,17 @@ body {
   color: var(--docu-text-primary);
 }
 
+/* The chat pane must never scroll sideways — a wide table, a long
+   unbroken string, or a fenced code block can otherwise force it open.
+   `overflow-x: hidden` alone isn't enough: flex children default to
+   `min-width: auto`, which refuses to shrink below their content's
+   intrinsic width, so every level between this scroller and the actual
+   text also needs `min-width: 0` (applied via Tailwind's `min-w-0` on the
+   inner column and each message wrapper). */
+.docu-chat-scroll {
+  overflow-x: hidden;
+}
+
 /* Remove Ant Design / browser focus rings on text inputs app-wide */
 .ant-input,
 .ant-input-affix-wrapper,

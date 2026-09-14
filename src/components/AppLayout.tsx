@@ -837,7 +837,7 @@ export default function AppLayout() {
             className="docu-chat-scroll flex-1 overflow-y-auto px-6 pt-6 pb-4 min-h-0 scroll-smooth flex flex-col"
           >
             <div
-              className={`max-w-4xl mx-auto w-full flex-1 flex flex-col space-y-0 ${
+              className={`max-w-4xl mx-auto w-full min-w-0 flex-1 flex flex-col space-y-0 ${
                 messagePairs.length === 0 ? 'justify-center' : ''
               }`}
             >
@@ -859,7 +859,7 @@ export default function AppLayout() {
                   return (
                     <div
                       key={pair.user.id}
-                      className={isLastTurn ? 'docu-chat-last-turn min-h-[min(72vh,calc(100dvh-13rem))]' : undefined}
+                      className={`min-w-0 ${isLastTurn ? 'docu-chat-last-turn min-h-[min(72vh,calc(100dvh-13rem))]' : ''}`}
                     >
                       <ChatMessageItem message={pair.user} />
                       {pair.assistant && (

@@ -136,12 +136,12 @@ export default function CitationList({ sources }: CitationListProps) {
                           type="button"
                           onClick={() => firstPage && void handleOpen(firstPage.source, rowOpeningKey)}
                           disabled={isRowOpening}
-                          className={`text-left ${type.body} ${typeColor.body} leading-relaxed underline decoration-[#c8c8c8] underline-offset-2 hover:decoration-[#676767] disabled:opacity-60`}
+                          className={`min-w-0 break-words text-left ${type.body} ${typeColor.body} leading-relaxed underline decoration-[#c8c8c8] underline-offset-2 hover:decoration-[#676767] disabled:opacity-60`}
                         >
                           {group.filename}
                         </button>
                       ) : (
-                        <span className={`${type.body} ${typeColor.body} leading-relaxed`}>
+                        <span className={`min-w-0 break-words ${type.body} ${typeColor.body} leading-relaxed`}>
                           {group.filename}
                         </span>
                       )}
