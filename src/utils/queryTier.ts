@@ -14,3 +14,16 @@ export function getQueryTierLabel(tier: QueryTier): string {
 
 export const QUERY_TIER_ACCURATE_TOOLTIP =
   'Accurate mode searches more deeply and may take longer to answer.'
+
+export const QUERY_TIER_FAST_TOOLTIP = 'Fast mode answers quickest but may miss details.'
+
+export function getQueryTierTooltip(tier: QueryTier): string | undefined {
+  switch (tier) {
+    case 'accurate':
+      return QUERY_TIER_ACCURATE_TOOLTIP
+    case 'fast':
+      return QUERY_TIER_FAST_TOOLTIP
+    default:
+      return undefined
+  }
+}
