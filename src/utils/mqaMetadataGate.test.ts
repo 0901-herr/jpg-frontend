@@ -18,9 +18,12 @@ function doc(overrides: Partial<BrowseDocumentItem> = {}): BrowseDocumentItem {
 }
 
 describe('mqaMetadataGate', () => {
-  it('treats READY summary_status as ready', () => {
+  it('is ready whenever the document is queryable, regardless of its summary', () => {
     expect(isMqaMetadataReady(doc())).toBe(true)
-    expect(isMqaMetadataReady(doc({ summary_status: 'PENDING' }))).toBe(false)
+    expect(isMqaMetadataReady(doc({ summary_status: 'PENDING' }))).toBe(true)
+    expect(isMqaMetadataReady(doc({ indexing_status: 'PARTIAL' }))).toBe(true)
+    expect(isMqaMetadataReady(doc({ indexing_status: 'FAILED', queryable: false }))).toBe(false)
+    expect(isMqaMetadataReady(doc({ queryable: false }))).toBe(false)
     expect(isMqaMetadataReady(undefined)).toBe(false)
   })
 
@@ -46,11 +49,20 @@ describe('mqaMetadataGate', () => {
     expect(
       getExtractMetadataDisabledReason({
         selectedCount: 1,
-        document: doc({ summary_status: 'PENDING' }),
+        document: doc({ indexing_status: 'FAILED', queryable: false, status_reason: 'Indexing failed for this file.' }),
         isResponding: false,
         disabled: false,
       }),
-    ).toBe('Document is still being processed')
+    ).toBe('Indexing failed for this file.')
+
+    expect(
+      getExtractMetadataDisabledReason({
+        selectedCount: 1,
+        document: doc({ indexing_status: 'NOT_INDEXED', queryable: false }),
+        isResponding: false,
+        disabled: false,
+      }),
+    ).toBe('Not indexed. Not queryable.')
 
     expect(
       getExtractMetadataDisabledReason({
