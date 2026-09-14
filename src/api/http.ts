@@ -171,11 +171,18 @@ export async function apiPostStream(
 }
 
 /** Longest gap allowed between bytes on an SSE stream before it's treated as
- * dead. The backend sends periodic `: ping` comments during long-running
- * stages specifically to stay under this — a real stall (backend crash,
- * dropped connection that never surfaces as a network error) must not hang
- * the UI forever waiting on a read that will never resolve. */
-const SSE_INACTIVITY_TIMEOUT_MS = 45_000
+ * dead. The backend sends periodic `: ping` comment lines during long-running
+ * stages specifically to stay under this — every low-level read of the
+ * stream (including one that only carries a `:`-prefixed keepalive comment,
+ * with no `event:`/`data:` of its own) resets this timer, since it resolves
+ * the pending `reader.read()` the timer is racing against. A real stall
+ * (backend crash, dropped connection that never surfaces as a network
+ * error) must not hang the UI forever waiting on a read that will never
+ * resolve. Set well past the slowest real single-stage gap observed on the
+ * accurate tier so a genuinely slow-but-alive query isn't cut off. */
+const SSE_INACTIVITY_TIMEOUT_MS = 120_000
+
+const SSE_STALLED_MESSAGE = 'The answer is taking longer than expected. Please try again.'
 
 /** Parse SSE stream from a fetch Response body. */
 export async function consumeSseStream(
@@ -194,7 +201,7 @@ export async function consumeSseStream(
     new Promise<ReadableStreamReadResult<Uint8Array>>((resolve, reject) => {
       const timer = setTimeout(() => {
         reader.cancel().catch(() => {})
-        reject(new ApiError('Response stream stalled', 504))
+        reject(new ApiError(SSE_STALLED_MESSAGE, 504))
       }, SSE_INACTIVITY_TIMEOUT_MS)
       reader
         .read()

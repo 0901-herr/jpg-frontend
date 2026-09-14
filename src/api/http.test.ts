@@ -1,6 +1,35 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { vi } from 'vitest'
-import { apiGet, ApiError } from './http'
+import { apiGet, ApiError, consumeSseStream } from './http'
+import type { SseEvent } from './http'
+
+/** A scripted `ReadableStreamDefaultReader`-alike whose `read()` resolves
+ * after `delayMs` on the currently active clock (real or fake) — lets a
+ * test control exactly how much wall-clock time elapses between chunks
+ * without any real waiting. */
+function scriptedReader(chunks: Array<{ delayMs: number; text: string }>) {
+  const encoder = new TextEncoder()
+  let index = 0
+  return {
+    read: (): Promise<ReadableStreamReadResult<Uint8Array>> =>
+      new Promise((resolve) => {
+        const chunk = chunks[index]
+        setTimeout(() => {
+          if (!chunk) {
+            resolve({ done: true, value: undefined })
+            return
+          }
+          index++
+          resolve({ done: false, value: encoder.encode(chunk.text) })
+        }, chunk?.delayMs ?? 0)
+      }),
+    cancel: async () => {},
+  }
+}
+
+function responseWithReader(reader: ReturnType<typeof scriptedReader>): Response {
+  return { body: { getReader: () => reader } } as unknown as Response
+}
 
 describe('apiGet error parsing', () => {
   afterEach(() => {
@@ -50,5 +79,70 @@ describe('apiGet error parsing', () => {
     expect((error as ApiError).status).toBe(502)
     expect((error as ApiError).detail).toBeUndefined()
     expect((error as ApiError).message).toBe('Bad Gateway')
+  })
+})
+
+describe('consumeSseStream inactivity timeout', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('treats a keepalive comment line as activity, resetting the timer, and still parses the surrounding data byte-identically', async () => {
+    // Two real `data:` chunks 90s apart (over the old 45s timeout) with a
+    // `: ping` keepalive-only chunk in between, also 90s after the first —
+    // every read (ping included) must reset the 120s timer for this to
+    // finish without throwing.
+    const reader = scriptedReader([
+      { delayMs: 0, text: 'data: {"a":1}\n\n' },
+      { delayMs: 90_000, text: ': ping\n\n' },
+      { delayMs: 90_000, text: 'data: {"b":2}\n\n' },
+    ])
+    const events: SseEvent[] = []
+
+    const promise = consumeSseStream(responseWithReader(reader), (event) => events.push(event))
+
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(90_000)
+    await vi.advanceTimersByTimeAsync(90_000)
+    // Flushes the final (immediate) read that ends the stream.
+    await vi.runAllTimersAsync()
+
+    await promise
+
+    expect(events).toEqual([
+      { event: 'message', data: { a: 1 } },
+      { event: 'message', data: { b: 2 } },
+    ])
+  })
+
+  it('throws the plain-language stall message when no bytes arrive for 120s', async () => {
+    const reader = scriptedReader([{ delayMs: 200_000, text: 'data: {"a":1}\n\n' }])
+
+    const promise = consumeSseStream(responseWithReader(reader), () => {})
+    const assertion = expect(promise).rejects.toMatchObject({
+      message: 'The answer is taking longer than expected. Please try again.',
+      status: 504,
+    })
+
+    await vi.advanceTimersByTimeAsync(120_000)
+    await assertion
+  })
+
+  it('does not stall within 120s of a single keepalive comment with nothing else, and finishes once the stream ends', async () => {
+    const reader = scriptedReader([{ delayMs: 100_000, text: ': ping\n\n' }])
+    const events: SseEvent[] = []
+
+    const promise = consumeSseStream(responseWithReader(reader), (event) => events.push(event))
+
+    await vi.advanceTimersByTimeAsync(100_000)
+    // Stream ends (reader.read() resolves done:true) right after the ping.
+    await vi.runAllTimersAsync()
+
+    await promise
+    expect(events).toEqual([])
   })
 })

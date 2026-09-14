@@ -11,6 +11,12 @@ Object.defineProperty(window, 'ResizeObserver', {
   value: ResizeObserverMock,
 })
 
+// jsdom has no scrollIntoView implementation — AppLayout's auto-scroll
+// calls it on every new/updated message.
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {}
+}
+
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
   value: (query: string) => ({

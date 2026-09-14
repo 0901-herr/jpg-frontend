@@ -64,6 +64,12 @@ function formatThoughtDuration(seconds: number): string {
   return `Thought for ${seconds} ${seconds === 1 ? 'second' : 'seconds'}`
 }
 
+function InterruptedNote() {
+  return (
+    <p className={`${type.caption} ${typeColor.muted} italic`}>Answer interrupted.</p>
+  )
+}
+
 function CoverageNotice({ coverage }: { coverage?: CoverageInfo }) {
   const indexing = coverage?.indexing_files ?? 0
   if (indexing <= 0) return null
@@ -154,6 +160,7 @@ function AssistantMessage({ message }: AssistantMessageProps) {
         <p className={`${type.caption} ${typeColor.muted}`}>{message.progressLabel}</p>
       )}
       <AnswerContent message={message} />
+      {message.interrupted && <InterruptedNote />}
 
       {message.thinkingSeconds != null &&
         message.thinkingSeconds > 0 &&

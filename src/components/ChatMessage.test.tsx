@@ -150,3 +150,42 @@ describe('AnswerContent Markdown rendering', () => {
     expect(container.querySelector('[data-testid="streaming-cursor"]')).toBeNull()
   })
 })
+
+describe('interrupted answer note', () => {
+  it('renders the partial answer plus an italic "Answer interrupted." note', () => {
+    render(
+      <ChatMessageItem
+        message={assistantMessage({
+          content: 'Here is what I found so far',
+          status: 'complete',
+          interrupted: true,
+        })}
+      />,
+    )
+
+    expect(screen.getByText('Here is what I found so far').tagName).toBe('P')
+    const note = screen.getByText('Answer interrupted.')
+    expect(note.tagName).toBe('P')
+    expect(note.className).toContain('italic')
+  })
+
+  it('renders just the note when nothing had arrived yet', () => {
+    render(
+      <ChatMessageItem
+        message={assistantMessage({ content: '', status: 'complete', interrupted: true })}
+      />,
+    )
+
+    expect(screen.getByText('Answer interrupted.')).toBeInTheDocument()
+  })
+
+  it('does not render the note for a normally completed answer', () => {
+    render(
+      <ChatMessageItem
+        message={assistantMessage({ content: 'All done.', status: 'complete' })}
+      />,
+    )
+
+    expect(screen.queryByText('Answer interrupted.')).not.toBeInTheDocument()
+  })
+})

@@ -180,15 +180,55 @@ export default function AppLayout() {
     scrollToBottom(messagePairs.length <= 1 ? 'auto' : 'smooth')
   }, [lastTurnScrollKey, activeChatId, messagePairs.length, scrollToBottom])
 
+  // UX P0-3: switching away from a chat that's still streaming must not
+  // leave the new chat's composer stuck on "Stop" waiting for the OLD
+  // chat's request to finish. Aborts the in-flight request, resets the
+  // composer to idle immediately (sendQuery.reset(), rather than waiting on
+  // the aborted fetch promise to reject and settle asynchronously), and
+  // marks the old chat's in-progress answer as interrupted in place.
+  const abortActiveResponse = useCallback(() => {
+    const controller = abortControllerRef.current
+    if (!controller) return
+
+    const chatId = activeChatId
+    controller.abort('navigation')
+    abortControllerRef.current = null
+    sendQuery.reset()
+
+    setSessions((prev) =>
+      prev.map((s) => {
+        if (s.id !== chatId) return s
+        const messages = [...s.messages]
+        const lastIdx = messages.length - 1
+        if (lastIdx < 0 || messages[lastIdx].role !== 'assistant') return s
+        const msg = messages[lastIdx]
+        if (msg.status !== 'thinking' && msg.status !== 'streaming') return s
+        messages[lastIdx] = {
+          ...msg,
+          status: 'complete',
+          interrupted: true,
+          liveText: '',
+          progressLabel: undefined,
+        }
+        return { ...s, messages }
+      }),
+    )
+  }, [activeChatId, sendQuery])
+
   const handleNewChat = useCallback(() => {
+    abortActiveResponse()
     const newChat = createEmptySession()
     setSessions((prev) => [newChat, ...prev])
     setActiveChatId(newChat.id)
-  }, [])
+  }, [abortActiveResponse])
 
-  const handleSelectChat = useCallback((chatId: string) => {
-    setActiveChatId(chatId)
-  }, [])
+  const handleSelectChat = useCallback(
+    (chatId: string) => {
+      if (chatId !== activeChatId) abortActiveResponse()
+      setActiveChatId(chatId)
+    },
+    [abortActiveResponse, activeChatId],
+  )
 
   const handleRenameChat = useCallback((chatId: string, title: string) => {
     setSessions((prev) => prev.map((s) => (s.id === chatId ? { ...s, title } : s)))
@@ -445,13 +485,20 @@ export default function AppLayout() {
         )
       } catch (err) {
         if (controller.signal.aborted) {
-          updateAssistantMessage(activeChatId, (msg) => ({
-            ...msg,
-            content: msg.content || 'Response stopped.',
-            status: 'complete',
-            liveText: '',
-            thinkingSeconds: elapsedSeconds(),
-          }))
+          // A "new chat" / "select another chat" abort (reason ===
+          // 'navigation') already marked this exact message as interrupted
+          // synchronously in abortActiveResponse — don't overwrite it here.
+          // Only the explicit Stop button (no reason) needs handling in
+          // this async continuation.
+          if (controller.signal.reason !== 'navigation') {
+            updateAssistantMessage(activeChatId, (msg) => ({
+              ...msg,
+              content: msg.content || 'Response stopped.',
+              status: 'complete',
+              liveText: '',
+              thinkingSeconds: elapsedSeconds(),
+            }))
+          }
           return
         }
 

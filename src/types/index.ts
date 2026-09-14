@@ -33,6 +33,11 @@ export interface ChatMessage {
   liveText?: string
   thinkingSeconds?: number
   coverage?: CoverageInfo
+  /** True when this answer was cut off — by switching chats mid-stream
+   * (UX P0-3) or by a page reload mid-stream (UX P1-4) — rather than
+   * finishing or erroring normally. Renders a short "Answer interrupted."
+   * note instead of (or alongside) whatever partial text had arrived. */
+  interrupted?: boolean
 }
 
 export interface ChatSession {
