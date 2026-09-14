@@ -66,4 +66,5 @@ export interface BrowseCategoriesResponse {
   categories: BrowseCategoryGroup[]
   uncategorized_count: number
   accessible_document_ids: string[]
+  note?: string | null
 }

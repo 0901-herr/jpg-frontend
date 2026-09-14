@@ -1,4 +1,4 @@
-import type { BrowseDocumentItem } from '../api/types/browse'
+import type { BrowseCategoriesResponse, BrowseDocumentItem } from '../api/types/browse'
 
 export function isUncategorizedDocument(doc: BrowseDocumentItem): boolean {
   const raw = doc.classification_category?.trim()
@@ -43,4 +43,19 @@ export function resolveCategorySourceDocuments(
   folderDocuments: BrowseDocumentItem[],
 ): BrowseDocumentItem[] {
   return folderDocuments
+}
+
+export function getUncategorizedNote(categories: BrowseCategoriesResponse | null): string | null {
+  if (!categories) return null
+
+  if (typeof categories.note === 'string' && categories.note.trim().length > 0) {
+    return categories.note
+  }
+
+  const count = categories.uncategorized_count
+  if (count <= 0) return null
+
+  return count === 1
+    ? '1 file is not shown because it has not been categorised yet.'
+    : `${count} files are not shown because they have not been categorised yet.`
 }

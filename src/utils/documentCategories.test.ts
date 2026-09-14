@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import type { BrowseDocumentItem } from '../api/types/browse'
+import type { BrowseCategoriesResponse, BrowseDocumentItem } from '../api/types/browse'
 import {
   countUncategorizedDocuments,
   extractCategories,
   filterDocumentsByCategory,
+  getUncategorizedNote,
   isUncategorizedDocument,
 } from './documentCategories'
 
@@ -56,5 +57,45 @@ describe('documentCategories', () => {
       doc('1', 'Contracts'),
       doc('3', 'Contracts'),
     ])
+  })
+})
+
+describe('getUncategorizedNote', () => {
+  const base: BrowseCategoriesResponse = {
+    categories: [],
+    uncategorized_count: 0,
+    accessible_document_ids: [],
+  }
+
+  it('prefers the server-provided note when present', () => {
+    expect(
+      getUncategorizedNote({ ...base, uncategorized_count: 3, note: 'Server note text' }),
+    ).toBe('Server note text')
+  })
+
+  it('falls back to a singular local message for one uncategorized file', () => {
+    expect(getUncategorizedNote({ ...base, uncategorized_count: 1, note: null })).toBe(
+      '1 file is not shown because it has not been categorised yet.',
+    )
+  })
+
+  it('falls back to a plural local message for N uncategorized files', () => {
+    expect(getUncategorizedNote({ ...base, uncategorized_count: 4, note: null })).toBe(
+      '4 files are not shown because they have not been categorised yet.',
+    )
+  })
+
+  it('ignores a blank server note and falls back to the local message', () => {
+    expect(getUncategorizedNote({ ...base, uncategorized_count: 2, note: '   ' })).toBe(
+      '2 files are not shown because they have not been categorised yet.',
+    )
+  })
+
+  it('returns null when there are no uncategorized documents', () => {
+    expect(getUncategorizedNote({ ...base, uncategorized_count: 0, note: null })).toBeNull()
+  })
+
+  it('returns null when categories is null', () => {
+    expect(getUncategorizedNote(null)).toBeNull()
   })
 })

@@ -17,6 +17,7 @@ import { useBrowseCategories } from '../hooks/useBrowseCategories'
 import {
   extractCategories,
   filterDocumentsByCategory,
+  getUncategorizedNote,
   resolveCategorySourceDocuments,
 } from '../utils/documentCategories'
 import BrowseViewToggle, { type BrowseViewMode } from './BrowseViewToggle'
@@ -69,6 +70,11 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
     }
     return extractCategories(categorySourceDocuments)
   }, [serverCategories, categorySourceDocuments])
+
+  const uncategorizedNote = useMemo(
+    () => getUncategorizedNote(serverCategories),
+    [serverCategories],
+  )
 
   useEffect(() => {
     if (viewMode !== 'category') return
@@ -191,6 +197,11 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
                 className="w-full docu-sidebar-select"
                 popupMatchSelectWidth
               />
+            )}
+            {uncategorizedNote != null && (
+              <p className={`${sidebar.caption} ${typeColor.muted} px-1 pt-1 m-0`}>
+                {uncategorizedNote}
+              </p>
             )}
           </>
         )}
