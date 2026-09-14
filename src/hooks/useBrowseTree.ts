@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ApiError } from '../api/http'
 import { fetchBrowseRoot, fetchFolderContents } from '../api/browse'
 import type { BrowseDocumentItem, BrowseFolderContentsResponse } from '../api/types/browse'
+import { BROWSE_IDLE_REFRESH_SECONDS, BROWSE_REFRESH_SECONDS } from '../config/browse'
 import {
   loadPersistedActiveFolder,
   persistActiveFolder,
@@ -102,6 +103,66 @@ export function useBrowseTree(onDocumentsLoaded?: (event: DocumentsLoadedEvent) 
       onDocumentsLoaded?.({ folderId, documents: response.documents, page })
     },
     [onDocumentsLoaded],
+  )
+
+  /**
+   * Merge freshly-fetched status fields into an already-cached folder's
+   * documents, without replacing the folder's document list (which would
+   * drop pages loaded via "load more") or touching its subfolder/pagination
+   * metadata. Used by both the auto-refresh poll and the manual refresh
+   * button so neither collapses the tree or clears the user's selection.
+   */
+  const mergeStatusUpdates = useCallback(
+    (folderId: number, response: BrowseFolderContentsResponse) => {
+      setCache((prev) => {
+        const existing = prev.get(folderId)
+        if (!existing) return prev
+
+        const freshById = new Map(response.documents.map((doc) => [doc.document_id, doc]))
+        let changed = false
+
+        const mergedDocs = existing.contents.documents.map((doc) => {
+          const fresh = freshById.get(doc.document_id)
+          if (!fresh) return doc
+          freshById.delete(doc.document_id)
+
+          const sameStatus =
+            fresh.indexing_status === doc.indexing_status &&
+            fresh.status_reason === doc.status_reason &&
+            fresh.queryable === doc.queryable &&
+            fresh.rag_document_id === doc.rag_document_id &&
+            fresh.summary_status === doc.summary_status &&
+            fresh.classification_category === doc.classification_category
+          if (sameStatus) return doc
+
+          changed = true
+          return {
+            ...doc,
+            indexing_status: fresh.indexing_status,
+            status_reason: fresh.status_reason,
+            queryable: fresh.queryable,
+            rag_document_id: fresh.rag_document_id,
+            summary_status: fresh.summary_status,
+            classification_category: fresh.classification_category,
+          }
+        })
+
+        const newlySeen = [...freshById.values()]
+        if (newlySeen.length > 0) changed = true
+        if (!changed) return prev
+
+        const next = new Map(prev)
+        next.set(folderId, {
+          ...existing,
+          contents: {
+            ...existing.contents,
+            documents: [...mergedDocs, ...newlySeen],
+          },
+        })
+        return next
+      })
+    },
+    [],
   )
 
   const loadFolder = useCallback(
@@ -236,6 +297,71 @@ export function useBrowseTree(onDocumentsLoaded?: (event: DocumentsLoadedEvent) 
 
   const isActiveFolderLoading = activeFolderId != null && loadingFolderIds.has(activeFolderId)
 
+  // True while any document in a loaded (expanded) folder has not settled
+  // into a terminal state — drives the fast vs. idle poll cadence below.
+  const hasUnsettledDocument = useMemo(() => {
+    for (const entry of cache.values()) {
+      for (const doc of entry.contents.documents) {
+        if (doc.indexing_status !== 'READY' && doc.indexing_status !== 'FAILED') return true
+      }
+    }
+    return false
+  }, [cache])
+
+  const expandedFolderIds = useMemo(() => [...cache.keys()], [cache])
+
+  const fetchAndMergeStatuses = useCallback(
+    async (folderIds: number[]) => {
+      await Promise.all(
+        folderIds.map((id) =>
+          fetchFolderContents(id, 0)
+            .then((response) => mergeStatusUpdates(id, response))
+            .catch(() => {
+              // Transient poll failure — keep showing the last-known status
+              // and try again on the next tick / manual refresh.
+            }),
+        ),
+      )
+    },
+    [mergeStatusUpdates],
+  )
+
+  /** Manual refresh: re-fetch the root plus every folder the user has expanded. */
+  const refreshDocumentStatuses = useCallback(async () => {
+    const ids = new Set(expandedFolderIds)
+    if (rootFolderId != null) ids.add(rootFolderId)
+    if (ids.size === 0) return
+    await fetchAndMergeStatuses([...ids])
+  }, [expandedFolderIds, rootFolderId, fetchAndMergeStatuses])
+
+  // Auto-refresh: poll expanded folders' contents while the /chat page is
+  // open. Cadence is VITE_BROWSE_REFRESH_SECONDS (0 disables) whenever a
+  // visible document hasn't settled, else the slower idle cadence. Paused
+  // while the tab is hidden; resumes immediately on visibilitychange.
+  useEffect(() => {
+    if (BROWSE_REFRESH_SECONDS <= 0) return undefined
+    if (rootFolderId == null || expandedFolderIds.length === 0) return undefined
+
+    const seconds = hasUnsettledDocument ? BROWSE_REFRESH_SECONDS : BROWSE_IDLE_REFRESH_SECONDS
+
+    const pollNow = () => {
+      if (document.hidden) return
+      void fetchAndMergeStatuses(expandedFolderIds)
+    }
+
+    const intervalId = setInterval(pollNow, seconds * 1000)
+
+    const handleVisibility = () => {
+      if (!document.hidden) pollNow()
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+
+    return () => {
+      clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
+  }, [rootFolderId, expandedFolderIds, hasUnsettledDocument, fetchAndMergeStatuses])
+
   return {
     username,
     rootFolderId,
@@ -252,6 +378,7 @@ export function useBrowseTree(onDocumentsLoaded?: (event: DocumentsLoadedEvent) 
     handleLoadTreeData,
     handleLoadMoreDocuments,
     refreshActiveFolder,
+    refreshDocumentStatuses,
   }
 }
 
