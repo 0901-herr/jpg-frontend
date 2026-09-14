@@ -223,6 +223,114 @@ describe('sendMessage delta handling', () => {
     expect(result.content).not.toContain('\n\n- item two')
   })
 
+  it('joins prose ending in a digit-and-period with the next sentence using a single space', async () => {
+    // Regression guard for the list-marker heuristic: a segment ending in
+    // e.g. "2021." must not make the *following* segment look like it's
+    // continuing a list — only a segment that itself *starts* with a list
+    // marker should ever trigger the newline logic.
+    scriptedEvents = [
+      { event: 'citation', data: { doc_ref: '[Doc1]', chunk_id: 'c1', item_id: 'doc1', page: 1 } },
+      {
+        event: 'answer',
+        data: { text: 'The organization was founded in 2021.', chunk_id: 'c1', item_id: 'doc1', page: 1 },
+      },
+      {
+        event: 'answer',
+        data: { text: 'It has grown steadily since.', chunk_id: 'c1', item_id: 'doc1', page: 1 },
+      },
+      { event: 'done', data: {} },
+    ]
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'When was it founded?',
+      documents: ['doc1'],
+      callbacks: {},
+    })
+
+    expect(result.content).toBe(
+      'The organization was founded in 2021. [Doc1] It has grown steadily since. [Doc1]',
+    )
+  })
+
+  it('does not treat a segment starting with a negative number ("-5 degrees") as a list item', async () => {
+    scriptedEvents = [
+      { event: 'answer', data: { text: 'The temperature dropped to' } },
+      { event: 'answer', data: { text: '-5 degrees Celsius overnight.' } },
+      { event: 'done', data: {} },
+    ]
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'How cold did it get?',
+      documents: ['doc1'],
+      callbacks: {},
+    })
+
+    expect(result.content).toBe('The temperature dropped to -5 degrees Celsius overnight.')
+  })
+
+  it('does not treat a segment starting with a negative percentage ("-10%") as a list item', async () => {
+    scriptedEvents = [
+      { event: 'answer', data: { text: 'Revenue fell by' } },
+      { event: 'answer', data: { text: '-10% year over year.' } },
+      { event: 'done', data: {} },
+    ]
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'How did revenue change?',
+      documents: ['doc1'],
+      callbacks: {},
+    })
+
+    expect(result.content).toBe('Revenue fell by -10% year over year.')
+  })
+
+  it('does not treat a segment starting with Markdown emphasis ("*emphasis*") as a bullet', async () => {
+    scriptedEvents = [
+      { event: 'answer', data: { text: 'The report says' } },
+      { event: 'answer', data: { text: '*emphasis* matters here.' } },
+      { event: 'done', data: {} },
+    ]
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'What does the report emphasize?',
+      documents: ['doc1'],
+      callbacks: {},
+    })
+
+    expect(result.content).toBe('The report says *emphasis* matters here.')
+  })
+
+  it('reassembles an ordered list whose markers arrive as their own segments', async () => {
+    // Observed live: rag-engine's AnswerSegmenter emitted the list marker
+    // as a standalone segment, separate from its label text, with no
+    // newline and no trailing space on either side: "1.", "Programme
+    // Rationale", "2.", "Programme Educational Objectives", "3.", ...
+    scriptedEvents = [
+      { event: 'answer', data: { text: '1.' } },
+      { event: 'answer', data: { text: 'Programme Rationale' } },
+      { event: 'answer', data: { text: '2.' } },
+      { event: 'answer', data: { text: 'Programme Educational Objectives' } },
+      { event: 'answer', data: { text: '3.' } },
+      { event: 'answer', data: { text: 'Programme Learning Outcomes' } },
+      { event: 'done', data: {} },
+    ]
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'List the programme sections.',
+      documents: ['doc1'],
+      callbacks: {},
+    })
+
+    expect(result.content).toBe(
+      '1. Programme Rationale\n2. Programme Educational Objectives\n3. Programme Learning Outcomes',
+    )
+  })
+
   it('ignores a delta event with no text field', async () => {
     scriptedEvents = [
       { event: 'delta', data: {} },

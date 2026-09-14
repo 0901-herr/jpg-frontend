@@ -72,6 +72,21 @@ function citationAwareBlock<Tag extends keyof JSX.IntrinsicElements>(
   }
 }
 
+/** Like `citationAwareBlock`, but skips `linkifyNode` — for tags whose
+ * children are always other elements, never raw text, in valid Markdown
+ * (a `<ul>`'s children are always `<li>`s, a `<table>`'s always
+ * `<thead>`/`<tbody>`, a `<tr>`'s always `<td>`/`<th>`). Because
+ * react-markdown builds elements top-down, calling `linkifyNode` here would
+ * already walk and linkify every descendant leaf before that leaf's own
+ * component override (e.g. `li`, `td`) runs and does the same walk again
+ * on its own (already-linkified) children — a harmless no-op the second
+ * time, but a needless full re-walk of the subtree for every list/table. */
+function plainBlock<Tag extends keyof JSX.IntrinsicElements>(tag: Tag, className: string) {
+  return function PlainBlock({ children }: { children?: ReactNode }) {
+    return createElement(tag, { className }, children)
+  }
+}
+
 const PARAGRAPH_SPACING = 'mb-[0.75em] last:mb-0'
 const HEADING_CLASS = `font-medium ${PARAGRAPH_SPACING}`
 const LIST_CLASS = `${PARAGRAPH_SPACING} pl-5 space-y-1`
@@ -92,8 +107,8 @@ export function createAnswerMarkdownComponents(sources: Source[]): Components {
     h4: citationAwareBlock('p', HEADING_CLASS, sources, 'h4'),
     h5: citationAwareBlock('p', HEADING_CLASS, sources, 'h5'),
     h6: citationAwareBlock('p', HEADING_CLASS, sources, 'h6'),
-    ul: citationAwareBlock('ul', `list-disc ${LIST_CLASS}`, sources, 'ul'),
-    ol: citationAwareBlock('ol', `list-decimal ${LIST_CLASS}`, sources, 'ol'),
+    ul: plainBlock('ul', `list-disc ${LIST_CLASS}`),
+    ol: plainBlock('ol', `list-decimal ${LIST_CLASS}`),
     li: citationAwareBlock('li', 'leading-relaxed', sources, 'li'),
     blockquote: citationAwareBlock(
       'blockquote',
@@ -101,15 +116,10 @@ export function createAnswerMarkdownComponents(sources: Source[]): Components {
       sources,
       'bq',
     ),
-    table: citationAwareBlock(
-      'table',
-      `border-collapse border border-[#ececec] w-full text-sm ${PARAGRAPH_SPACING}`,
-      sources,
-      'table',
-    ),
-    thead: citationAwareBlock('thead', '', sources, 'thead'),
-    tbody: citationAwareBlock('tbody', '', sources, 'tbody'),
-    tr: citationAwareBlock('tr', '', sources, 'tr'),
+    table: plainBlock('table', `border-collapse border border-[#ececec] w-full text-sm ${PARAGRAPH_SPACING}`),
+    thead: plainBlock('thead', ''),
+    tbody: plainBlock('tbody', ''),
+    tr: plainBlock('tr', ''),
     th: citationAwareBlock('th', `${CELL_CLASS} font-medium`, sources, 'th'),
     td: citationAwareBlock('td', CELL_CLASS, sources, 'td'),
     code: ({ children }) => (

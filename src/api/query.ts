@@ -63,9 +63,17 @@ export function joinAnswerSegment(existing: string, next: string): string {
   return needsSpace ? `${existing} ${next}` : existing + next
 }
 
-/** Matches a Markdown list-item marker ("- ", "* ", "• ", "1. ", "2) ") at
- * the start of a line. */
+/** Matches a Markdown list-item marker ("- ", "* ", "• ", "1. ", "2) ")
+ * followed by its item text, at the start of a line — i.e. marker and text
+ * arrived in the same segment. */
 const LIST_MARKER_RE = /^\s*([-*•]|\d+[.)])\s/
+
+/** Matches a segment that consists solely of a list marker with no item
+ * text ("1.", "-", "*") — rag-engine's AnswerSegmenter has been observed
+ * emitting the marker as its own segment, separate from the label that
+ * follows ("1.", then "Programme Rationale", then "2.", ...), unlike
+ * LIST_MARKER_RE's "marker + text in one segment" shape above. */
+const BARE_LIST_MARKER_RE = /^\s*(\d+\.|-|\*)\s*$/
 
 /** True if the last line of `text` is itself a Markdown list item — used to
  * decide whether a following list-item segment continues the same list
@@ -236,8 +244,17 @@ async function streamQuery(
               // "- item two"). Reinsert it: a single newline continues the
               // same list, a blank line starts a new one (either because
               // this is the first item after non-list prose, or because
-              // the backend hasn't sent a list item yet at all).
-              const isListItem = LIST_MARKER_RE.test(segmentText)
+              // the backend hasn't sent a list item yet at all). The same
+              // treatment applies when the marker itself is a standalone
+              // segment (BARE_LIST_MARKER_RE) — observed live for ordered
+              // lists ("1.", "Programme Rationale", "2.", ...). A bare
+              // marker is appended with no trailing space, so it doesn't
+              // yet look like a complete list item to endsWithListItemLine
+              // — which is exactly what lets the item's text on the next
+              // segment fall through to the plain default branch below and
+              // pick up a single joining space from joinAnswerSegment, same
+              // as any other two-clause join.
+              const isListItem = LIST_MARKER_RE.test(segmentText) || BARE_LIST_MARKER_RE.test(segmentText)
               const alreadySeparated = /^\s*\n/.test(segmentText)
 
               let delta: string
