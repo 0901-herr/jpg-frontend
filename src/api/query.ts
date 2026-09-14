@@ -210,6 +210,11 @@ async function streamQuery(
   let durationMs: number | undefined
   let streamError: string | null = null
   let terminalEvent = false
+  // Sticky once set: an `abstention` event means whatever citations
+  // arrived before it were retrieval candidates for an answer that was
+  // never written, not real sources — drop them, and ignore any further
+  // `citation` events for the rest of this stream.
+  let abstained = false
 
   try {
     await consumeSseStream(
@@ -335,11 +340,21 @@ async function streamQuery(
             break
           }
           case 'citation': {
+            if (abstained) break
             const batch = parseCitationEvent(data)
             if (batch.length > 0) {
               citations = mergeCitations(citations, batch)
               callbacks.onCitations?.(batch)
             }
+            break
+          }
+          case 'abstention': {
+            abstained = true
+            citations = []
+            const obj = asRecord(data)
+            const reason = obj ? readString(obj, 'reason') : undefined
+            const abstentionMessage = obj ? readString(obj, 'message') : undefined
+            callbacks.onAbstention?.({ reason, message: abstentionMessage })
             break
           }
           case 'done': {

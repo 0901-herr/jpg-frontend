@@ -39,6 +39,14 @@ export interface StreamQueryCallbacks {
   onAnswer?: (delta: string) => void
   /** Batch of citations from a single SSE citation event */
   onCitations?: (citations: Citation[]) => void
+  /** rag-engine sends `abstention` (reason + message) then an `answer`
+   * event carrying the canned "couldn't find relevant content" message,
+   * when it declines to answer from the retrieved context. Any citations
+   * already streamed in before this point were retrieval candidates, not
+   * actual sources for an answer that was never written — they're dropped
+   * (see `streamQuery`'s `abstained` handling) and this fires so callers
+   * can clear whatever sources they'd already shown. */
+  onAbstention?: (payload: { reason?: string; message?: string }) => void
   onDone?: (payload: { duration_ms?: number }) => void
   onError?: (message: string) => void
 }

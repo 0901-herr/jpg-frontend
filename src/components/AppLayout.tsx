@@ -537,6 +537,18 @@ export default function AppLayout() {
                 return next
               })
             },
+            onAbstention: () => {
+              // Citations already shown were retrieval candidates, not
+              // sources for an answer that was never written — clear them
+              // rather than let them linger as if they backed the canned
+              // "couldn't find relevant content" message that follows.
+              streamingCitationsRef.current = []
+              citationFilenamesRef.current = new Set()
+              updateAssistantMessage(activeChatId, (msg) => ({
+                ...msg,
+                sources: undefined,
+              }))
+            },
           },
         })
 

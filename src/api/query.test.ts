@@ -574,3 +574,56 @@ describe('sendMessage progress forwarding', () => {
     })
   })
 })
+
+describe('sendMessage abstention handling', () => {
+  it('drops earlier citations, calls onAbstention, and returns no sources', async () => {
+    scriptedEvents = [
+      { event: 'citation', data: { citations: [{ document_id: 'doc-1', filename: 'A.pdf', page: 2 }] } },
+      { event: 'abstention', data: { reason: 'no_relevant_content', message: "I couldn't find relevant content." } },
+      { event: 'answer', data: { text: "I couldn't find relevant content." } },
+      { event: 'done', data: { duration_ms: 5 } },
+    ]
+
+    const onAbstention = vi.fn()
+    const onCitations = vi.fn()
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'Unrelated question',
+      documents: ['doc1'],
+      callbacks: { onAbstention, onCitations },
+    })
+
+    expect(onAbstention).toHaveBeenCalledWith({
+      reason: 'no_relevant_content',
+      message: "I couldn't find relevant content.",
+    })
+    expect(onCitations).toHaveBeenCalledTimes(1)
+    expect(result.sources).toBeUndefined()
+    expect(result.fileTags).toBeUndefined()
+  })
+
+  it('ignores any citation event that arrives after an abstention', async () => {
+    scriptedEvents = [
+      { event: 'abstention', data: { reason: 'no_relevant_content' } },
+      {
+        event: 'citation',
+        data: { citations: [{ document_id: 'doc-1', filename: 'A.pdf', page: 2 }] },
+      },
+      { event: 'answer', data: { text: "I couldn't find relevant content." } },
+      { event: 'done', data: { duration_ms: 5 } },
+    ]
+
+    const onCitations = vi.fn()
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'Unrelated question',
+      documents: ['doc1'],
+      callbacks: { onCitations },
+    })
+
+    expect(onCitations).not.toHaveBeenCalled()
+    expect(result.sources).toBeUndefined()
+  })
+})
