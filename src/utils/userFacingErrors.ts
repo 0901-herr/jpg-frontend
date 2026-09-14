@@ -11,8 +11,11 @@ export const QUERY_ALMOST_DONE_ERROR =
 export const QUERY_PARTIAL_ANSWER_ERROR =
   "We got part of your answer but couldn't finish. Try again."
 
+export const QUERY_SESSION_EXPIRED_ERROR =
+  'Your session has expired. Sign in again to continue.'
+
 export const QUERY_PERMISSION_DENIED_ERROR =
-  "You don't have permission to run this query on the selected documents."
+  "You don't have permission to query the selected documents."
 
 export const QUERY_SERVER_ERROR =
   'Something went wrong on our side. Wait a moment and try again.'
@@ -51,7 +54,11 @@ export function toUserFacingQueryError(
 ): string {
   const { progressLabel, hadPartialAnswer, httpStatus } = context
 
-  if (httpStatus === 401 || httpStatus === 403) {
+  if (httpStatus === 401) {
+    return QUERY_SESSION_EXPIRED_ERROR
+  }
+
+  if (httpStatus === 403) {
     return QUERY_PERMISSION_DENIED_ERROR
   }
 
