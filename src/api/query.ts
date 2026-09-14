@@ -294,17 +294,22 @@ async function streamQuery(
                   : endsWithListItemLine(content)
                     ? `\n${rawDelta}`
                     : `\n\n${rawDelta}`
-              } else if (endsWithListItemLine(content) || citationChanged) {
-                // Leaving a list block for non-list prose needs the same
-                // blank-line break as a citation change: without it, a
-                // bare join here reads to CommonMark as a "lazy
-                // continuation" line and merges into the last <li>. This
-                // still applies even when the segment carries its own
-                // single leading newline — that lone "\n" IS the
+              } else if (endsWithListItemLine(content)) {
+                // Leaving a list block for non-list prose needs a blank
+                // line: without it, a bare join here reads to CommonMark
+                // as a "lazy continuation" line and merges into the last
+                // <li>. This still applies even when the segment carries
+                // its own single leading newline — that lone "\n" IS the
                 // lazy-continuation case, so it can't be trusted here the
                 // way `isListItem`'s own separator can; only a segment
                 // that already supplies a full blank line is left alone.
                 delta = alreadyBlankSeparated ? rawDelta : `\n\n${rawDelta.replace(/^\s*\n+\s*/, '')}`
+              } else if (citationChanged) {
+                // A new source outside a list starts a new paragraph, but
+                // a segment that already brought its own separator (even a
+                // single newline — no list to lazily continue here) is
+                // left as the backend shaped it.
+                delta = alreadySeparated ? rawDelta : `\n\n${rawDelta}`
               } else {
                 delta = rawDelta
               }

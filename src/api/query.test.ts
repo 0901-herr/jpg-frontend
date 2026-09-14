@@ -132,6 +132,27 @@ describe('sendMessage delta handling', () => {
     )
   })
 
+  it('keeps a segment-supplied single newline on a citation change outside a list', async () => {
+    // Outside a list there is nothing to lazily continue, so the backend's
+    // own soft line break between two sources is left as it arrived.
+    scriptedEvents = [
+      { event: 'citation', data: { doc_ref: '[Doc1]', chunk_id: 'c1', item_id: 'doc1', page: 1 } },
+      { event: 'citation', data: { doc_ref: '[Doc2]', chunk_id: 'c2', item_id: 'doc1', page: 2 } },
+      { event: 'answer', data: { text: 'Claim one.', chunk_id: 'c1', item_id: 'doc1', page: 1 } },
+      { event: 'answer', data: { text: '\nClaim two.', chunk_id: 'c2', item_id: 'doc1', page: 2 } },
+      { event: 'done', data: {} },
+    ]
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'Summarize.',
+      documents: ['doc1'],
+      callbacks: {},
+    })
+
+    expect(result.content).toBe('Claim one. [Doc1]\nClaim two. [Doc2]')
+  })
+
   it('does not insert a paragraph break between consecutive segments citing the same source', async () => {
     scriptedEvents = [
       { event: 'citation', data: { doc_ref: '[Doc1]', chunk_id: 'c1', item_id: 'doc1', page: 1 } },
