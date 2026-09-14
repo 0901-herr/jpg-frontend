@@ -4,7 +4,7 @@ import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { type, typeColor } from '../styles/typography'
 import { radius } from '../styles/theme'
-import { createAnswerMarkdownComponents } from '../utils/markdownRenderers'
+import { createAnswerMarkdownComponents, createStreamingTailPlugin } from '../utils/markdownRenderers'
 import type { ChatMessage, CoverageInfo, Source } from '../types'
 import CitationList from './CitationList'
 
@@ -85,11 +85,32 @@ function CoverageNotice({ coverage }: { coverage?: CoverageInfo }) {
  * citation markers as clickable `CitationLink`s wherever they land in the
  * tree, including nested inside list items or bold text. Raw HTML is never
  * rendered: only remark-gfm is enabled, and rehype-raw is deliberately not
- * added. */
-export function MarkdownAnswer({ content, sources }: { content: string; sources: Source[] }) {
+ * added.
+ *
+ * `liveText` is only passed while a message is streaming (`undefined`
+ * otherwise, which is the default). When set, the raw in-flight preview
+ * text and a blinking cursor are appended as trailing inline children of
+ * the *last* rendered block (via `createStreamingTailPlugin`) so they
+ * continue on the same line as the finalized text instead of dropping to
+ * a new line below it — `<p>`/`<li>`/etc. are block-level, so a plain
+ * sibling after the whole tree would otherwise always start its own line.
+ * A finished message (`liveText` omitted) renders exactly as before. */
+export function MarkdownAnswer({
+  content,
+  sources,
+  liveText,
+}: {
+  content: string
+  sources: Source[]
+  liveText?: string
+}) {
   const components = useMemo(() => createAnswerMarkdownComponents(sources), [sources])
+  const rehypePlugins = useMemo(
+    () => (liveText === undefined ? [] : [createStreamingTailPlugin(liveText)]),
+    [liveText],
+  )
   return (
-    <Markdown remarkPlugins={[remarkGfm]} components={components}>
+    <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={rehypePlugins} components={components}>
       {content}
     </Markdown>
   )
@@ -101,18 +122,11 @@ function AnswerContent({ message }: { message: ChatMessage }) {
 
   return (
     <div className={`${type.body} ${typeColor.body} leading-relaxed`}>
-      <MarkdownAnswer content={message.content} sources={sources} />
-      {isStreaming && message.liveText && (
-        // Raw, unattributed preview of the segment still being generated —
-        // finalized `content` above already covers everything earlier, so
-        // this stays plain text (whitespace-pre-wrap, no Markdown parsing):
-        // it's live token text, not yet a complete citation-attributed
-        // segment to reconstruct markers or block structure from.
-        <span className="opacity-60 whitespace-pre-wrap">{message.liveText}</span>
-      )}
-      {isStreaming && (
-        <span className="inline-block w-1.5 h-4 ml-0.5 bg-zinc-400 animate-pulse align-middle rounded-sm" />
-      )}
+      <MarkdownAnswer
+        content={message.content}
+        sources={sources}
+        liveText={isStreaming ? (message.liveText ?? '') : undefined}
+      />
     </div>
   )
 }

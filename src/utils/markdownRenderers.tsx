@@ -8,6 +8,8 @@ import {
   type ReactNode,
 } from 'react'
 import type { Components } from 'react-markdown'
+import type { Element, ElementContent, Root } from 'hast'
+import type { Plugin } from 'unified'
 import { citationDisplayLabel, splitAnswerByDocRefs } from './citations'
 import { CitationLink } from '../components/CitationList'
 import type { Source } from '../types'
@@ -137,5 +139,87 @@ export function createAnswerMarkdownComponents(sources: Source[]): Components {
         {linkifyNode(children, sources, 'a')}
       </a>
     ),
+  }
+}
+
+// Tags whose own last element child may still be *structural* (a list still
+// has more items, a table still has more rows) rather than the actual
+// content-bearing leaf we want to append into — so the search descends
+// through these looking for the real last leaf, and stops at anything else
+// (p, li, td, h1..h6, or an inline tag) and appends there directly.
+const STREAMING_TAIL_CONTAINER_TAGS = new Set([
+  'ul',
+  'ol',
+  'li',
+  'table',
+  'thead',
+  'tbody',
+  'tr',
+  'blockquote',
+])
+
+type HastParent = Root | Element
+
+/** Finds the block that a streaming preview/cursor should be appended
+ * into: the last real content leaf (`<p>`, `<li>`, `<td>`, a heading, …) in
+ * the tree, descending through purely structural wrappers (`<ul>`, `<table>`
+ * rows, …) but never into inline formatting (`<strong>`, citation links,
+ * …) so the tail is always a direct, appended child of the surrounding
+ * block rather than nested inside unrelated inline markup. */
+function findStreamingTailTarget(node: HastParent): HastParent {
+  const children = node.children
+  const last = children[children.length - 1]
+  if (!last || last.type !== 'element') return node
+
+  const isContainer = node.type === 'root' || STREAMING_TAIL_CONTAINER_TAGS.has(node.tagName)
+  if (!isContainer) return node
+
+  return STREAMING_TAIL_CONTAINER_TAGS.has(last.tagName)
+    ? findStreamingTailTarget(last)
+    : last
+}
+
+function streamingTailSpan(
+  className: string,
+  children: ElementContent[],
+  properties?: Record<string, unknown>,
+): Element {
+  return {
+    type: 'element',
+    tagName: 'span',
+    properties: { className: className.split(' '), ...properties },
+    children,
+  }
+}
+
+/**
+ * A rehype plugin (see `MarkdownAnswer`) that appends the live-typing
+ * preview text and the blinking cursor as trailing inline children of the
+ * *last* rendered block, instead of as siblings of the whole Markdown tree.
+ * `<p>`/`<li>`/etc. are `display: block`, so a plain sibling after the
+ * whole tree always starts on its own line the moment any content has
+ * finalized into a block; nesting the preview/cursor inside that same
+ * block keeps them flowing on the same line while the answer streams in.
+ *
+ * `liveText` is inserted as a literal hast text node — never parsed as
+ * Markdown — so it stays exactly what it always was: an unattributed,
+ * pre-wrapped preview of in-flight tokens, not a citation-attributed,
+ * block-structured segment.
+ */
+export function createStreamingTailPlugin(liveText: string): Plugin<[], Root> {
+  return () => (tree: Root) => {
+    const target = findStreamingTailTarget(tree)
+    const tail: ElementContent[] = []
+    if (liveText) {
+      tail.push(streamingTailSpan('opacity-60 whitespace-pre-wrap', [{ type: 'text', value: liveText }]))
+    }
+    tail.push(
+      streamingTailSpan(
+        'inline-block w-1.5 h-4 ml-0.5 bg-zinc-400 animate-pulse align-middle rounded-sm',
+        [],
+        { 'data-testid': 'streaming-cursor' },
+      ),
+    )
+    ;(target.children as ElementContent[]).push(...tail)
   }
 }

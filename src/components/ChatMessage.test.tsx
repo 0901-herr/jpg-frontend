@@ -112,4 +112,41 @@ describe('AnswerContent Markdown rendering', () => {
     expect(preview.tagName).toBe('SPAN')
     expect(preview.className).toContain('whitespace-pre-wrap')
   })
+
+  it('keeps the live-typing preview and cursor inline in the last block instead of a following sibling block', () => {
+    const message = assistantMessage({
+      content: 'Hello',
+      status: 'streaming',
+      liveText: ' world',
+    })
+    const { container } = render(<ChatMessageItem message={message} />)
+
+    // "Hello world" must be one continuous block, not "Hello" in one <p>
+    // and " world" dangling after it as a detached sibling.
+    const block = screen.getByText(
+      (_text, node) => node?.tagName === 'P' && node.textContent === 'Hello world',
+    )
+    expect(block.tagName).toBe('P')
+
+    const cursor = container.querySelector('[data-testid="streaming-cursor"]')
+    expect(cursor).not.toBeNull()
+    // The cursor must be a descendant of that same block, not a sibling of
+    // the block (or of the whole Markdown tree) that would start a new line.
+    expect(block.contains(cursor)).toBe(true)
+
+    // No further block-level element follows the paragraph containing the
+    // preview text — i.e. nothing detaches onto its own line below it.
+    const answerRoot = block.parentElement
+    expect(answerRoot?.lastElementChild).toBe(block)
+  })
+
+  it('renders a finished (non-streaming) message identically to before — no tail elements at all', () => {
+    const content = 'Finished part.'
+    const { container } = render(
+      <ChatMessageItem message={assistantMessage({ content, status: 'complete' })} />,
+    )
+
+    expect(screen.getByText('Finished part.').tagName).toBe('P')
+    expect(container.querySelector('[data-testid="streaming-cursor"]')).toBeNull()
+  })
 })
