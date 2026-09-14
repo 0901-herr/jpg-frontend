@@ -1,19 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { fetchBrowseCategories, fetchBrowseStatus } from '../api/browse'
-import type { BrowseCategoriesResponse, BrowseDocumentItem, BrowseStatusItem } from '../api/types/browse'
+import { fetchBrowseCategories } from '../api/browse'
+import type { BrowseCategoriesResponse, BrowseDocumentItem } from '../api/types/browse'
 import { BROWSE_IDLE_REFRESH_SECONDS, BROWSE_REFRESH_SECONDS } from '../config/browse'
 
 interface UseBrowseCategoriesOptions {
   enabled: boolean
   activeFolderId: number | null
   refreshActiveFolder: () => Promise<void>
-  /** Merges cheap /browse/status patches into the sidebar tree's cache (from useBrowseTree). */
-  applyStatusPatches: (patches: BrowseStatusItem[]) => void
 }
 
 export function useBrowseCategories(
   folderDocuments: BrowseDocumentItem[],
-  { enabled, activeFolderId, refreshActiveFolder, applyStatusPatches }: UseBrowseCategoriesOptions,
+  { enabled, activeFolderId, refreshActiveFolder }: UseBrowseCategoriesOptions,
 ) {
   const [serverCategories, setServerCategories] = useState<BrowseCategoriesResponse | null>(null)
   const [categoriesLoading, setCategoriesLoading] = useState(false)
@@ -68,11 +66,17 @@ export function useBrowseCategories(
   const inFlightRef = useRef<Promise<void> | null>(null)
 
   // Auto-refresh while in category mode, on the same cadence as the
-  // sidebar tree. LogicalDOC load: the fast cadence calls ONLY the cheap
-  // /browse/status endpoint for the ids currently listed here, merging
-  // into the shared tree cache (so badges update without a full re-fetch);
-  // the full/expensive fetchBrowseCategories re-fetch (existing browse
-  // function) runs only at the slower idle cadence. Paused while hidden.
+  // sidebar tree. LogicalDOC load: useBrowseTree's own fast-cadence poll
+  // (src/hooks/useBrowseTree.ts) already calls the cheap /browse/status
+  // endpoint for every cached document id — a superset of this folder's,
+  // since the active folder must be cached for folderDocuments to be
+  // non-empty at all — and patches the shared cache folderDocuments is
+  // itself derived from. So the fast cadence here is a no-op: it exists
+  // only to keep re-checking (via the effect's own deps) whether every
+  // document has settled yet. Only the full/expensive fetchBrowseCategories
+  // re-fetch (existing browse function) actually runs, at the slower idle
+  // cadence once settled — no need to duplicate the status call too.
+  // Paused while hidden.
   useEffect(() => {
     if (!enabled || folderDocuments.length === 0) return undefined
     if (BROWSE_REFRESH_SECONDS <= 0) return undefined
@@ -105,16 +109,17 @@ export function useBrowseCategories(
 
     const poll = () => {
       if (document.hidden) return
+      if (hasUnsettled) {
+        // No fetch of our own here — useBrowseTree's fast poll already
+        // covers these ids and folderDocuments will reflect its patches
+        // on the next render, which re-runs this effect (see deps below).
+        return
+      }
       void runIfIdle(async () => {
-        if (hasUnsettled) {
-          const result = await fetchBrowseStatus(documentIds)
-          applyStatusPatches(result.documents)
-        } else {
-          const result = await fetchBrowseCategories(documentIds)
-          setServerCategories(result)
-        }
+        const result = await fetchBrowseCategories(documentIds)
+        setServerCategories(result)
       }).catch(() => {
-        // Transient poll failure — keep showing the last-known categories/status.
+        // Transient poll failure — keep showing the last-known categories.
       })
     }
 
@@ -129,7 +134,7 @@ export function useBrowseCategories(
       document.removeEventListener('visibilitychange', handleVisibility)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- documentIdsKey tracks folderDocuments ids
-  }, [enabled, documentIdsKey, folderDocuments, applyStatusPatches])
+  }, [enabled, documentIdsKey, folderDocuments])
 
   return { serverCategories, categoriesLoading }
 }

@@ -22,22 +22,6 @@ function doc(id: string): BrowseDocumentItem {
   }
 }
 
-function statusResult(documentId: string, status: 'INDEXING' | 'READY') {
-  return {
-    documents: [
-      {
-        document_id: documentId,
-        indexing_status: status,
-        status_reason: null,
-        queryable: status === 'READY',
-        summary_status: null,
-        classification_category: null,
-        rag_document_id: status === 'READY' ? 'rag-1' : null,
-      },
-    ],
-  }
-}
-
 function deferred<T>() {
   let resolve!: (value: T) => void
   const promise = new Promise<T>((res) => {
@@ -64,7 +48,6 @@ describe('useBrowseCategories', () => {
         enabled: true,
         activeFolderId: 4,
         refreshActiveFolder,
-        applyStatusPatches: vi.fn(),
       }),
     )
 
@@ -83,7 +66,6 @@ describe('useBrowseCategories', () => {
         enabled: false,
         activeFolderId: 4,
         refreshActiveFolder: vi.fn(async () => {}),
-        applyStatusPatches: vi.fn(),
       }),
     )
 
@@ -103,7 +85,6 @@ describe('useBrowseCategories auto-refresh', () => {
   // poll's own cadence (15_000 / 60_000) rather than "the last call".
   let intervalCalls: Array<{ ms: number; cb: () => void }>
   let refreshActiveFolder: ReturnType<typeof vi.fn>
-  let applyStatusPatches: ReturnType<typeof vi.fn>
 
   function intervalWithMs(ms: number): (() => void) | undefined {
     return [...intervalCalls].reverse().find((call) => call.ms === ms)?.cb
@@ -115,7 +96,6 @@ describe('useBrowseCategories auto-refresh', () => {
     // Stable across re-renders — an inline `vi.fn()` in the render callback
     // would change identity every render and re-trigger the mount-fetch effect.
     refreshActiveFolder = vi.fn(async () => {})
-    applyStatusPatches = vi.fn()
     vi.spyOn(window, 'setInterval').mockImplementation(((handler: () => void, ms?: number) => {
       intervalCalls.push({ ms: ms ?? -1, cb: handler })
       return 1 as unknown as ReturnType<typeof setInterval>
@@ -128,13 +108,19 @@ describe('useBrowseCategories auto-refresh', () => {
     Object.defineProperty(document, 'hidden', { configurable: true, value: false })
   })
 
-  it('schedules the fast cadence while a document has not settled, and a tick calls only the cheap status endpoint', async () => {
+  it('schedules the fast cadence while a document has not settled, but a tick makes no request of its own', async () => {
+    // useBrowseTree's own fast poll (useBrowseTree.test.ts) already covers
+    // /browse/status for these same ids and patches the shared cache
+    // folderDocuments comes from — duplicating that call here would double
+    // the request volume for the ids both hooks agree on (final-review
+    // finding I1). This hook's fast-cadence tick is a no-op: it exists only
+    // to keep re-checking, via the effect's own deps, whether every
+    // document has settled yet.
     vi.mocked(fetchBrowseCategories).mockResolvedValue({
       categories: [{ name: 'Contracts', count: 1 }],
       uncategorized_count: 0,
       accessible_document_ids: ['1'],
     })
-    vi.mocked(fetchBrowseStatus).mockResolvedValue(statusResult('1', 'READY'))
     const indexingDoc: BrowseDocumentItem = { ...doc('1'), indexing_status: 'INDEXING' }
 
     renderHook(() =>
@@ -142,7 +128,6 @@ describe('useBrowseCategories auto-refresh', () => {
         enabled: true,
         activeFolderId: 4,
         refreshActiveFolder,
-        applyStatusPatches,
       }),
     )
 
@@ -155,10 +140,8 @@ describe('useBrowseCategories auto-refresh', () => {
     act(() => {
       tick?.()
     })
-    await waitFor(() => expect(fetchBrowseStatus).toHaveBeenCalledTimes(1))
-    expect(fetchBrowseStatus).toHaveBeenCalledWith(['1'])
-    expect(applyStatusPatches).toHaveBeenCalledWith(statusResult('1', 'READY').documents)
-    // the expensive full category re-fetch must NOT fire at the fast cadence
+    await Promise.resolve()
+    expect(fetchBrowseStatus).not.toHaveBeenCalled()
     expect(fetchBrowseCategories).not.toHaveBeenCalled()
   })
 
@@ -174,7 +157,6 @@ describe('useBrowseCategories auto-refresh', () => {
         enabled: true,
         activeFolderId: 4,
         refreshActiveFolder,
-        applyStatusPatches,
       }),
     )
 
@@ -196,7 +178,6 @@ describe('useBrowseCategories auto-refresh', () => {
         enabled: false,
         activeFolderId: 4,
         refreshActiveFolder,
-        applyStatusPatches,
       }),
     )
 
@@ -204,69 +185,66 @@ describe('useBrowseCategories auto-refresh', () => {
     expect(intervalWithMs(60_000)).toBeUndefined()
   })
 
-  it('skips a poll tick while the document is hidden', async () => {
+  it('skips an idle-cadence poll tick while the document is hidden', async () => {
     vi.mocked(fetchBrowseCategories).mockResolvedValue({
       categories: [],
       uncategorized_count: 0,
       accessible_document_ids: ['1'],
     })
-    const indexingDoc: BrowseDocumentItem = { ...doc('1'), indexing_status: 'INDEXING' }
 
     renderHook(() =>
-      useBrowseCategories([indexingDoc], {
+      useBrowseCategories([doc('1')], {
         enabled: true,
         activeFolderId: 4,
         refreshActiveFolder,
-        applyStatusPatches,
       }),
     )
     await waitFor(() => expect(fetchBrowseCategories).toHaveBeenCalledTimes(1))
+    vi.mocked(fetchBrowseCategories).mockClear()
 
     Object.defineProperty(document, 'hidden', { configurable: true, value: true })
     act(() => {
-      intervalWithMs(15_000)?.()
+      intervalWithMs(60_000)?.()
     })
     await Promise.resolve()
-    expect(fetchBrowseStatus).not.toHaveBeenCalled()
+    expect(fetchBrowseCategories).not.toHaveBeenCalled()
   })
 
-  it('skips a poll tick while the previous one is still in flight', async () => {
+  it('skips an idle-cadence poll tick while the previous one is still in flight', async () => {
     vi.mocked(fetchBrowseCategories).mockResolvedValue({
       categories: [],
       uncategorized_count: 0,
       accessible_document_ids: ['1'],
     })
-    const indexingDoc: BrowseDocumentItem = { ...doc('1'), indexing_status: 'INDEXING' }
 
     renderHook(() =>
-      useBrowseCategories([indexingDoc], {
+      useBrowseCategories([doc('1')], {
         enabled: true,
         activeFolderId: 4,
         refreshActiveFolder,
-        applyStatusPatches,
       }),
     )
     await waitFor(() => expect(fetchBrowseCategories).toHaveBeenCalledTimes(1))
-    const tick = intervalWithMs(15_000)
+    const tick = intervalWithMs(60_000)
+    vi.mocked(fetchBrowseCategories).mockClear()
 
-    const slow = deferred<ReturnType<typeof statusResult>>()
-    vi.mocked(fetchBrowseStatus).mockReturnValueOnce(slow.promise)
+    const slow = deferred<Awaited<ReturnType<typeof fetchBrowseCategories>>>()
+    vi.mocked(fetchBrowseCategories).mockReturnValueOnce(slow.promise)
 
     act(() => {
-      tick?.() // starts the slow status fetch
+      tick?.() // starts the slow categories fetch
     })
-    await waitFor(() => expect(fetchBrowseStatus).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(fetchBrowseCategories).toHaveBeenCalledTimes(1))
 
     act(() => {
       tick?.() // still in flight — must be skipped
     })
     await Promise.resolve()
-    expect(fetchBrowseStatus).toHaveBeenCalledTimes(1)
+    expect(fetchBrowseCategories).toHaveBeenCalledTimes(1)
 
-    slow.resolve(statusResult('1', 'READY'))
+    slow.resolve({ categories: [], uncategorized_count: 0, accessible_document_ids: ['1'] })
     await act(async () => {
       await Promise.resolve()
     })
-    expect(applyStatusPatches).toHaveBeenCalledTimes(1)
   })
 })
