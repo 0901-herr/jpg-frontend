@@ -1,3 +1,4 @@
+import { Tooltip } from 'antd'
 import type { ReactNode } from 'react'
 import type { IndexingStatus, BrowseDocumentItem } from '../api/types/browse'
 import {
@@ -19,12 +20,12 @@ const STATUS_CONFIG: Record<
     icon: <StatusReadyIcon />,
   },
   PARTIAL: {
-    label: 'Partial',
+    label: 'Partially indexed — searchable',
     className: 'bg-sky-50 text-sky-700',
     icon: <StatusIndexingIcon />,
   },
   INDEXING: {
-    label: 'Indexing',
+    label: 'Indexing…',
     className: 'bg-amber-50 text-amber-700',
     icon: <StatusIndexingIcon />,
   },
@@ -33,8 +34,9 @@ const STATUS_CONFIG: Record<
     className: 'bg-red-50 text-red-700',
     icon: <StatusFailedIcon />,
   },
+  // Also covers adapter statuses this app doesn't model separately (e.g. PENDING).
   NOT_INDEXED: {
-    label: 'Not indexed',
+    label: 'Queued',
     className: 'bg-zinc-100 text-zinc-500',
     icon: <StatusNotIndexedIcon />,
   },
@@ -47,29 +49,38 @@ export function getStatusLabel(status: IndexingStatus | string): string {
 
 interface IndexingStatusBadgeProps {
   status: IndexingStatus | string
+  /** Adapter-provided detail (BrowseDocumentItem.status_reason) shown as a hover tooltip. */
+  statusReason?: string | null
   variant?: 'badge' | 'text'
 }
 
 export default function IndexingStatusBadge({
   status,
+  statusReason,
   variant = 'badge',
 }: IndexingStatusBadgeProps) {
   const key = (status in STATUS_CONFIG ? status : 'NOT_INDEXED') as IndexingStatus
   const config = STATUS_CONFIG[key]
+  const reason = statusReason?.trim() || undefined
 
-  if (variant === 'text') {
-    return (
+  const content =
+    variant === 'text' ? (
       <span className={`shrink-0 text-xs text-[#0d0d0d] whitespace-nowrap`}>{config.label}</span>
+    ) : (
+      <span
+        className={`inline-flex shrink-0 items-center gap-1 ${radius.full} px-2 py-0.5 ${type.caption} ${config.className}`}
+      >
+        <span className="text-xs leading-none">{config.icon}</span>
+        {config.label}
+      </span>
     )
-  }
+
+  if (!reason) return content
 
   return (
-    <span
-      className={`inline-flex shrink-0 items-center gap-1 ${radius.full} px-2 py-0.5 ${type.caption} ${config.className}`}
-    >
-      <span className="text-xs leading-none">{config.icon}</span>
-      {config.label}
-    </span>
+    <Tooltip title={reason} mouseEnterDelay={0.2}>
+      {content}
+    </Tooltip>
   )
 }
 

@@ -113,7 +113,7 @@ export default function DocumentChecklist({
                 )}
               </span>
             </label>
-            <IndexingStatusBadge status={doc.indexing_status} />
+            <IndexingStatusBadge status={doc.indexing_status} statusReason={doc.status_reason} />
           </div>
         )
 

@@ -1,7 +1,11 @@
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { createElement } from 'react'
 import { describe, expect, it } from 'vitest'
-import {
+import IndexingStatusBadge, {
   getDocumentSelectionHint,
   getSelectableDocumentIds,
+  getStatusLabel,
   isDocumentSelectable,
 } from './IndexingStatusBadge'
 import type { BrowseDocumentItem } from '../api/types/browse'
@@ -49,5 +53,46 @@ describe('IndexingStatusBadge selection rules', () => {
       doc('3', 'FAILED', false),
     ])
     expect(ids).toEqual(['1', '2'])
+  })
+})
+
+describe('getStatusLabel', () => {
+  it('maps every status to the demo copy', () => {
+    expect(getStatusLabel('READY')).toBe('Ready')
+    expect(getStatusLabel('PARTIAL')).toBe('Partially indexed — searchable')
+    expect(getStatusLabel('INDEXING')).toBe('Indexing…')
+    expect(getStatusLabel('NOT_INDEXED')).toBe('Queued')
+    expect(getStatusLabel('FAILED')).toBe('Failed')
+  })
+
+  it('treats an unrecognised status (e.g. adapter PENDING) as Queued', () => {
+    expect(getStatusLabel('PENDING')).toBe('Queued')
+  })
+})
+
+describe('IndexingStatusBadge tooltip', () => {
+  it('shows status_reason as a tooltip on hover when present', async () => {
+    const user = userEvent.setup()
+    render(
+      createElement(IndexingStatusBadge, {
+        status: 'PARTIAL',
+        statusReason: 'Text search only; full vector indexing is still in progress.',
+      }),
+    )
+
+    await user.hover(screen.getByText('Partially indexed — searchable'))
+
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
+      'Text search only; full vector indexing is still in progress.',
+    )
+  })
+
+  it('shows no tooltip when status_reason is absent', async () => {
+    const user = userEvent.setup()
+    render(createElement(IndexingStatusBadge, { status: 'READY' }))
+
+    await user.hover(screen.getByText('Ready'))
+
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
   })
 })
