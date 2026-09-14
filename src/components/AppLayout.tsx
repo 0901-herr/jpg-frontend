@@ -1,7 +1,7 @@
 import { Layout, message } from 'antd'
 import { ChatBubbleIconLg } from '../icons/chat'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { fetchDocumentSummary, validateQueryScope } from '../api/browse'
+import { extractMqaMetadata, fetchDocumentSummary, validateQueryScope } from '../api/browse'
 import { ApiError } from '../api/http'
 import type { Citation } from '../api/types/query'
 import { AUTH_BYPASS, DEV_USER } from '../config/auth'
@@ -17,9 +17,11 @@ import { appendStreamDelta } from '../utils/appendStreamDelta'
 import { formatProgressStage, formatRouteLabel } from '../utils/queryProgress'
 import { loadChatHistory, persistChatHistory } from '../utils/chatPersistence'
 import { getSummarizeDisabledReason, isSummaryReady } from '../utils/summaryGate'
+import { getExtractMetadataDisabledReason, isMqaMetadataReady } from '../utils/mqaMetadataGate'
 import { buildSummaryMessages } from '../utils/summaryMessages'
+import { buildMqaMetadataAnswer } from '../utils/mqaMetadataMessage'
 import { DEFAULT_QUERY_TIER } from '../utils/queryTier'
-import { toUserFacingQueryError } from '../utils/userFacingErrors'
+import { toUserFacingMqaMetadataError, toUserFacingQueryError } from '../utils/userFacingErrors'
 import type { QueryTier } from '../api/types/query'
 import { isCitationDemoEnabled, isCitationLoadingDemoEnabled } from '../config/demo'
 import {
@@ -533,17 +535,38 @@ export default function AppLayout() {
 
   const [isSummarizing, setIsSummarizing] = useState(false)
   const summarizingRef = useRef(false)
+  const [isExtracting, setIsExtracting] = useState(false)
+  const extractingRef = useRef(false)
 
   const summarizeDisabledReason = useMemo(
     () =>
       getSummarizeDisabledReason({
         selectedCount: selection.selectedCount,
         document: selectedDocument,
-        isResponding: sendQuery.isPending || isSummarizing,
+        isResponding: sendQuery.isPending || isSummarizing || isExtracting,
         disabled: browse.sessionExpired,
       }),
     [
       browse.sessionExpired,
+      isExtracting,
+      isSummarizing,
+      selectedDocument,
+      selection.selectedCount,
+      sendQuery.isPending,
+    ],
+  )
+
+  const extractMetadataDisabledReason = useMemo(
+    () =>
+      getExtractMetadataDisabledReason({
+        selectedCount: selection.selectedCount,
+        document: selectedDocument,
+        isResponding: sendQuery.isPending || isSummarizing || isExtracting,
+        disabled: browse.sessionExpired,
+      }),
+    [
+      browse.sessionExpired,
+      isExtracting,
       isSummarizing,
       selectedDocument,
       selection.selectedCount,
@@ -599,6 +622,99 @@ export default function AppLayout() {
       }
     })()
   }, [activeChatId, scrollToBottom, selectedDocument, summarizeDisabledReason])
+
+  const handleExtractMetadata = useCallback(() => {
+    if (extractMetadataDisabledReason) {
+      message.warning(extractMetadataDisabledReason)
+      return
+    }
+    if (!selectedDocument || !isMqaMetadataReady(selectedDocument)) return
+    if (extractingRef.current) return
+
+    const documentId = selectedDocument.document_id
+    const filename = selectedDocument.filename
+    extractingRef.current = true
+    setIsExtracting(true)
+
+    abortControllerRef.current?.abort()
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+
+    const userMsg: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      content: `Extract MQA metadata from ${filename}`,
+    }
+    const assistantId = crypto.randomUUID()
+    const thinkingMsg: ChatMessage = {
+      id: assistantId,
+      role: 'assistant',
+      content: '',
+      status: 'thinking',
+      progressLabel: 'Extracting metadata… this can take up to a minute.',
+    }
+
+    shouldStickToBottomRef.current = true
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === activeChatId
+          ? { ...s, messages: [...s.messages, userMsg, thinkingMsg] }
+          : s,
+      ),
+    )
+    requestAnimationFrame(() => scrollToBottom('auto'))
+
+    void (async () => {
+      try {
+        const response = await extractMqaMetadata(documentId, controller.signal)
+        if (controller.signal.aborted) return
+
+        const content = buildMqaMetadataAnswer(response)
+        setSessions((prev) =>
+          prev.map((s) => {
+            if (s.id !== activeChatId) return s
+            const messages = [...s.messages]
+            const idx = messages.findIndex((m) => m.id === assistantId)
+            if (idx === -1) return s
+            messages[idx] = {
+              ...messages[idx],
+              content,
+              status: 'complete',
+              progressLabel: undefined,
+            }
+            return { ...s, messages }
+          }),
+        )
+        requestAnimationFrame(() => scrollToBottom('auto'))
+      } catch (err) {
+        if (controller.signal.aborted) return
+
+        const httpStatus = err instanceof ApiError ? err.status : undefined
+        const detail =
+          httpStatus === 401
+            ? toUserFacingQueryError(undefined, { httpStatus })
+            : toUserFacingMqaMetadataError(err instanceof ApiError ? err.detail : undefined)
+        message.error(detail, 8)
+
+        // Remove the thinking placeholder — the failed request appended
+        // no answer, so nothing should linger where it was shown. The
+        // user's "Extract MQA metadata from <filename>" message stays.
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.id === activeChatId
+              ? { ...s, messages: s.messages.filter((m) => m.id !== assistantId) }
+              : s,
+          ),
+        )
+      } finally {
+        if (abortControllerRef.current === controller) {
+          abortControllerRef.current = null
+        }
+        extractingRef.current = false
+        setIsExtracting(false)
+      }
+    })()
+  }, [activeChatId, extractMetadataDisabledReason, scrollToBottom, selectedDocument])
 
   return (
     <Layout className="h-screen">
@@ -675,11 +791,13 @@ export default function AppLayout() {
             onClearSelection={selection.clearSelection}
             onSend={handleSend}
             onSummarize={handleSummarize}
+            onExtractMetadata={handleExtractMetadata}
             onStop={handleStop}
             isResponding={sendQuery.isPending}
             disabled={browse.sessionExpired}
             disabledReason={inputBlockedReason}
             summarizeDisabledReason={summarizeDisabledReason}
+            extractMetadataDisabledReason={extractMetadataDisabledReason}
             queryTier={queryTier}
             onQueryTierChange={setQueryTier}
           />

@@ -147,3 +147,23 @@ export function toUserFacingFolderLoadError(httpStatus: number | undefined): Fol
   if (httpStatus === 403) return FOLDER_LOAD_PERMISSION_ERROR
   return FOLDER_LOAD_SERVER_ERROR
 }
+
+export const MQA_METADATA_GENERIC_ERROR = 'Could not extract metadata. Please try again.'
+
+/** The mqa-metadata contract's own error details (409/504/502) are already
+ * plain language — show them verbatim. Anything else (network failure,
+ * an unexpected detail string, no detail at all) falls back to the
+ * generic message rather than surfacing raw/technical text. 401 is not
+ * handled here: it goes through the same session-expired path the query
+ * flow uses (`toUserFacingQueryError` with httpStatus 401). */
+const MQA_METADATA_KNOWN_DETAILS = new Set([
+  'Document is still being indexed. Try again when it is Ready.',
+  'Document is not ready for extraction.',
+  'Metadata extraction timed out. Please try again.',
+  'Metadata extraction failed. Please try again.',
+])
+
+export function toUserFacingMqaMetadataError(detail: string | undefined): string {
+  if (detail && MQA_METADATA_KNOWN_DETAILS.has(detail)) return detail
+  return MQA_METADATA_GENERIC_ERROR
+}

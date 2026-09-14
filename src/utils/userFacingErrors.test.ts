@@ -2,12 +2,14 @@ import { describe, expect, it } from 'vitest'
 import {
   FOLDER_LOAD_PERMISSION_ERROR,
   FOLDER_LOAD_SERVER_ERROR,
+  MQA_METADATA_GENERIC_ERROR,
   QUERY_ALMOST_DONE_ERROR,
   QUERY_PARTIAL_ANSWER_ERROR,
   QUERY_PERMISSION_DENIED_ERROR,
   QUERY_SERVER_ERROR,
   QUERY_SESSION_EXPIRED_ERROR,
   toUserFacingFolderLoadError,
+  toUserFacingMqaMetadataError,
   toUserFacingQueryError,
 } from './userFacingErrors'
 
@@ -59,5 +61,24 @@ describe('toUserFacingFolderLoadError', () => {
 
   it('maps an unknown/network failure (no HTTP status) to the server-unavailable copy', () => {
     expect(toUserFacingFolderLoadError(undefined)).toEqual(FOLDER_LOAD_SERVER_ERROR)
+  })
+})
+
+describe('toUserFacingMqaMetadataError', () => {
+  it.each([
+    'Document is still being indexed. Try again when it is Ready.',
+    'Document is not ready for extraction.',
+    'Metadata extraction timed out. Please try again.',
+    'Metadata extraction failed. Please try again.',
+  ])('passes the contract detail "%s" through verbatim', (detail) => {
+    expect(toUserFacingMqaMetadataError(detail)).toBe(detail)
+  })
+
+  it('falls back to the generic message for an unrecognized detail', () => {
+    expect(toUserFacingMqaMetadataError('Internal Server Error')).toBe(MQA_METADATA_GENERIC_ERROR)
+  })
+
+  it('falls back to the generic message when there is no detail at all', () => {
+    expect(toUserFacingMqaMetadataError(undefined)).toBe(MQA_METADATA_GENERIC_ERROR)
   })
 })

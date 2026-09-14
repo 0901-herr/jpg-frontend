@@ -425,7 +425,8 @@ input.ant-input:focus-visible {
 }
 
 .docu-chat-composer-files,
-.docu-chat-composer-summarize {
+.docu-chat-composer-summarize,
+.docu-chat-composer-extract {
   border: none;
   cursor: pointer;
   outline: none;
@@ -484,7 +485,8 @@ input.ant-input:focus-visible {
   color: #404040;
 }
 
-.docu-chat-composer-summarize {
+.docu-chat-composer-summarize,
+.docu-chat-composer-extract {
   height: 2.25rem;
   padding: 0 0.75rem;
   border-radius: 9999px;
@@ -497,11 +499,13 @@ input.ant-input:focus-visible {
   line-height: 1;
 }
 
-.docu-chat-composer-summarize:hover:not(:disabled) {
+.docu-chat-composer-summarize:hover:not(:disabled),
+.docu-chat-composer-extract:hover:not(:disabled) {
   background: #0077e6;
 }
 
-.docu-chat-composer-summarize:disabled {
+.docu-chat-composer-summarize:disabled,
+.docu-chat-composer-extract:disabled {
   background: #ececec;
   color: #8e8e8e;
   opacity: 1;
@@ -511,7 +515,9 @@ input.ant-input:focus-visible {
 .docu-chat-composer-files-clear:focus,
 .docu-chat-composer-files-clear:focus-visible,
 .docu-chat-composer-summarize:focus,
-.docu-chat-composer-summarize:focus-visible {
+.docu-chat-composer-summarize:focus-visible,
+.docu-chat-composer-extract:focus,
+.docu-chat-composer-extract:focus-visible {
   outline: none !important;
   box-shadow: none !important;
 }

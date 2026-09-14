@@ -7,6 +7,7 @@ import type {
   BrowseStatusRequest,
   BrowseStatusResponse,
   DocumentSummaryResponse,
+  MqaMetadataResponse,
   QueryScopeRequest,
   QueryScopeResponse,
 } from './types/browse'
@@ -105,6 +106,22 @@ export async function fetchDocumentSummary(
   signal?: AbortSignal,
 ): Promise<DocumentSummaryResponse> {
   return apiGet<DocumentSummaryResponse>(`/browse/documents/${documentId}/summary`, true, signal)
+}
+
+/** Runs Arche AI MQA metadata extraction for a document and (best effort,
+ * reflected in `pushed`/`push_error`) saves it back to LogicalDOC as a
+ * comment. Empty body per the contract — the document id in the path is
+ * all the backend needs. Takes 20-90s on the CPU-only extraction server. */
+export async function extractMqaMetadata(
+  documentId: string,
+  signal?: AbortSignal,
+): Promise<MqaMetadataResponse> {
+  return apiPost<MqaMetadataResponse>(
+    `/browse/documents/${documentId}/mqa-metadata`,
+    {},
+    true,
+    signal,
+  )
 }
 
 export function withPageHint(url: string, page?: number): string {

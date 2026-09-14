@@ -95,3 +95,25 @@ export interface BrowseStatusItem {
 export interface BrowseStatusResponse {
   documents: BrowseStatusItem[]
 }
+
+/** The six MQA fields, always present in this order (a value may be the
+ * literal string "Not stated" when the document doesn't state it). */
+export interface MqaMetadataFields {
+  'Document Title': string
+  Faculty: string
+  'Programme name and code': string
+  'Academic year': string
+  'Accreditation body': string
+  'Programme Coordinator': string
+}
+
+export interface MqaMetadataResponse {
+  document_id: string
+  filename: string
+  fields: MqaMetadataFields
+  /** Full "Arche AI extracted metadata — ..." comment text pushed to LogicalDOC. */
+  comment: string
+  /** Whether `comment` was successfully saved as a LogicalDOC document comment. */
+  pushed: boolean
+  push_error: string | null
+}

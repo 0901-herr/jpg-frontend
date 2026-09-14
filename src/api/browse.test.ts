@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fetchBrowseCategories, fetchBrowseStatus, fetchDocumentSummary } from './browse'
+import {
+  extractMqaMetadata,
+  fetchBrowseCategories,
+  fetchBrowseStatus,
+  fetchDocumentSummary,
+} from './browse'
 import { apiGet, apiPost } from './http'
 
 vi.mock('./http', () => ({
@@ -167,6 +172,65 @@ describe('fetchDocumentSummary', () => {
 
     expect(apiGet).toHaveBeenCalledWith(
       '/browse/documents/doc-1/summary',
+      true,
+      controller.signal,
+    )
+  })
+})
+
+describe('extractMqaMetadata', () => {
+  it('posts an empty body to the mqa-metadata endpoint', async () => {
+    vi.mocked(apiPost).mockResolvedValue({
+      document_id: '5003',
+      filename: '01_Meeting_Minutes.pdf',
+      fields: {
+        'Document Title': 'Meeting Minutes',
+        Faculty: 'Not stated',
+        'Programme name and code': 'Not stated',
+        'Academic year': 'Not stated',
+        'Accreditation body': 'Not stated',
+        'Programme Coordinator': 'Not stated',
+      },
+      comment: 'Arche AI extracted metadata — Document Title: Meeting Minutes; ...',
+      pushed: true,
+      push_error: null,
+    })
+
+    const result = await extractMqaMetadata('5003')
+
+    expect(apiPost).toHaveBeenCalledWith(
+      '/browse/documents/5003/mqa-metadata',
+      {},
+      true,
+      undefined,
+    )
+    expect(result.pushed).toBe(true)
+    expect(result.fields['Document Title']).toBe('Meeting Minutes')
+  })
+
+  it('forwards the abort signal', async () => {
+    vi.mocked(apiPost).mockResolvedValue({
+      document_id: '5003',
+      filename: '01_Meeting_Minutes.pdf',
+      fields: {
+        'Document Title': 'Not stated',
+        Faculty: 'Not stated',
+        'Programme name and code': 'Not stated',
+        'Academic year': 'Not stated',
+        'Accreditation body': 'Not stated',
+        'Programme Coordinator': 'Not stated',
+      },
+      comment: 'Arche AI extracted metadata — Document Title: Not stated; ...',
+      pushed: false,
+      push_error: 'LogicalDOC comment API unavailable',
+    })
+    const controller = new AbortController()
+
+    await extractMqaMetadata('5003', controller.signal)
+
+    expect(apiPost).toHaveBeenCalledWith(
+      '/browse/documents/5003/mqa-metadata',
+      {},
       true,
       controller.signal,
     )

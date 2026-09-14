@@ -2,16 +2,21 @@ import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React, { useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { QueryScopeResponse } from '../api/types/browse'
+import { ApiError } from '../api/http'
+import type { MqaMetadataResponse, QueryScopeResponse } from '../api/types/browse'
 import type { SendMessageRequest, SendMessageResponse } from '../api/types/query'
 
 const validateQueryScope = vi.fn<
   (documents: string[], signal?: AbortSignal) => Promise<QueryScopeResponse>
 >()
+const extractMqaMetadata = vi.fn<
+  (documentId: string, signal?: AbortSignal) => Promise<MqaMetadataResponse>
+>()
 
 vi.mock('../api/browse', () => ({
   validateQueryScope: (...args: [string[], AbortSignal?]) => validateQueryScope(...args),
   fetchDocumentSummary: vi.fn(),
+  extractMqaMetadata: (...args: [string, AbortSignal?]) => extractMqaMetadata(...args),
 }))
 
 vi.mock('../context/AuthContext', () => ({
@@ -30,7 +35,22 @@ vi.mock('../hooks/useDocumentSelection', () => ({
     selectedIds: new Set(['doc-1']),
     selectedCount: 1,
     selectedFilenames: ['doc-1.pdf'],
-    documentMeta: new Map(),
+    documentMeta: new Map([
+      [
+        'doc-1',
+        {
+          document_id: 'doc-1',
+          filename: 'doc-1.pdf',
+          file_type: 'pdf',
+          updated_at: '2026-09-13T00:00:00Z',
+          folder_id: 1,
+          indexing_status: 'READY',
+          rag_document_id: 'rag-1',
+          queryable: true,
+          summary_status: 'READY',
+        },
+      ],
+    ]),
     registerDocuments: vi.fn(),
     toggleDocument: vi.fn(),
     setSelection: vi.fn(),
@@ -157,5 +177,133 @@ describe('AppLayout — abort on New chat / select chat while streaming', () => 
 
     expect(currentSignal?.aborted).toBe(true)
     expect(screen.queryByRole('button', { name: 'Stop response' })).not.toBeInTheDocument()
+  })
+})
+
+describe('AppLayout — Extract metadata', () => {
+  beforeEach(() => {
+    // Each test mounts its own AppLayout: without this, chat history
+    // persisted to localStorage by a previous test's session(s) would be
+    // loaded back in, accumulating sidebar entries across tests.
+    window.localStorage.clear()
+    currentSignal = null
+    validateQueryScope.mockResolvedValue({
+      total_files: 1,
+      ready_files: 1,
+      indexing_files: 0,
+      failed_files: 0,
+      missing_files: 0,
+      accessible_document_ids: ['doc-1'],
+    })
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('shows the thinking placeholder, then renders the metadata table on success', async () => {
+    const user = userEvent.setup()
+    let resolveExtract: ((value: MqaMetadataResponse) => void) | undefined
+    extractMqaMetadata.mockImplementation(
+      () =>
+        new Promise<MqaMetadataResponse>((resolve) => {
+          resolveExtract = resolve
+        }),
+    )
+
+    render(<AppLayout />)
+
+    await user.click(screen.getByRole('button', { name: 'Extract MQA metadata' }))
+
+    expect(screen.getByText('Extract MQA metadata from doc-1.pdf')).toBeInTheDocument()
+    expect(
+      screen.getByText('Extracting metadata… this can take up to a minute.'),
+    ).toBeInTheDocument()
+
+    await act(async () => {
+      resolveExtract?.({
+        document_id: 'doc-1',
+        filename: 'doc-1.pdf',
+        fields: {
+          'Document Title': 'Meeting Minutes',
+          Faculty: 'Not stated',
+          'Programme name and code': 'Not stated',
+          'Academic year': 'Not stated',
+          'Accreditation body': 'Not stated',
+          'Programme Coordinator': 'Not stated',
+        },
+        comment: 'Arche AI extracted metadata — Document Title: Meeting Minutes; ...',
+        pushed: true,
+        push_error: null,
+      })
+      await Promise.resolve()
+    })
+
+    expect(await screen.findByText('MQA metadata — doc-1.pdf')).toBeInTheDocument()
+    expect(screen.getByText('Meeting Minutes')).toBeInTheDocument()
+    expect(screen.getByText('Saved to LogicalDOC as a document comment.')).toBeInTheDocument()
+    expect(
+      screen.queryByText('Extracting metadata… this can take up to a minute.'),
+    ).not.toBeInTheDocument()
+  })
+
+  it('removes the placeholder and re-enables the button on a contract error', async () => {
+    const user = userEvent.setup()
+    let rejectExtract: ((err: unknown) => void) | undefined
+    extractMqaMetadata.mockImplementation(
+      () =>
+        new Promise<MqaMetadataResponse>((_resolve, reject) => {
+          rejectExtract = reject
+        }),
+    )
+
+    render(<AppLayout />)
+
+    await user.click(screen.getByRole('button', { name: 'Extract MQA metadata' }))
+    expect(
+      await screen.findByText('Extracting metadata… this can take up to a minute.'),
+    ).toBeInTheDocument()
+
+    await act(async () => {
+      rejectExtract?.(
+        new ApiError(
+          'Document is not ready for extraction.',
+          409,
+          'Document is not ready for extraction.',
+        ),
+      )
+      await Promise.resolve()
+    })
+
+    // The thinking placeholder is gone, no answer was appended, and the
+    // user's request line is left in place.
+    expect(
+      screen.queryByText('Extracting metadata… this can take up to a minute.'),
+    ).not.toBeInTheDocument()
+    expect(screen.getByText('Extract MQA metadata from doc-1.pdf')).toBeInTheDocument()
+    expect(screen.queryByText(/MQA metadata —/)).not.toBeInTheDocument()
+
+    // The composer is idle again — the button is enabled once more.
+    expect(await screen.findByRole('button', { name: 'Extract MQA metadata' })).toBeEnabled()
+  })
+
+  it('aborts an in-flight extraction on New chat and marks it interrupted', async () => {
+    const user = userEvent.setup()
+    extractMqaMetadata.mockImplementation(() => new Promise<MqaMetadataResponse>(() => {}))
+
+    render(<AppLayout />)
+
+    await user.click(screen.getByRole('button', { name: 'Extract MQA metadata' }))
+    expect(
+      await screen.findByText('Extracting metadata… this can take up to a minute.'),
+    ).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'New chat' }))
+
+    const oldChatButtons = screen.getAllByRole('button', { name: /^select:/ })
+    await user.click(oldChatButtons[oldChatButtons.length - 1])
+
+    expect(await screen.findByText('Answer interrupted.')).toBeInTheDocument()
+    expect(screen.getByText('Extract MQA metadata from doc-1.pdf')).toBeInTheDocument()
   })
 })

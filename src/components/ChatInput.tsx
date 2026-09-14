@@ -13,11 +13,13 @@ interface ChatInputProps {
   onClearSelection: () => void
   onSend: (message: string) => void
   onSummarize: () => void
+  onExtractMetadata: () => void
   onStop: () => void
   isResponding?: boolean
   disabled?: boolean
   disabledReason?: string
   summarizeDisabledReason?: string | null
+  extractMetadataDisabledReason?: string | null
   queryTier: QueryTier
   onQueryTierChange: (tier: QueryTier) => void
 }
@@ -41,11 +43,13 @@ export default function ChatInput({
   onClearSelection,
   onSend,
   onSummarize,
+  onExtractMetadata,
   onStop,
   isResponding = false,
   disabled = false,
   disabledReason,
   summarizeDisabledReason = null,
+  extractMetadataDisabledReason = null,
   queryTier,
   onQueryTierChange,
 }: ChatInputProps) {
@@ -53,6 +57,7 @@ export default function ChatInput({
 
   const canSend = !isResponding && !disabled && value.trim().length > 0 && selectedCount > 0
   const canSummarize = summarizeDisabledReason == null
+  const canExtractMetadata = extractMetadataDisabledReason == null
   const sendDisabledReason = getSendDisabledReason({
     selectedCount,
     hasMessage: value.trim().length > 0,
@@ -146,6 +151,23 @@ export default function ChatInput({
                   aria-label="Summarize selected document"
                 >
                   Summarize
+                </button>
+              </span>
+            </Tooltip>
+            <Tooltip
+              title={extractMetadataDisabledReason ?? undefined}
+              placement="top"
+              mouseEnterDelay={0.2}
+            >
+              <span className="inline-flex">
+                <button
+                  type="button"
+                  onClick={onExtractMetadata}
+                  disabled={!canExtractMetadata}
+                  className="docu-chat-composer-extract"
+                  aria-label="Extract MQA metadata"
+                >
+                  Extract metadata
                 </button>
               </span>
             </Tooltip>
