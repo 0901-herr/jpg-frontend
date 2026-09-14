@@ -24,8 +24,26 @@ function readJsonNumber(key: string): number | null {
   }
 }
 
-export function loadPersistedSelection(): Set<string> {
-  return new Set(readJsonArray(SELECTED_DOCS_KEY))
+/** `null` means the key has never been written — the browser has no
+ * persisted selection at all, as opposed to an explicit, deliberate empty
+ * selection (`[]`, from clearing every document). Callers need to tell
+ * these apart to auto-select-all only on a browser's very first load, and
+ * never again once the user has made any selection decision (including
+ * clearing everything). */
+export function loadPersistedSelection(): Set<string> | null {
+  let raw: string | null
+  try {
+    raw = localStorage.getItem(SELECTED_DOCS_KEY)
+  } catch {
+    return null
+  }
+  if (raw === null) return null
+  try {
+    const parsed = JSON.parse(raw)
+    return new Set(Array.isArray(parsed) ? parsed.map(String) : [])
+  } catch {
+    return new Set()
+  }
 }
 
 export function persistSelection(ids: Set<string>) {

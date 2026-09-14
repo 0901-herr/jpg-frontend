@@ -30,36 +30,61 @@ vi.mock('../hooks/useBrowseTree', () => ({
   useBrowseTree: () => ({ sessionExpired: false, username: 'tester' }),
 }))
 
+function defaultDocumentMeta() {
+  return new Map([
+    [
+      'doc-1',
+      {
+        document_id: 'doc-1',
+        filename: 'doc-1.pdf',
+        file_type: 'pdf',
+        updated_at: '2026-09-13T00:00:00Z',
+        folder_id: 1,
+        indexing_status: 'READY',
+        rag_document_id: 'rag-1',
+        queryable: true,
+        summary_status: 'READY',
+      },
+    ],
+  ])
+}
+
+// Mutable, test-configurable seed for the mocked useDocumentSelection —
+// read only at mount (mirrors the real hook reading localStorage once).
+// Reset in each describe block's beforeEach; a test that needs a different
+// starting selection (e.g. the hydration-trim test) reassigns these before
+// calling render().
+let initialSelectedIds = new Set(['doc-1'])
+let initialDocumentMeta: Map<string, Record<string, unknown>> = defaultDocumentMeta()
+const trimSelectionSpy = vi.fn<(ids: string[]) => void>()
+
 vi.mock('../hooks/useDocumentSelection', () => ({
-  useDocumentSelection: () => ({
-    selectedIds: new Set(['doc-1']),
-    selectedCount: 1,
-    selectedFilenames: ['doc-1.pdf'],
-    documentMeta: new Map([
-      [
-        'doc-1',
-        {
-          document_id: 'doc-1',
-          filename: 'doc-1.pdf',
-          file_type: 'pdf',
-          updated_at: '2026-09-13T00:00:00Z',
-          folder_id: 1,
-          indexing_status: 'READY',
-          rag_document_id: 'rag-1',
-          queryable: true,
-          summary_status: 'READY',
-        },
-      ],
-    ]),
-    registerDocuments: vi.fn(),
-    toggleDocument: vi.fn(),
-    setSelection: vi.fn(),
-    mergeSelection: vi.fn(),
-    selectAllSelectable: vi.fn(),
-    deselectAllInView: vi.fn(),
-    clearSelection: vi.fn(),
-    trimSelection: vi.fn(),
-  }),
+  useDocumentSelection: () => {
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(() => initialSelectedIds)
+    const documentMeta = initialDocumentMeta
+    return {
+      selectedIds,
+      selectedCount: selectedIds.size,
+      selectedFilenames: [...selectedIds].map(
+        (id) => (documentMeta.get(id)?.filename as string | undefined) ?? `Document ${id}`,
+      ),
+      documentMeta,
+      registerDocuments: vi.fn(),
+      toggleDocument: vi.fn(),
+      setSelection: vi.fn(),
+      mergeSelection: vi.fn(),
+      selectAllSelectable: vi.fn(),
+      autoSelectIfPending: vi.fn(),
+      deselectAllInView: vi.fn(),
+      clearSelection: vi.fn(),
+      trimSelection: (ids: string[]) => {
+        trimSelectionSpy(ids)
+        const next = new Set(ids)
+        setSelectedIds(next)
+        return next
+      },
+    }
+  },
 }))
 
 // A minimal, controllable stand-in for react-query's useMutation: mutateAsync
@@ -111,6 +136,8 @@ const { default: AppLayout } = await import('./AppLayout')
 describe('AppLayout — abort on New chat / select chat while streaming', () => {
   beforeEach(() => {
     currentSignal = null
+    initialSelectedIds = new Set(['doc-1'])
+    initialDocumentMeta = defaultDocumentMeta()
     validateQueryScope.mockResolvedValue({
       total_files: 1,
       ready_files: 1,
@@ -187,6 +214,8 @@ describe('AppLayout — Extract metadata', () => {
     // loaded back in, accumulating sidebar entries across tests.
     window.localStorage.clear()
     currentSignal = null
+    initialSelectedIds = new Set(['doc-1'])
+    initialDocumentMeta = defaultDocumentMeta()
     validateQueryScope.mockResolvedValue({
       total_files: 1,
       ready_files: 1,
@@ -305,5 +334,58 @@ describe('AppLayout — Extract metadata', () => {
 
     expect(await screen.findByText('Answer interrupted.')).toBeInTheDocument()
     expect(screen.getByText('Extract MQA metadata from doc-1.pdf')).toBeInTheDocument()
+  })
+})
+
+describe('AppLayout — selection hydration trim', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    currentSignal = null
+    trimSelectionSpy.mockClear()
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('trims a persisted selection against the backend once a session is present', async () => {
+    initialSelectedIds = new Set(['5001', '300'])
+    initialDocumentMeta = new Map([
+      [
+        '300',
+        {
+          document_id: '300',
+          filename: '300.pdf',
+          file_type: 'pdf',
+          updated_at: '2026-09-13T00:00:00Z',
+          folder_id: 1,
+          indexing_status: 'READY',
+          rag_document_id: 'rag-300',
+          queryable: true,
+          summary_status: 'READY',
+        },
+      ],
+    ])
+    validateQueryScope.mockResolvedValue({
+      total_files: 1,
+      ready_files: 1,
+      indexing_files: 0,
+      failed_files: 0,
+      missing_files: 0,
+      accessible_document_ids: ['300'],
+    })
+
+    render(<AppLayout />)
+
+    // The composer's file-count badge reflects the trimmed selection —
+    // 2 selected ids down to 1 once the backend says only '300' is
+    // accessible.
+    await screen.findByLabelText('1 file selected')
+
+    expect(validateQueryScope).toHaveBeenCalledWith(
+      expect.arrayContaining(['5001', '300']),
+      expect.anything(),
+    )
+    expect(trimSelectionSpy).toHaveBeenCalledWith(['300'])
   })
 })

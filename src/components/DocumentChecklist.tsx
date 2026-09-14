@@ -39,6 +39,7 @@ export default function DocumentChecklist({
   )
   const allSelected =
     selectableIds.length > 0 && selectedSelectableCount === selectableIds.length
+  const someSelected = selectedSelectableCount > 0 && !allSelected
 
   if (isLoading) {
     return (
@@ -62,10 +63,11 @@ export default function DocumentChecklist({
         <div className="flex w-full items-center justify-between gap-2 py-2">
           <Checkbox
             checked={allSelected}
-            onChange={(e) => (e.target.checked ? onSelectAll() : onDeselectAll())}
+            indeterminate={someSelected}
+            onChange={() => (allSelected || someSelected ? onDeselectAll() : onSelectAll())}
             className={`${sidebar.body} !text-[#0d0d0d]`}
           >
-            Select all
+            {allSelected || someSelected ? 'Deselect all' : 'Select all'}
           </Checkbox>
           <span className={`${sidebar.caption} ${typeColor.muted} shrink-0`}>
             {selectedSelectableCount}/{selectableIds.length}

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import type { BrowseDocumentItem } from '../api/types/browse'
 import { getSelectableDocumentIds } from '../components/IndexingStatusBadge'
 import {
@@ -7,8 +7,22 @@ import {
 } from '../utils/browsePersistence'
 
 export function useDocumentSelection() {
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => loadPersistedSelection())
+  // `loadPersistedSelection()` returns `null` when the key was never
+  // written (this browser has never persisted a selection) and a Set
+  // (possibly empty) when it has — including a deliberate "deselect all".
+  // Read via a lazy `useState` initializer so it's only ever evaluated once,
+  // at mount.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(
+    () => loadPersistedSelection() ?? new Set(),
+  )
   const [documentMeta, setDocumentMeta] = useState<Map<string, BrowseDocumentItem>>(new Map())
+  // True only until the first documents-loaded auto-select decision is
+  // made, and only when nothing was ever persisted. Consulted and cleared
+  // exactly once by `autoSelectIfPending` — never reset afterwards, so an
+  // explicit clear (which persists `[]`) can never be auto-refilled by a
+  // later folder switch, refresh, or "Load more".
+  const [neverPersisted] = useState(() => loadPersistedSelection() === null)
+  const autoSelectPendingRef = useRef(neverPersisted)
 
   const registerDocuments = useCallback((documents: BrowseDocumentItem[]) => {
     if (documents.length === 0) return
@@ -58,6 +72,21 @@ export function useDocumentSelection() {
     [mergeSelection, setSelection],
   )
 
+  // Called on every page-0 documents-loaded event. Auto-selects all
+  // selectable documents exactly once per browser — only while nothing has
+  // ever been persisted — then clears the pending flag for good (persisting
+  // via `selectAllSelectable`'s own `setSelection` call). Returns whether it
+  // actually auto-selected, mostly for tests.
+  const autoSelectIfPending = useCallback(
+    (documents: BrowseDocumentItem[]) => {
+      if (!autoSelectPendingRef.current) return false
+      autoSelectPendingRef.current = false
+      selectAllSelectable(documents, { replace: true })
+      return true
+    },
+    [selectAllSelectable],
+  )
+
   const deselectAllInView = useCallback((documents: BrowseDocumentItem[]) => {
     const viewIds = new Set(documents.map((doc) => doc.document_id))
     setSelectedIds((prev) => {
@@ -100,6 +129,7 @@ export function useDocumentSelection() {
     setSelection,
     mergeSelection,
     selectAllSelectable,
+    autoSelectIfPending,
     deselectAllInView,
     clearSelection,
     trimSelection,

@@ -81,15 +81,16 @@ export default function AppLayout() {
   const handleDocumentsLoaded = useCallback(
     ({ documents, page }: DocumentsLoadedEvent) => {
       selection.registerDocuments(documents)
+      // Page 0 (a folder switch, refresh, or category toggle): auto-select
+      // is a one-time-per-browser decision owned by the hook itself, so an
+      // explicit "deselect all" is never undone by a later page-0 load.
+      // "Load more" (page > 0) never touches the selection at all — merging
+      // newly loaded documents into a partial selection was the bug.
       if (page === 0) {
-        if (selection.selectedCount === 0) {
-          selection.selectAllSelectable(documents, { replace: true })
-        }
-        return
+        selection.autoSelectIfPending(documents)
       }
-      selection.selectAllSelectable(documents, { replace: false })
     },
-    [selection.registerDocuments, selection.selectAllSelectable, selection.selectedCount],
+    [selection.registerDocuments, selection.autoSelectIfPending],
   )
 
   const browse = useBrowseTree(handleDocumentsLoaded)
@@ -131,6 +132,49 @@ export default function AppLayout() {
       setActiveChatId(session.id)
     }
   }, [sessions.length])
+
+  // Reconcile a persisted selection against the backend once per app load:
+  // ids restored from localStorage (a prior browser session) may point at
+  // documents the user can no longer read, or that no longer exist at all —
+  // silently trim those out rather than showing "Document <id>" phantoms
+  // the sidebar has no way to un-select. Gated the same way chatHydrated is
+  // (authLoading settled, a real session present), and guarded to run at
+  // most once — a best-effort pass, so any failure just leaves the
+  // selection as-is; the existing send-time trim in handleSend still
+  // protects the actual query.
+  //
+  // `selection` is read via a ref (kept current every render) rather than
+  // named directly in the effect's own dependency array: it's a fresh
+  // object every render (as is, e.g., an auth context's session object), so
+  // depending on it directly would re-run the effect's cleanup — aborting
+  // the in-flight request — on unrelated re-renders instead of only on
+  // unmount.
+  const selectionRef = useRef(selection)
+  selectionRef.current = selection
+  const hasAuthSession = Boolean(authSession)
+  const hydrationScopeCheckedRef = useRef(false)
+  useEffect(() => {
+    if (authLoading) return
+    if (!hasAuthSession) return
+    if (hydrationScopeCheckedRef.current) return
+    hydrationScopeCheckedRef.current = true
+
+    const ids = [...selectionRef.current.selectedIds]
+    if (ids.length === 0) return
+
+    const controller = new AbortController()
+    void (async () => {
+      try {
+        const scope = await validateQueryScope(ids, controller.signal)
+        if (controller.signal.aborted) return
+        selectionRef.current.trimSelection(scope.accessible_document_ids)
+      } catch {
+        // Best-effort reconciliation only — keep the persisted selection.
+      }
+    })()
+
+    return () => controller.abort()
+  }, [authLoading, hasAuthSession])
 
   const activeSession = useMemo(
     () => sessions.find((s) => s.id === activeChatId) ?? sessions[0],

@@ -236,3 +236,127 @@ describe('DocumentChecklist sidebar row layout', () => {
     expect(screen.getByText('Uncategorized')).toBeInTheDocument()
   })
 })
+
+describe('DocumentChecklist "Select all" toggle', () => {
+  const docA = doc({ document_id: 'doc-a', filename: 'a.pdf', indexing_status: 'READY', queryable: true })
+  const docB = doc({ document_id: 'doc-b', filename: 'b.pdf', indexing_status: 'READY', queryable: true })
+
+  it('shows "Select all" unchecked, not indeterminate, when nothing is selected', () => {
+    render(
+      <DocumentChecklist
+        documents={[docA, docB]}
+        selectedIds={new Set()}
+        onToggle={vi.fn()}
+        onSelectAll={vi.fn()}
+        onDeselectAll={vi.fn()}
+      />,
+    )
+
+    const checkbox = screen.getByRole('checkbox', { name: 'Select all' }) as HTMLInputElement
+    expect(checkbox).not.toBeChecked()
+    expect(checkbox.indeterminate).toBe(false)
+  })
+
+  it('shows an indeterminate "Deselect all" state when some but not all selectable documents are selected', () => {
+    render(
+      <DocumentChecklist
+        documents={[docA, docB]}
+        selectedIds={new Set(['doc-a'])}
+        onToggle={vi.fn()}
+        onSelectAll={vi.fn()}
+        onDeselectAll={vi.fn()}
+      />,
+    )
+
+    const checkbox = screen.getByRole('checkbox', { name: 'Deselect all' }) as HTMLInputElement
+    expect(checkbox.indeterminate).toBe(true)
+    expect(checkbox).not.toBeChecked()
+  })
+
+  it('shows a checked "Deselect all" state when every selectable document is selected', () => {
+    render(
+      <DocumentChecklist
+        documents={[docA, docB]}
+        selectedIds={new Set(['doc-a', 'doc-b'])}
+        onToggle={vi.fn()}
+        onSelectAll={vi.fn()}
+        onDeselectAll={vi.fn()}
+      />,
+    )
+
+    const checkbox = screen.getByRole('checkbox', { name: 'Deselect all' })
+    expect(checkbox).toBeChecked()
+  })
+
+  it('calls onSelectAll when clicked in the unchecked state', async () => {
+    const user = userEvent.setup()
+    const onSelectAll = vi.fn()
+    const onDeselectAll = vi.fn()
+    render(
+      <DocumentChecklist
+        documents={[docA, docB]}
+        selectedIds={new Set()}
+        onToggle={vi.fn()}
+        onSelectAll={onSelectAll}
+        onDeselectAll={onDeselectAll}
+      />,
+    )
+
+    await user.click(screen.getByRole('checkbox', { name: 'Select all' }))
+
+    expect(onSelectAll).toHaveBeenCalledTimes(1)
+    expect(onDeselectAll).not.toHaveBeenCalled()
+  })
+
+  it('calls onDeselectAll (not onSelectAll) when clicked in the indeterminate state', async () => {
+    const user = userEvent.setup()
+    const onSelectAll = vi.fn()
+    const onDeselectAll = vi.fn()
+    render(
+      <DocumentChecklist
+        documents={[docA, docB]}
+        selectedIds={new Set(['doc-a'])}
+        onToggle={vi.fn()}
+        onSelectAll={onSelectAll}
+        onDeselectAll={onDeselectAll}
+      />,
+    )
+
+    await user.click(screen.getByRole('checkbox', { name: 'Deselect all' }))
+
+    expect(onDeselectAll).toHaveBeenCalledTimes(1)
+    expect(onSelectAll).not.toHaveBeenCalled()
+  })
+
+  it('calls onDeselectAll when clicked in the fully-checked state', async () => {
+    const user = userEvent.setup()
+    const onDeselectAll = vi.fn()
+    render(
+      <DocumentChecklist
+        documents={[docA, docB]}
+        selectedIds={new Set(['doc-a', 'doc-b'])}
+        onToggle={vi.fn()}
+        onSelectAll={vi.fn()}
+        onDeselectAll={onDeselectAll}
+      />,
+    )
+
+    await user.click(screen.getByRole('checkbox', { name: 'Deselect all' }))
+
+    expect(onDeselectAll).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the n/m counter alongside the toggle', () => {
+    render(
+      <DocumentChecklist
+        documents={[docA, docB]}
+        selectedIds={new Set(['doc-a'])}
+        onToggle={vi.fn()}
+        onSelectAll={vi.fn()}
+        onDeselectAll={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('1/2')).toBeInTheDocument()
+  })
+})
