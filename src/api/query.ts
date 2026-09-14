@@ -75,11 +75,28 @@ const LIST_MARKER_RE = /^\s*([-*•]|\d+[.)])\s/
  * LIST_MARKER_RE's "marker + text in one segment" shape above. */
 const BARE_LIST_MARKER_RE = /^\s*(\d+\.|-|\*)\s*$/
 
-/** True if the last line of `text` is itself a Markdown list item — used to
- * decide whether a following list-item segment continues the same list
- * (single newline) or starts a new one (blank line first). */
+/** Strips one trailing `[DocN]`-style citation marker (and surrounding
+ * whitespace) off the end of a string — citations are appended to a
+ * segment's own text (see `rawDelta` below) before it's ever added to
+ * `content`, so a completed line's citation has to be looked past to see
+ * whether there's any real label text before it. */
+function stripTrailingCitationMarker(text: string): string {
+  return text.replace(/\s*\[[^[\]\n]*\]\s*$/, '')
+}
+
+/** True if the last line of `text` is a Markdown list item *with* label
+ * text — used to decide whether a following list-item segment continues
+ * the same list (single newline) or starts a new one (blank line first).
+ *
+ * A bare marker segment ("1.") still gets a citation appended the same way
+ * a real item does ("1. [Doc1]"), which on its own satisfies
+ * LIST_MARKER_RE (marker followed by whitespace) — so without stripping
+ * the citation first and checking for leftover text, a cited bare marker
+ * would be misread as a *complete* list item and force a spurious blank
+ * line before its own label segment. */
 function endsWithListItemLine(text: string): boolean {
   const lastLine = text.slice(text.lastIndexOf('\n') + 1)
+  if (BARE_LIST_MARKER_RE.test(stripTrailingCitationMarker(lastLine))) return false
   return LIST_MARKER_RE.test(lastLine)
 }
 

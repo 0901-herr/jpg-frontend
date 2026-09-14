@@ -331,6 +331,38 @@ describe('sendMessage delta handling', () => {
     )
   })
 
+  it('joins a cited bare list marker to its label with a single space, not a paragraph break', async () => {
+    // Regression: a bare marker segment gets a citation appended the same
+    // way a real item does ("1." -> "1. [Doc1]"), which on its own matches
+    // the "list item with text" shape — without stripping the citation
+    // first, that made the marker's OWN label segment look like it was
+    // starting a new paragraph after an already-complete item, forcing a
+    // spurious blank line between "1. [Doc1]" and "Programme Rationale
+    // [Doc1]" (marker as a lone bullet, label as an orphan paragraph).
+    scriptedEvents = [
+      { event: 'citation', data: { doc_ref: '[Doc1]', chunk_id: 'c1', item_id: 'doc1', page: 1 } },
+      { event: 'answer', data: { text: '1.', chunk_id: 'c1', item_id: 'doc1', page: 1 } },
+      { event: 'answer', data: { text: 'Programme Rationale', chunk_id: 'c1', item_id: 'doc1', page: 1 } },
+      { event: 'answer', data: { text: '2.', chunk_id: 'c1', item_id: 'doc1', page: 1 } },
+      {
+        event: 'answer',
+        data: { text: 'Programme Educational Objectives', chunk_id: 'c1', item_id: 'doc1', page: 1 },
+      },
+      { event: 'done', data: {} },
+    ]
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'List the programme sections.',
+      documents: ['doc1'],
+      callbacks: {},
+    })
+
+    expect(result.content).toBe(
+      '1. [Doc1] Programme Rationale [Doc1]\n2. [Doc1] Programme Educational Objectives [Doc1]',
+    )
+  })
+
   it('ignores a delta event with no text field', async () => {
     scriptedEvents = [
       { event: 'delta', data: {} },
