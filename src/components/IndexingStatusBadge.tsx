@@ -12,31 +12,36 @@ import { radius } from '../styles/theme'
 
 const STATUS_CONFIG: Record<
   IndexingStatus,
-  { label: string; className: string; icon: ReactNode }
+  { label: string; compactLabel: string; className: string; icon: ReactNode }
 > = {
   READY: {
     label: 'Ready',
+    compactLabel: 'Ready',
     className: 'bg-emerald-50 text-emerald-700',
     icon: <StatusReadyIcon />,
   },
   PARTIAL: {
     label: 'Partially indexed — searchable',
+    compactLabel: 'Partial',
     className: 'bg-sky-50 text-sky-700',
     icon: <StatusIndexingIcon />,
   },
   INDEXING: {
     label: 'Indexing…',
+    compactLabel: 'Indexing…',
     className: 'bg-amber-50 text-amber-700',
     icon: <StatusIndexingIcon />,
   },
   FAILED: {
     label: 'Failed',
+    compactLabel: 'Failed',
     className: 'bg-red-50 text-red-700',
     icon: <StatusFailedIcon />,
   },
   // Also covers adapter statuses this app doesn't model separately (e.g. PENDING).
   NOT_INDEXED: {
     label: 'Queued',
+    compactLabel: 'Queued',
     className: 'bg-zinc-100 text-zinc-500',
     icon: <StatusNotIndexedIcon />,
   },
@@ -52,33 +57,43 @@ interface IndexingStatusBadgeProps {
   /** Adapter-provided detail (BrowseDocumentItem.status_reason) shown as a hover tooltip. */
   statusReason?: string | null
   variant?: 'badge' | 'text'
+  /**
+   * Use the short sidebar-friendly label instead of the long demo copy.
+   * The long label stays discoverable: in compact mode the tooltip shows
+   * statusReason if present, otherwise the long label. Defaults to false so
+   * the admin page and anything else using the long label is unchanged.
+   */
+  compact?: boolean
 }
 
 export default function IndexingStatusBadge({
   status,
   statusReason,
   variant = 'badge',
+  compact = false,
 }: IndexingStatusBadgeProps) {
   const key = (status in STATUS_CONFIG ? status : 'NOT_INDEXED') as IndexingStatus
   const config = STATUS_CONFIG[key]
+  const label = compact ? config.compactLabel : config.label
   const reason = statusReason?.trim() || undefined
+  const tooltipText = compact ? reason || config.label : reason
 
   const content =
     variant === 'text' ? (
-      <span className={`shrink-0 text-xs text-[#0d0d0d] whitespace-nowrap`}>{config.label}</span>
+      <span className={`shrink-0 text-xs text-[#0d0d0d] whitespace-nowrap`}>{label}</span>
     ) : (
       <span
         className={`inline-flex shrink-0 items-center gap-1 ${radius.full} px-2 py-0.5 ${type.caption} ${config.className}`}
       >
         <span className="text-xs leading-none">{config.icon}</span>
-        {config.label}
+        {label}
       </span>
     )
 
-  if (!reason) return content
+  if (!tooltipText) return content
 
   return (
-    <Tooltip title={reason} mouseEnterDelay={0.2}>
+    <Tooltip title={tooltipText} mouseEnterDelay={0.2}>
       {content}
     </Tooltip>
   )

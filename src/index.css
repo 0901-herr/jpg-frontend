@@ -354,6 +354,20 @@ input.ant-input:focus-visible {
   white-space: nowrap;
 }
 
+.docu-document-checklist .admin-category-tag {
+  display: inline-flex !important;
+  max-width: 9rem;
+  margin-inline-end: 0 !important;
+  vertical-align: middle;
+}
+
+.docu-document-checklist .admin-category-tag-label {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .admin-progress-stat {
   cursor: help;
 }

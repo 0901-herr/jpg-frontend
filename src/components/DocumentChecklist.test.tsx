@@ -88,3 +88,111 @@ describe('DocumentChecklist status tooltip', () => {
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
   })
 })
+
+describe('DocumentChecklist sidebar row layout', () => {
+  it('always renders the filename for a PARTIAL document, even in a narrow sidebar', () => {
+    render(
+      <DocumentChecklist
+        documents={[
+          doc({
+            filename: 'quarterly-harvest-report.pdf',
+            indexing_status: 'PARTIAL',
+            queryable: true,
+            status_reason: 'Text search only; full vector indexing is still in progress.',
+          }),
+        ]}
+        selectedIds={new Set()}
+        onToggle={vi.fn()}
+        onSelectAll={vi.fn()}
+        onDeselectAll={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('quarterly-harvest-report.pdf')).toBeInTheDocument()
+  })
+
+  it('renders the compact badge label ("Partial"), not the long label, for a PARTIAL document', () => {
+    render(
+      <DocumentChecklist
+        documents={[doc({ indexing_status: 'PARTIAL', queryable: true })]}
+        selectedIds={new Set()}
+        onToggle={vi.fn()}
+        onSelectAll={vi.fn()}
+        onDeselectAll={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('Partial')).toBeInTheDocument()
+    expect(screen.queryByText('Partially indexed — searchable')).not.toBeInTheDocument()
+  })
+
+  it('puts the category tag and badge in a wrapper that is a sibling of the filename line, not a parent of it', () => {
+    const { container } = render(
+      <DocumentChecklist
+        documents={[
+          doc({
+            filename: 'contract.pdf',
+            indexing_status: 'PARTIAL',
+            queryable: true,
+            classification_category: 'harvesting_record',
+          }),
+        ]}
+        selectedIds={new Set()}
+        onToggle={vi.fn()}
+        onSelectAll={vi.fn()}
+        onDeselectAll={vi.fn()}
+      />,
+    )
+
+    const filenameEl = screen.getByText('contract.pdf')
+    const primaryLine = filenameEl.closest('.docu-document-row-primary')
+    const metaLine = container.querySelector('.docu-document-row-meta')
+
+    expect(primaryLine).not.toBeNull()
+    expect(metaLine).not.toBeNull()
+    // The tag/badge wrapper is a sibling of the filename's line, not an
+    // ancestor or descendant of it.
+    expect(metaLine?.contains(filenameEl)).toBe(false)
+    expect(primaryLine?.contains(metaLine)).toBe(false)
+    expect(primaryLine?.parentElement).toBe(metaLine?.parentElement)
+
+    expect(metaLine).toContainElement(screen.getByText('Harvesting Record'))
+    expect(metaLine).toContainElement(screen.getByText('Partial'))
+  })
+
+  it('does not render the selection hint text in the row, even when the document is checked', async () => {
+    render(
+      <DocumentChecklist
+        documents={[
+          doc({
+            indexing_status: 'PARTIAL',
+            queryable: true,
+            status_reason: 'Text search only; full vector indexing is still in progress.',
+          }),
+        ]}
+        selectedIds={new Set(['doc-1'])}
+        onToggle={vi.fn()}
+        onSelectAll={vi.fn()}
+        onDeselectAll={vi.fn()}
+      />,
+    )
+
+    expect(
+      screen.queryByText('Text search only; full vector indexing is still in progress.'),
+    ).not.toBeInTheDocument()
+  })
+
+  it('still renders an Uncategorized tag, quietly, when the category is null', () => {
+    render(
+      <DocumentChecklist
+        documents={[doc({ classification_category: null, indexing_status: 'READY', queryable: true })]}
+        selectedIds={new Set()}
+        onToggle={vi.fn()}
+        onSelectAll={vi.fn()}
+        onDeselectAll={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('Uncategorized')).toBeInTheDocument()
+  })
+})

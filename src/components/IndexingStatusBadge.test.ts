@@ -96,3 +96,70 @@ describe('IndexingStatusBadge tooltip', () => {
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
   })
 })
+
+describe('IndexingStatusBadge compact mode', () => {
+  const compactLabels: Record<string, string> = {
+    READY: 'Ready',
+    PARTIAL: 'Partial',
+    INDEXING: 'Indexing…',
+    FAILED: 'Failed',
+    NOT_INDEXED: 'Queued',
+  }
+
+  const longLabels: Record<string, string> = {
+    READY: 'Ready',
+    PARTIAL: 'Partially indexed — searchable',
+    INDEXING: 'Indexing…',
+    FAILED: 'Failed',
+    NOT_INDEXED: 'Queued',
+  }
+
+  for (const status of Object.keys(compactLabels)) {
+    it(`renders the short compact label for ${status}`, () => {
+      const { unmount } = render(createElement(IndexingStatusBadge, { status, compact: true }))
+
+      expect(screen.getByText(compactLabels[status])).toBeInTheDocument()
+      if (compactLabels[status] !== longLabels[status]) {
+        expect(screen.queryByText(longLabels[status])).not.toBeInTheDocument()
+      }
+
+      unmount()
+    })
+
+    it(`keeps the default (non-compact) long label for ${status} unchanged`, () => {
+      const { unmount } = render(createElement(IndexingStatusBadge, { status }))
+
+      expect(screen.getByText(longLabels[status])).toBeInTheDocument()
+
+      unmount()
+    })
+  }
+
+  it('shows statusReason as the tooltip in compact mode when present', async () => {
+    const user = userEvent.setup()
+    render(
+      createElement(IndexingStatusBadge, {
+        status: 'PARTIAL',
+        statusReason: 'Text search only; full vector indexing is still in progress.',
+        compact: true,
+      }),
+    )
+
+    await user.hover(screen.getByText('Partial'))
+
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
+      'Text search only; full vector indexing is still in progress.',
+    )
+  })
+
+  it('falls back to the long label as the tooltip in compact mode when statusReason is absent', async () => {
+    const user = userEvent.setup()
+    render(createElement(IndexingStatusBadge, { status: 'PARTIAL', compact: true }))
+
+    await user.hover(screen.getByText('Partial'))
+
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
+      'Partially indexed — searchable',
+    )
+  })
+})
