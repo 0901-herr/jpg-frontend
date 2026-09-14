@@ -1249,3 +1249,17 @@ input.ant-input:focus-visible {
 .admin-section-nav-link .anticon {
   color: inherit !important;
 }
+
+/* Disabled form controls do not dispatch mouse events in Chromium, so the
+   antd Tooltip on the wrapping <span> never opens (the scope requires a
+   reason on hover for the greyed Send / Summarize / tier controls). With
+   pointer-events off on the disabled button the span is the hover target;
+   the span carries the not-allowed cursor instead. */
+.docu-chat-composer-actions button:disabled,
+.docu-query-tier-dropdown:disabled {
+  pointer-events: none;
+}
+.docu-chat-composer-actions > span:has(> button:disabled),
+.docu-chat-composer-actions span:has(> .docu-query-tier-dropdown:disabled) {
+  cursor: not-allowed;
+}
