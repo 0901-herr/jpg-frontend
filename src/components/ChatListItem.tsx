@@ -112,7 +112,7 @@ export default function ChatListItem({
         <button
           type="button"
           onClick={onSelect}
-          className="flex-1 min-w-0 flex flex-col gap-0.5 text-left px-3 py-2"
+          className="flex-1 min-w-0 flex flex-col gap-0.5 text-left px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0084ff]/35 rounded-[10px]"
         >
           <span
             className={`block min-w-0 truncate ${sidebar.body} ${
@@ -143,8 +143,8 @@ export default function ChatListItem({
             type="button"
             aria-label="Chat options"
             onClick={(e) => e.stopPropagation()}
-            className={`shrink-0 px-3 py-2 rounded-lg ${typeColor.muted} hover:text-[#404040] ${surface.hover} transition-opacity ${
-              menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+            className={`shrink-0 px-3 py-2 rounded-lg ${typeColor.muted} hover:text-[#404040] ${surface.hover} transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0084ff]/35 ${
+              menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
             }`}
           >
             <ChatMoreIcon className={sidebar.caption} />

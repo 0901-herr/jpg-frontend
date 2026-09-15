@@ -568,7 +568,7 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
                   aria-label="Refresh document status"
                   onClick={() => void handleRefreshStatus()}
                   disabled={isRefreshingStatus}
-                  className="flex shrink-0 items-center justify-center w-6 h-6 rounded-full text-[#8e8e8e] transition-colors hover:bg-[#ececec] hover:text-[#0d0d0d] disabled:opacity-50"
+                  className="flex shrink-0 items-center justify-center w-6 h-6 rounded-full text-[#8e8e8e] transition-colors hover:bg-[#ececec] hover:text-[#1f1f1f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0084ff]/35 disabled:opacity-50"
                 >
                   <ChatRefreshIcon />
                 </button>

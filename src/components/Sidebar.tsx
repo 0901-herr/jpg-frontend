@@ -82,8 +82,25 @@ export default function Sidebar({
       theme="light"
     >
       <div className={`flex flex-col h-full min-h-0 ${spacing.panelLg}`}>
+        {/* Compact wordmark row, then "New chat" directly under it as a
+            full-width secondary button — mainstream placement (client
+            feedback: UI polish pass), rather than pinned at the very
+            bottom below the chat list. */}
         <div className="shrink-0 mb-3 text-left">
           <span className={`text-lg font-semibold ${typeColor.primary}`}>ARCHE AI</span>
+        </div>
+
+        <div className="shrink-0 mb-3">
+          <SidebarNavItem
+            icon={<ChatAddIcon />}
+            onClick={() => {
+              onNewChat()
+              onNavigate?.()
+            }}
+            variant="secondary"
+          >
+            New chat
+          </SidebarNavItem>
         </div>
 
         <div className={`flex flex-col flex-1 min-h-0 ${spacing.section} overflow-hidden`}>
@@ -123,18 +140,7 @@ export default function Sidebar({
         </div>
 
         <div className="shrink-0 pt-2 mt-1">
-          <SidebarNavItem
-            icon={<ChatAddIcon />}
-            onClick={() => {
-              onNewChat()
-              onNavigate?.()
-            }}
-            variant="primary"
-          >
-            New chat
-          </SidebarNavItem>
-
-          <div className="mt-2 pt-2 border-t border-[#ececec]">
+          <div className="border-t border-[#ececec] pt-2">
             <Dropdown
               menu={{ items: profileMenu, onClick: handleProfileMenuClick }}
               trigger={['click']}
@@ -143,7 +149,7 @@ export default function Sidebar({
             >
               <button
                 type="button"
-                className={`w-full flex items-center gap-2.5 px-2 py-2 rounded-[10px] text-left transition-colors hover:bg-[#ececec] ${sidebar.body}`}
+                className={`w-full flex items-center gap-2.5 px-2 py-2 rounded-[10px] text-left transition-colors hover:bg-[#ececec] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0084ff]/35 ${sidebar.body}`}
               >
                 <Avatar
                   size={32}

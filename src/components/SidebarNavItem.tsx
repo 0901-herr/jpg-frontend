@@ -1,13 +1,17 @@
 import type { ReactNode } from 'react'
 import { sidebar, typeColor } from '../styles/typography'
-import { sidebarNav } from '../styles/theme'
+import { border, sidebarNav } from '../styles/theme'
 
 interface SidebarNavItemProps {
   icon: ReactNode
   children: ReactNode
   onClick?: () => void
   active?: boolean
-  variant?: 'default' | 'primary'
+  /** 'secondary' — a bordered, full-width button (the "New chat" row,
+   * mainstream placement directly under the wordmark): visible chrome
+   * without the accent colour, which stays reserved for primary actions
+   * and focus rings. */
+  variant?: 'default' | 'primary' | 'secondary'
   className?: string
   title?: string
 }
@@ -23,20 +27,29 @@ export default function SidebarNavItem({
 }: SidebarNavItemProps) {
   const Tag = onClick ? 'button' : 'div'
   const isPrimary = variant === 'primary'
+  const isSecondary = variant === 'secondary'
 
   return (
     <Tag
       type={onClick ? 'button' : undefined}
       onClick={onClick}
       title={title}
-      className={`w-full flex items-center gap-2.5 px-2 py-1.5 text-left ${sidebarNav.row} ${
+      className={`w-full flex items-center gap-2.5 px-2 py-1.5 text-left ${sidebarNav.row} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0084ff]/35 ${
         isPrimary
           ? 'bg-[#0084ff] text-white hover:bg-[#0077e6] font-medium'
-          : active
-            ? sidebarNav.active
-            : sidebarNav.idle
+          : isSecondary
+            ? `border ${border.default} hover:bg-[var(--docu-bg-hover)] font-medium`
+            : active
+              ? sidebarNav.active
+              : sidebarNav.idle
       } ${sidebar.body} ${
-        isPrimary ? '!text-white' : active ? typeColor.primary : typeColor.secondary
+        isPrimary
+          ? '!text-white'
+          : isSecondary
+            ? typeColor.primary
+            : active
+              ? typeColor.primary
+              : typeColor.secondary
       } ${className}`}
     >
       <span
