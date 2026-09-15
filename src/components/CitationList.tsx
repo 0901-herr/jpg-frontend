@@ -32,6 +32,36 @@ interface CitationLinkProps {
   className?: string
 }
 
+/** Base pill styling shared by the openable (`<button>`) and non-openable
+ * (`<span>`) shapes — a compact filename chip inline with the answer text,
+ * replacing the old underlined "(File.pdf, Page 2)" text run. */
+const CITATION_PILL_CLASS =
+  'inline-flex items-center gap-1 rounded-full border border-[#e5e5e5] bg-[#f6f6f6] px-2 py-[1px] text-[0.78em] leading-5 text-[#555] align-baseline'
+
+const CITATION_PILL_NAME_MAX_LENGTH = 28
+
+/** Drops a trailing "*.ext" — but only a real extension, never a leading
+ * dot (a dotfile-shaped name) or a name with no dot at all. */
+function stripFilenameExtension(filename: string): string {
+  const dot = filename.lastIndexOf('.')
+  return dot > 0 ? filename.slice(0, dot) : filename
+}
+
+function truncateForPill(name: string, max = CITATION_PILL_NAME_MAX_LENGTH): string {
+  return name.length > max ? `${name.slice(0, max - 1)}…` : name
+}
+
+/** The pill's own two parts: the extension-stripped, truncated filename,
+ * and — only when a page is known — a "· p. N" suffix. Built directly from
+ * `source` rather than the `label` prop, which stays around only as the
+ * button's/span's accessible name (`citationDisplayLabel`'s full,
+ * untruncated "(File.pdf, Page 2)" text) so a screen reader still gets the
+ * complete reference even though sighted users see the compact chip. */
+function citationPillText(source: Source): string {
+  const name = truncateForPill(stripFilenameExtension(source.filename))
+  return source.page != null ? `${name} · p. ${source.page}` : name
+}
+
 export function CitationLink({ source, label, className }: CitationLinkProps) {
   const [opening, setOpening] = useState(false)
 
@@ -45,9 +75,18 @@ export function CitationLink({ source, label, className }: CitationLinkProps) {
   }, [source])
 
   const canOpen = Boolean(source.url || source.documentId)
+  const pillText = citationPillText(source)
 
   if (!canOpen) {
-    return <span className={className}>{label}</span>
+    return (
+      <span
+        className={`${CITATION_PILL_CLASS} ${className ?? ''}`}
+        title={source.filename}
+        aria-label={label}
+      >
+        {pillText}
+      </span>
+    )
   }
 
   return (
@@ -55,10 +94,11 @@ export function CitationLink({ source, label, className }: CitationLinkProps) {
       type="button"
       onClick={() => void handleClick()}
       disabled={opening}
-      className={`inline text-inherit underline decoration-[#c8c8c8] underline-offset-2 hover:decoration-[#676767] disabled:opacity-60 ${className ?? ''}`}
-      title={`Open ${source.filename} in LogicalDOC`}
+      className={`${CITATION_PILL_CLASS} hover:bg-[#ececec] disabled:opacity-60 ${className ?? ''}`}
+      title={source.filename}
+      aria-label={label}
     >
-      {label}
+      {pillText}
     </button>
   )
 }
