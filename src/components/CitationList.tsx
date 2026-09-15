@@ -34,9 +34,17 @@ interface CitationLinkProps {
 
 /** Base pill styling shared by the openable (`<button>`) and non-openable
  * (`<span>`) shapes — a compact filename chip inline with the answer text,
- * replacing the old underlined "(File.pdf, Page 2)" text run. */
+ * replacing the old underlined "(File.pdf, Page 2)" text run. Deliberately
+ * smaller than the body text (owner feedback: "something like <sub>") —
+ * `text-[0.68em]` + `leading-[1.5]` keeps the pill's own content height at
+ * roughly 1em of the surrounding text, and `py-0` (all vertical space
+ * comes from line-height, not padding) keeps its total height, border
+ * included, within the paragraph's line box so a cited line never grows
+ * taller than an uncited one. `relative top-[0.12em]` (rather than the
+ * `sub` keyword, whose exact drop varies by browser/font) nudges it down
+ * from the baseline by a small, fixed amount for a subscript-like sit. */
 const CITATION_PILL_CLASS =
-  'inline-flex items-center gap-1 rounded-full border border-[#e5e5e5] bg-[#f6f6f6] px-2 py-[1px] text-[0.78em] leading-5 text-[#555] align-baseline'
+  'relative top-[0.12em] inline-flex items-center gap-[0.25em] rounded-full border border-[#e5e5e5] bg-[#f6f6f6] px-[0.45em] py-0 text-[0.68em] leading-[1.5] align-baseline text-[#555]'
 
 const CITATION_PILL_NAME_MAX_LENGTH = 28
 
