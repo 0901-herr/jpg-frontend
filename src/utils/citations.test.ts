@@ -193,6 +193,37 @@ describe('splitAnswerByDocRefs — raw multi-document markers', () => {
     }
   })
 
+  it('dedupes a repeated entry within one bracket group to a single ref segment, keeping first-appearance order (fix round 1: was rendering the repeat as its own separate pill)', () => {
+    const sources = [
+      source({ index: 6, docRef: '[Doc6]' }),
+      source({ index: 7, docRef: '[Doc7]' }),
+      source({ index: 8, docRef: '[Doc8]' }),
+    ]
+
+    const segments = splitAnswerByDocRefs(
+      'See the notes [Doc6, Doc7, Doc6, Doc8] for detail.',
+      sources,
+    )
+
+    expect(segments.filter((s) => s.type === 'ref').map((r) => r.value)).toEqual([
+      '[Doc6]',
+      '[Doc7]',
+      '[Doc8]',
+    ])
+  })
+
+  it('does not dedupe the same citation across two separate bracket groups — only a repeat within one group collapses', () => {
+    const sources = [source({ index: 1, docRef: '[Doc1]' }), source({ index: 2, docRef: '[Doc2]' })]
+
+    const segments = splitAnswerByDocRefs('First [Doc1, Doc2]. Repeats later [Doc1] again.', sources)
+
+    expect(segments.filter((s) => s.type === 'ref').map((r) => r.value)).toEqual([
+      '[Doc1]',
+      '[Doc2]',
+      '[Doc1]',
+    ])
+  })
+
   it('is case-insensitive and tolerates extra spaces in the bracket list', () => {
     const sources = [source({ index: 1, docRef: '[Doc1]' }), source({ index: 2, docRef: '[Doc2]' })]
 

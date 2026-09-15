@@ -153,9 +153,20 @@ const DOC_ENTRY_RE = /^doc\s*(\d+)(?:\s*:\s*\d+)?$/i
  * source, so the existing per-ref split below turns each into its own
  * citation. An entry with no matching source is dropped silently; if a
  * whole group resolves to nothing, the group disappears rather than ever
- * showing raw, meaningless "[Doc…]" text. */
+ * showing raw, meaningless "[Doc…]" text.
+ *
+ * A repeated entry *within the same group* — the model writing
+ * `[Doc6, Doc7, Doc6, Doc8]` — resolves to the same underlying citation
+ * twice; expanding it verbatim would render that citation as two separate
+ * pills side by side (fix round 1: verified empirically, pill sequence
+ * came out `1, 2, 1, 3` instead of `1, 2, 3`). The dedupe below is scoped
+ * to one `.replace` callback invocation — i.e. one bracket occurrence — so
+ * it only collapses a repeat *inside that one group*; the same citation
+ * can still earn its own pill again later if the model cites it in a
+ * different bracket group or as a lone marker elsewhere in the answer. */
 function expandBracketDocGroups(content: string, byRef: Map<string, Source>): string {
   return content.replace(BRACKET_DOC_GROUP_RE, (match) => {
+    const seenInGroup = new Set<string>()
     const resolved = match
       .slice(1, -1)
       .split(',')
@@ -167,6 +178,15 @@ function expandBracketDocGroups(content: string, byRef: Map<string, Source>): st
         return byRef.has(ref) ? ref : null
       })
       .filter((ref): ref is string => ref != null)
+      .filter((ref) => {
+        // Dedupe by the citation's own resolved identity, not by the
+        // literal marker text — a repeated marker resolves to the same
+        // `(document_id, page)` and so must collapse to one pill.
+        const key = citationNumberKey(byRef.get(ref)!)
+        if (seenInGroup.has(key)) return false
+        seenInGroup.add(key)
+        return true
+      })
     return resolved.join('')
   })
 }

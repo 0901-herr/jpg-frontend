@@ -147,18 +147,33 @@ interface CitationListProps {
  * inline-citation number among its pages (used to sort cited groups
  * ascending, matching the order pills first appear in the answer), or
  * `undefined` when none of the group's pages are actually cited — that
- * group sorts into "Also searched" instead. */
+ * group sorts into "Also searched" instead. `citedKey` is the
+ * `citationNumberKey` of the *specific page* that earned `citedNumber` —
+ * captured here, alongside the number, rather than re-derived later by
+ * scanning `group.pages` in page-number order (fix round 1: that re-scan
+ * picked whichever page sorts first by page number, which isn't
+ * necessarily the group's own first-cited page when a document's pages
+ * are cited out of page-number order — e.g. page 5 cited first, page 2
+ * cited second, but `group.pages` sorts page 2 before page 5). */
 interface OrderedGroup {
   group: DocumentGroup
   citedNumber: number | undefined
+  citedKey: string | undefined
 }
 
 function orderGroups(groups: DocumentGroup[], numbers: Map<string, number>): OrderedGroup[] {
   return groups.map((group) => {
-    const citedNumbers = group.pages
-      .map((entry) => numbers.get(citationNumberKey(entry.source)))
-      .filter((n): n is number => n != null)
-    return { group, citedNumber: citedNumbers.length > 0 ? Math.min(...citedNumbers) : undefined }
+    let citedNumber: number | undefined
+    let citedKey: string | undefined
+    for (const entry of group.pages) {
+      const key = citationNumberKey(entry.source)
+      const n = numbers.get(key)
+      if (n != null && (citedNumber == null || n < citedNumber)) {
+        citedNumber = n
+        citedKey = key
+      }
+    }
+    return { group, citedNumber, citedKey }
   })
 }
 
@@ -350,16 +365,12 @@ export default function CitationList({ sources, content, question }: CitationLis
 
   const headerCount = citedGroups.length > 0 ? citedGroups.length : groups.length
 
-  // The first-cited page in the group carries the group's own citation
-  // context — the sentence that made the whole document relevant enough
-  // to list.
-  const citedForOf = (group: DocumentGroup): string | undefined => {
-    for (const entry of group.pages) {
-      const key = citationNumberKey(entry.source)
-      if (numbers.has(key)) return contexts.get(key)
-    }
-    return undefined
-  }
+  // The page holding the group's own minimum cited number — the same page
+  // `orderGroups` used to decide this row's position in the list — carries
+  // the group's citation context, not whichever page happens to sort first
+  // by page number.
+  const citedForOf = (ordered: OrderedGroup): string | undefined =>
+    ordered.citedKey != null ? contexts.get(ordered.citedKey) : undefined
 
   return (
     <div className="pt-3 mt-3 border-t border-[#ececec]">
@@ -385,12 +396,12 @@ export default function CitationList({ sources, content, question }: CitationLis
         <div id={panelId} className="pt-2">
           {citedGroups.length > 0 && (
             <ul className="list-none m-0 p-0 space-y-2">
-              {citedGroups.map(({ group }) => (
+              {citedGroups.map((ordered) => (
                 <DocumentRow
-                  key={group.key}
-                  group={group}
+                  key={ordered.group.key}
+                  group={ordered.group}
                   numbers={numbers}
-                  citedFor={citedForOf(group)}
+                  citedFor={citedForOf(ordered)}
                   question={question ?? ''}
                   openingKey={openingKey}
                   onOpen={(source, key) => void handleOpen(source, key)}

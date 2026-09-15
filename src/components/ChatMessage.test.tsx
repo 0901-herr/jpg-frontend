@@ -569,7 +569,22 @@ describe('.docu-answer table/list CSS contract', () => {
 })
 
 describe('answer-order citation numbering (client feedback: a second question used to keep counting from the first)', () => {
-  it('numbers a message whose source indices start at 6 back at pill 1 — this message’s own answer text is all that counts', () => {
+  it('numbers a message whose source indices start at 6 back at pill 1 — this message’s own answer text is all that counts (fix round 1: strengthened to actually fail under the old source-list-order numbering)', () => {
+    // Five retrieval candidates the answer never cites, placed AHEAD of the
+    // two it does cite — this is the shape that actually reproduces the
+    // client's "the second question starts at 6" complaint: the removed
+    // `numberCitations(sources)` numbered every array entry regardless of
+    // whether the answer cited it, so these five uncited fillers would have
+    // taken numbers 1-5 and pushed the cited pair to 6/7. A fixture with
+    // only the two cited sources (as this test originally had) can't tell
+    // old and new numbering apart, since both give 1/2 either way.
+    const uncitedFillers: Source[] = Array.from({ length: 5 }, (_, i) => ({
+      index: i + 1,
+      filename: `Filler${i + 1}.pdf`,
+      docRef: `[Doc${i + 1}]`,
+      documentId: `doc-filler-${i + 1}`,
+      page: 1,
+    }))
     const sourceSix: Source = {
       index: 6,
       filename: 'F6.pdf',
@@ -587,12 +602,30 @@ describe('answer-order citation numbering (client feedback: a second question us
     const content = 'Cites the first one [Doc6] then the second [Doc7].'
     render(
       <ChatMessageItem
-        message={assistantMessage({ content, sources: [sourceSix, sourceSeven] })}
+        message={assistantMessage({
+          content,
+          sources: [...uncitedFillers, sourceSix, sourceSeven],
+        })}
       />,
     )
 
     expect(screen.getByTitle('F6.pdf · p. 1')).toHaveTextContent('1')
     expect(screen.getByTitle('F7.pdf · p. 1')).toHaveTextContent('2')
+  })
+
+  it('renders exactly one pill per distinct citation inside a repeated bracket group ([Doc6, Doc7, Doc6, Doc8] → pills 1, 2, 3, not 1, 2, 1, 3) (fix round 1)', () => {
+    const sourceSix: Source = { index: 6, filename: 'F6.pdf', docRef: '[Doc6]', documentId: 'doc-6', page: 1 }
+    const sourceSeven: Source = { index: 7, filename: 'F7.pdf', docRef: '[Doc7]', documentId: 'doc-7', page: 1 }
+    const sourceEight: Source = { index: 8, filename: 'F8.pdf', docRef: '[Doc8]', documentId: 'doc-8', page: 1 }
+    const content = 'See the notes [Doc6, Doc7, Doc6, Doc8] for detail.'
+    const { container } = render(
+      <ChatMessageItem
+        message={assistantMessage({ content, sources: [sourceSix, sourceSeven, sourceEight] })}
+      />,
+    )
+
+    const pills = Array.from(container.querySelectorAll('.docu-citation-pill'))
+    expect(pills.map((pill) => pill.textContent)).toEqual(['1', '2', '3'])
   })
 
   it('numbers pills by the order sources are cited in the text, not by their order in `sources`', () => {

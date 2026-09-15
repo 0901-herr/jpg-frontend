@@ -201,6 +201,25 @@ describe('CitationList — answer-order numbering (Task 2)', () => {
     expect(screen.getByText('Cited for: "The budget grew significantly."')).toBeInTheDocument()
   })
 
+  it('takes "Cited for" from the page holding the group\'s own first-cited number, not whichever page sorts first by page number (fix round 1)', async () => {
+    const user = userEvent.setup()
+    const pageFive = source({ index: 1, filename: 'Doc.pdf', documentId: 'doc-x', page: 5 })
+    const pageTwo = source({ index: 2, filename: 'Doc.pdf', documentId: 'doc-x', page: 2 })
+    // Page 5 is cited FIRST in the answer — it earns citation #1, the
+    // number that decides this row's position in "Related documents".
+    // Page 2 is cited second (#2). `groupSourcesByDocument` sorts the
+    // group's own page chips ascending by page number (page 2 before page
+    // 5), so a naive page-order scan for "Cited for" would wrongly surface
+    // page 2's sentence instead of the row's actual first-cited page.
+    const content = `First point cites page five ${pageFive.docRef}. Second point cites page two ${pageTwo.docRef}.`
+
+    render(<CitationList sources={[pageFive, pageTwo]} content={content} />)
+    await user.click(screen.getByRole('button', { name: /Related documents/ }))
+
+    expect(screen.getByText('Cited for: "First point cites page five."')).toBeInTheDocument()
+    expect(screen.queryByText('Cited for: "Second point cites page two."')).not.toBeInTheDocument()
+  })
+
   it('shows "Searched, not cited" under an uncited entry instead of a "Cited for" line', async () => {
     const user = userEvent.setup()
     const cited = source({ index: 1, filename: 'Cited.pdf', documentId: 'doc-c', page: 1 })
