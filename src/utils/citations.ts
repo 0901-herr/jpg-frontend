@@ -446,6 +446,43 @@ function splitIntoAnswerClauses(content: string): string[] {
     .filter(Boolean)
 }
 
+/** Unicode General Category P (Punctuation) and S (Symbol) — the boundary
+ * class CommonMark's emphasis-flanking rule treats as "not a word
+ * character" alongside whitespace. Category P alone misses ASCII marks
+ * like `+ = < > ^ \` | ~`, which CommonMark also counts as punctuation for
+ * this purpose, so both categories are included. */
+const FLANK_BOUNDARY_CLASS = '[\\s\\p{P}\\p{S}]'
+
+/** Builds a regex that strips a single-character emphasis span for
+ * `marker` (`*` or `_`) — but only where both delimiters satisfy a
+ * CommonMark-lite left/right-flanking rule: the opener sits at a word
+ * boundary (start-of-string, or preceded by whitespace/punctuation) and
+ * is immediately followed by a non-space character; the closer is
+ * immediately preceded by a non-space character and followed by a word
+ * boundary (end-of-string, or whitespace/punctuation). Fixes round-1
+ * review finding: the naive "any bare marker...any bare marker" version
+ * paired up the nearest two bare markers in a clause regardless of what
+ * sat between
+ * them, so an ordinary character used twice in the same clause — "3*4 …
+ * 5*6", "my_file_name.pdf" (two underscores, each between word
+ * characters) — got misread as one emphasis span and silently deleted
+ * along with everything between. Under this rule neither marker in those
+ * examples is a valid opener or closer (each sits directly against a
+ * letter or digit, which is neither whitespace nor punctuation, on the
+ * "wrong" side), so the regex simply never matches there — real emphasis
+ * like "*critical*" or "_critical_", flanked by whitespace on both sides,
+ * still matches and strips normally. */
+function makeSingleCharEmphasisRegex(marker: '*' | '_'): RegExp {
+  const m = marker === '*' ? '\\*' : '_'
+  return new RegExp(
+    `(?<=^|${FLANK_BOUNDARY_CLASS})${m}(?=\\S)([^${m}\\n]*?\\S)${m}(?=$|${FLANK_BOUNDARY_CLASS})`,
+    'gu',
+  )
+}
+
+const STAR_EMPHASIS_RE = makeSingleCharEmphasisRegex('*')
+const UNDERSCORE_EMPHASIS_RE = makeSingleCharEmphasisRegex('_')
+
 /** Strips inline Markdown markup so a "Cited for" clause reads as plain
  * prose instead of carrying the answer's raw formatting (client feedback:
  * the answer was a Markdown list/table and the cited clause showed its
@@ -455,7 +492,9 @@ function splitIntoAnswerClauses(content: string): string[] {
  * (`**`/`__`/`*`/`_`), backticks, and table pipe characters (which become
  * a plain space so table cells still read as separate words). Only has to
  * handle what an LLM answer actually produces, not arbitrary Markdown, so
- * a simple non-greedy match per marker is enough. */
+ * a simple non-greedy match per marker is enough — except the single-`*`/
+ * `_` spans, which need the flanking check in `makeSingleCharEmphasisRegex`
+ * to avoid corrupting ordinary text (see that function's doc comment). */
 function stripInlineMarkdown(text: string): string {
   return text
     .replace(/^\s*#{1,6}\s+/, '')
@@ -463,8 +502,8 @@ function stripInlineMarkdown(text: string): string {
     .replace(/\[([^\]]*)\]\(([^)]*)\)/g, '$1')
     .replace(/\*\*([^*]+)\*\*/g, '$1')
     .replace(/__([^_]+)__/g, '$1')
-    .replace(/\*([^*]+)\*/g, '$1')
-    .replace(/_([^_]+)_/g, '$1')
+    .replace(STAR_EMPHASIS_RE, '$1')
+    .replace(UNDERSCORE_EMPHASIS_RE, '$1')
     .replace(/`+/g, '')
     .replace(/\|/g, ' ')
 }

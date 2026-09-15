@@ -179,6 +179,57 @@ describe('citationContextByAnswerOrder', () => {
         [docSource(1)],
         'Attendance',
       ],
+      [
+        // Fix round 1: an underscored filename must not be read as a pair
+        // of italic delimiters — each underscore sits between two word
+        // characters, so neither side is a valid emphasis flank.
+        'an underscored filename is left intact, not read as emphasis delimiters',
+        'Attached is my_file_name.pdf for review [Doc1].',
+        [docSource(1)],
+        'Attached is my_file_name.pdf for review.',
+      ],
+      [
+        // Fix round 1: two bare-asterisk multiplication expressions in one
+        // clause must not be read as an emphasis pair spanning between
+        // them — each "*" is preceded by a digit, so neither is a valid
+        // opener.
+        'two bare-asterisk numeric expressions in one clause are left intact',
+        'Room A holds 3*4 people and Room B holds 5*6 people [Doc1].',
+        [docSource(1)],
+        'Room A holds 3*4 people and Room B holds 5*6 people.',
+      ],
+      [
+        // Fix round 1: multiple intraword underscores across two
+        // identifiers must not pair up across the "and" between them.
+        'two underscored identifiers in one clause are left intact',
+        'The value is stored as snake_case_id and other_id in the system [Doc1].',
+        [docSource(1)],
+        'The value is stored as snake_case_id and other_id in the system.',
+      ],
+      [
+        // Fix round 1: a genuine single-asterisk emphasis span (properly
+        // flanked by whitespace on both sides) still strips.
+        'a genuine single-asterisk emphasis span still strips',
+        'This is *critical* to note [Doc1].',
+        [docSource(1)],
+        'This is critical to note.',
+      ],
+      [
+        // Fix round 1: a genuine single-underscore emphasis span (properly
+        // flanked by whitespace on both sides) still strips.
+        'a genuine single-underscore emphasis span still strips',
+        'This is _critical_ to note [Doc1].',
+        [docSource(1)],
+        'This is critical to note.',
+      ],
+      [
+        // Fix round 1: a real emphasis span and an underscored filename in
+        // the same clause — the emphasis strips, the filename survives.
+        'mixed clause: real emphasis plus an underscored filename',
+        'See *the summary* in my_file_name.pdf for details [Doc1].',
+        [docSource(1)],
+        'See the summary in my_file_name.pdf for details.',
+      ],
     ])('%s', (_label, content, sources, expected) => {
       const contexts = citationContextByAnswerOrder(content, sources)
       expect(contexts.get(citationNumberKey(sources[0]))).toBe(expected)
