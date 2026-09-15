@@ -38,6 +38,8 @@ interface FolderSidebarProps {
 
 const FOLDER_KEY_PREFIX = 'folder-'
 const DOC_KEY_PREFIX = 'doc-'
+const SUBTREE_FETCH_MAX_ATTEMPTS = 3
+const SUBTREE_FETCH_RETRY_MS = 5000
 
 type TreeCheckInfo = Parameters<NonNullable<TreeProps<DataNode>['onCheck']>>[1]
 
@@ -66,11 +68,58 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
   } = browse
 
   const [isRefreshingStatus, setIsRefreshingStatus] = useState(false)
-  // Caches each checked folder's full recursive document list, so
-  // unchecking it (or re-checking it later) never needs a second network
-  // round trip for the same subtree.
+  // Every rendered folder's full recursive document list (the adapter's
+  // subtree endpoint, cached server-side). A folder's checkbox is DERIVED
+  // from this list against the current selection — checked when every
+  // selectable file beneath it is selected, half-checked when some are,
+  // disabled when it holds none — so it stays truthful however the files
+  // got selected: via the folder, via an ancestor, or one file at a time.
+  // Kept in state (re-renders the derivation) and mirrored in a ref (sync
+  // reads inside the async check/uncheck handlers).
+  const [subtreeById, setSubtreeById] = useState<Map<number, BrowseDocumentItem[]>>(
+    () => new Map(),
+  )
   const subtreeCacheRef = useRef<Map<number, BrowseDocumentItem[]>>(new Map())
+  const subtreeInflightRef = useRef<Map<number, Promise<BrowseDocumentItem[]>>>(new Map())
   const [pendingFolderIds, setPendingFolderIds] = useState<Set<number>>(new Set())
+  // Fallback only: folders the user clicked whose subtree is not known
+  // yet (fetch still in flight, or it failed). Ticked optimistically so the
+  // click has an immediate visible effect; once the subtree is known the
+  // derived state takes over and this entry is ignored. checkStrictly (on
+  // the Tree) makes antd render exactly the keys we hand it instead of
+  // cascading from rendered children, which a collapsed folder has none of.
+  const [checkedFolderIds, setCheckedFolderIds] = useState<Set<number>>(new Set())
+  // Bumped a few seconds after a background subtree fetch fails, so the
+  // effect below retries it (bounded per folder) instead of leaving that
+  // folder's checkbox contradicting its own files until some other click.
+  const [subtreeRetryTick, setSubtreeRetryTick] = useState(0)
+  const subtreeFailuresRef = useRef<Map<number, number>>(new Map())
+
+  // One fetch per folder, deduplicated while in flight; `truncated`
+  // subtrees are still cached (the warning belongs to the caller that
+  // bulk-selects, not to the passive derivation).
+  const loadSubtree = useCallback(
+    (folderId: number, onTruncated?: () => void): Promise<BrowseDocumentItem[]> => {
+      const cached = subtreeCacheRef.current.get(folderId)
+      if (cached) return Promise.resolve(cached)
+      const inflight = subtreeInflightRef.current.get(folderId)
+      if (inflight) return inflight
+      const promise = fetchSubtreeDocuments(folderId)
+        .then((response) => {
+          subtreeCacheRef.current.set(folderId, response.documents)
+          setSubtreeById((prev) => new Map(prev).set(folderId, response.documents))
+          selection.registerDocuments(response.documents)
+          if (response.truncated) onTruncated?.()
+          return response.documents
+        })
+        .finally(() => {
+          subtreeInflightRef.current.delete(folderId)
+        })
+      subtreeInflightRef.current.set(folderId, promise)
+      return promise
+    },
+    [selection],
+  )
 
   const handleRefreshStatus = useCallback(async () => {
     if (isRefreshingStatus) return
@@ -78,6 +127,14 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
     try {
       await refreshDocumentStatuses()
     } finally {
+      // Files added or removed since the subtrees were fetched would
+      // otherwise keep a folder's derived state stale until a reload. The
+      // clicked-folder fallback goes too: it must not resurface as "fully
+      // checked" for a folder the user has since partially deselected.
+      subtreeCacheRef.current = new Map()
+      subtreeFailuresRef.current = new Map()
+      setSubtreeById(new Map())
+      setCheckedFolderIds(new Set())
       setIsRefreshingStatus(false)
     }
   }, [isRefreshingStatus, refreshDocumentStatuses])
@@ -99,12 +156,9 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
     }
     let cancelled = false
     setAllDocumentsLoading(true)
-    fetchSubtreeDocuments(rootFolderId)
-      .then((response) => {
-        if (cancelled) return
-        subtreeCacheRef.current.set(rootFolderId, response.documents)
-        selection.registerDocuments(response.documents)
-        setAllDocuments(response.documents)
+    loadSubtree(rootFolderId)
+      .then((docs) => {
+        if (!cancelled) setAllDocuments(docs)
       })
       .catch(() => {
         if (!cancelled) message.error('Could not load documents for category view.')
@@ -115,7 +169,7 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
     return () => {
       cancelled = true
     }
-  }, [viewMode, rootFolderId, selection])
+  }, [viewMode, rootFolderId, loadSubtree])
 
   const { serverCategories, categoriesLoading: serverCategoriesLoading } = useBrowseCategories(
     allDocuments,
@@ -163,6 +217,36 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
     if (activeCategory == null) return []
     return filterDocumentsByCategory(categorySourceDocuments, activeCategory)
   }, [categorySourceDocuments, activeCategory])
+
+  // Per known folder: 'checked' | 'half' | 'none' | 'empty' from the latest
+  // status of each file beneath it (documentMeta wins over the fetched copy
+  // so a file that became Ready after the fetch counts). 'empty' means no
+  // selectable file at all — its checkbox is disabled rather than shown as
+  // an unticked box next to a ticked parent.
+  const folderCheckStates = useMemo(() => {
+    const states = new Map<number, 'checked' | 'half' | 'none' | 'empty'>()
+    for (const [folderId, docs] of subtreeById) {
+      let selectable = 0
+      let selected = 0
+      for (const doc of docs) {
+        const latest = selection.documentMeta.get(doc.document_id) ?? doc
+        if (!isDocumentSelectable(latest.indexing_status, latest.queryable)) continue
+        selectable += 1
+        if (selection.selectedIds.has(doc.document_id)) selected += 1
+      }
+      if (selectable === 0) states.set(folderId, 'empty')
+      else if (selected === selectable) states.set(folderId, 'checked')
+      else if (selected > 0) states.set(folderId, 'half')
+      else states.set(folderId, 'none')
+    }
+    return states
+  }, [subtreeById, selection.documentMeta, selection.selectedIds])
+
+  const emptyFolderIds = useMemo(() => {
+    const ids = new Set<number>()
+    for (const [folderId, state] of folderCheckStates) if (state === 'empty') ids.add(folderId)
+    return ids
+  }, [folderCheckStates])
 
   // Building a doc's tree row: filename + category tag + status badge,
   // matching the flat DocumentChecklist's visual language exactly (same
@@ -212,13 +296,16 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
         // Every listed child folder is reported has_children: true (its
         // own children aren't known without a fetch) — always expandable
         // via loadData, same as the previous folder picker.
-        isLeaf: !folder.has_children,
+        // A folder whose files are already loaded must stay expandable
+        // whatever `has_children` says, or those files could never be seen.
+        isLeaf: !folder.has_children && !cache.get(folder.folder_id)?.contents.documents.length,
+        disableCheckbox: emptyFolderIds.has(folder.folder_id),
         children: buildFolderChildren(folder.folder_id),
       }))
       const docs = entry.contents.documents.map(buildDocLeaf)
       return [...subfolders, ...docs]
     },
-    [cache, buildDocLeaf],
+    [cache, buildDocLeaf, emptyFolderIds],
   )
 
   const fileTreeData = useMemo((): DataNode[] => {
@@ -229,31 +316,54 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
         key: `${FOLDER_KEY_PREFIX}${rootFolderId}`,
         title: rootMeta?.name ?? 'All documents',
         isLeaf: rootMeta ? !rootMeta.has_children : false,
+        disableCheckbox: emptyFolderIds.has(rootFolderId),
         children: buildFolderChildren(rootFolderId),
       },
     ]
-  }, [rootFolderId, folderMeta, buildFolderChildren])
+  }, [rootFolderId, folderMeta, buildFolderChildren, emptyFolderIds])
 
-  // Folders bulk-checked via the tree (as opposed to individually-toggled
-  // files) — tracked explicitly rather than derived from loaded children,
-  // because a collapsed/never-expanded folder has no rendered child nodes
-  // for antd to cascade a "checked" state up from: without this, checking
-  // a collapsed top-level folder correctly updated the selection in the
-  // background but its own checkbox never visibly ticked, which looked
-  // like the click had done nothing. checkStrictly (below) makes each
-  // folder's checked state exactly this set, independent of its children.
-  const [checkedFolderIds, setCheckedFolderIds] = useState<Set<number>>(new Set())
+  // Fetch the subtree of every folder the tree currently renders, so each
+  // one's checkbox can be derived. Failures are silent here: the folder
+  // simply keeps the fallback (clicked) state until a later attempt.
+  useEffect(() => {
+    if (viewMode !== 'folder') return
+    const ids: number[] = []
+    const walk = (nodes: DataNode[] | undefined) => {
+      for (const node of nodes ?? []) {
+        const key = String(node.key)
+        if (key.startsWith(FOLDER_KEY_PREFIX)) {
+          ids.push(Number(key.slice(FOLDER_KEY_PREFIX.length)))
+          walk(node.children)
+        }
+      }
+    }
+    walk(fileTreeData)
+    const timers: ReturnType<typeof setTimeout>[] = []
+    for (const id of ids) {
+      if (!Number.isFinite(id) || subtreeById.has(id)) continue
+      if ((subtreeFailuresRef.current.get(id) ?? 0) >= SUBTREE_FETCH_MAX_ATTEMPTS) continue
+      loadSubtree(id).catch(() => {
+        subtreeFailuresRef.current.set(id, (subtreeFailuresRef.current.get(id) ?? 0) + 1)
+        timers.push(setTimeout(() => setSubtreeRetryTick((t) => t + 1), SUBTREE_FETCH_RETRY_MS))
+      })
+    }
+    return () => {
+      for (const timer of timers) clearTimeout(timer)
+    }
+  }, [viewMode, fileTreeData, subtreeById, loadSubtree, subtreeRetryTick])
 
-  const checkedKeys = useMemo(
-    () => ({
-      checked: [
-        ...[...selection.selectedIds].map((id) => `${DOC_KEY_PREFIX}${id}`),
-        ...[...checkedFolderIds].map((id) => `${FOLDER_KEY_PREFIX}${id}`),
-      ],
-      halfChecked: [] as string[],
-    }),
-    [selection.selectedIds, checkedFolderIds],
-  )
+  const checkedKeys = useMemo(() => {
+    const checked = [...selection.selectedIds].map((id) => `${DOC_KEY_PREFIX}${id}`)
+    const halfChecked: string[] = []
+    for (const [folderId, state] of folderCheckStates) {
+      if (state === 'checked') checked.push(`${FOLDER_KEY_PREFIX}${folderId}`)
+      else if (state === 'half') halfChecked.push(`${FOLDER_KEY_PREFIX}${folderId}`)
+    }
+    for (const folderId of checkedFolderIds) {
+      if (!folderCheckStates.has(folderId)) checked.push(`${FOLDER_KEY_PREFIX}${folderId}`)
+    }
+    return { checked, halfChecked }
+  }, [selection.selectedIds, checkedFolderIds, folderCheckStates])
 
   const setFolderPending = useCallback((folderId: number, pending: boolean) => {
     setPendingFolderIds((prev) => {
@@ -282,19 +392,17 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
       setFolderPending(folderId, true)
       void ensureFolderLoaded(folderId)
       try {
-        let docs = subtreeCacheRef.current.get(folderId)
-        if (!docs) {
-          const response = await fetchSubtreeDocuments(folderId)
-          docs = response.documents
-          subtreeCacheRef.current.set(folderId, docs)
-          if (response.truncated) {
-            message.warning(
-              'This folder has more files than could be loaded at once — some may be missing from the selection.',
-            )
-          }
+        const docs = await loadSubtree(folderId, () =>
+          message.warning(
+            'This folder has more files than could be loaded at once — some may be missing from the selection.',
+          ),
+        )
+        const ids = getSelectableDocumentIds(docs)
+        if (ids.length === 0) {
+          message.info('No indexed files in this folder yet.')
+        } else {
+          selection.mergeSelection(ids)
         }
-        selection.registerDocuments(docs)
-        selection.mergeSelection(getSelectableDocumentIds(docs))
       } catch {
         setFolderChecked(folderId, false)
         message.error('Could not load the files in that folder. Please try again.')
@@ -302,7 +410,7 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
         setFolderPending(folderId, false)
       }
     },
-    [selection, setFolderPending, setFolderChecked, ensureFolderLoaded],
+    [selection, setFolderPending, setFolderChecked, ensureFolderLoaded, loadSubtree],
   )
 
   const handleUncheckFolder = useCallback(
@@ -310,12 +418,7 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
       setFolderChecked(folderId, false)
       setFolderPending(folderId, true)
       try {
-        let docs = subtreeCacheRef.current.get(folderId)
-        if (!docs) {
-          const response = await fetchSubtreeDocuments(folderId)
-          docs = response.documents
-          subtreeCacheRef.current.set(folderId, docs)
-        }
+        const docs = await loadSubtree(folderId)
         selection.removeSelection(docs.map((doc) => doc.document_id))
       } catch {
         setFolderChecked(folderId, true)
@@ -324,7 +427,7 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
         setFolderPending(folderId, false)
       }
     },
-    [selection, setFolderPending, setFolderChecked],
+    [selection, setFolderPending, setFolderChecked, loadSubtree],
   )
 
   const handleTreeCheck = useCallback(

@@ -8,6 +8,7 @@ import * as browseApi from '../api/browse'
 import type { BrowseTreeState } from '../hooks/useBrowseTree'
 import type { DocumentSelection } from '../hooks/useDocumentSelection'
 import type { BrowseDocumentItem } from '../api/types/browse'
+import { useDocumentSelection } from '../hooks/useDocumentSelection'
 
 vi.mock('../hooks/useBrowseCategories')
 vi.mock('../api/browse')
@@ -208,65 +209,185 @@ describe('FolderSidebar manual status refresh', () => {
 })
 
 describe('FolderSidebar file tree checkbox', () => {
+  // Root (1) holds contract.pdf (doc-1); Sub (2) holds notes.pdf (doc-2);
+  // Empty (3) holds nothing. Every folder is already loaded (expanded
+  // once), so its rows can be rendered by expanding it in the test.
+  const doc2: BrowseDocumentItem = {
+    ...folderDocuments[0],
+    document_id: 'doc-2',
+    filename: 'notes.pdf',
+    folder_id: 2,
+  }
+  const folderNode = (folder_id: number, name: string, parent_id: number | null) => ({
+    folder_id,
+    name,
+    parent_id,
+    // Child folders are always reported expandable by the adapter (their
+    // own children are unknown without a fetch).
+    has_children: true,
+  })
+  const entry = (
+    folder: ReturnType<typeof folderNode>,
+    folders: ReturnType<typeof folderNode>[],
+    documents: BrowseDocumentItem[],
+  ) => ({
+    contents: { folder, folders, documents, page: 0, has_more_documents: false },
+    loadedPages: new Set([0]),
+  })
+  const subtreeByFolder: Record<number, BrowseDocumentItem[]> = {
+    1: [folderDocuments[0], doc2],
+    2: [doc2],
+    3: [],
+  }
+
+  function Harness({ browse }: { browse: BrowseTreeState }) {
+    const selection = useDocumentSelection()
+    return <FolderSidebar browse={browse} selection={selection} />
+  }
+
+  const checkboxOf = (label: string) =>
+    (screen.getByText(label).closest('.ant-tree-treenode') as HTMLElement).querySelector(
+      '.ant-tree-checkbox',
+    ) as HTMLElement
+  const expand = async (user: ReturnType<typeof userEvent.setup>, label: string) => {
+    const row = screen.getByText(label).closest('.ant-tree-treenode') as HTMLElement
+    await user.click(row.querySelector('.ant-tree-switcher') as HTMLElement)
+  }
+
+  let browse: BrowseTreeState
+
   beforeEach(() => {
+    window.localStorage.clear()
     vi.mocked(useBrowseCategoriesModule.useBrowseCategories).mockReturnValue({
       serverCategories: null,
       categoriesLoading: false,
     })
+    vi.mocked(browseApi.fetchSubtreeDocuments).mockImplementation(async (folderId: number) => ({
+      folder: folderNode(folderId, `Folder ${folderId}`, folderId === 1 ? null : 1),
+      documents: subtreeByFolder[folderId] ?? [],
+      folder_count: 1,
+      truncated: false,
+    }))
+    const root = folderNode(1, 'Root', null)
+    const sub = folderNode(2, 'Sub', 1)
+    const empty = folderNode(3, 'Empty', 1)
+    browse = createBrowseFixture({
+      cache: new Map([
+        [1, entry(root, [sub, empty], [folderDocuments[0]])],
+        [2, entry(sub, [], [doc2])],
+        [3, entry(empty, [], [])],
+      ]),
+      folderMeta: new Map([
+        [1, { name: 'Root', has_children: true, parent_id: null }],
+        [2, { name: 'Sub', has_children: true, parent_id: 1 }],
+        [3, { name: 'Empty', has_children: true, parent_id: 1 }],
+      ]),
+    })
   })
 
-  it('shows a collapsed (never-expanded) folder as checked immediately after clicking its checkbox', async () => {
-    const subtreeDocs: BrowseDocumentItem[] = [
-      { ...folderDocuments[0], document_id: 'doc-2', folder_id: 2 },
-    ]
+  it('ticks a collapsed folder as soon as its checkbox is clicked and keeps it ticked', async () => {
+    const user = userEvent.setup()
+    render(<Harness browse={browse} />)
+
+    await user.click(checkboxOf('Sub'))
+
+    expect(browseApi.fetchSubtreeDocuments).toHaveBeenCalledWith(2)
+    await waitFor(() => {
+      expect(checkboxOf('Sub')).toHaveClass('ant-tree-checkbox-checked')
+    })
+    await expand(user, 'Sub')
+    expect(checkboxOf('notes.pdf')).toHaveClass('ant-tree-checkbox-checked')
+    // Root now has one of its two files selected.
+    expect(checkboxOf('Root')).toHaveClass('ant-tree-checkbox-indeterminate')
+  })
+
+  it('ticks every folder beneath the root when the root is ticked, and greys out an empty folder', async () => {
+    const user = userEvent.setup()
+    render(<Harness browse={browse} />)
+
+    await user.click(checkboxOf('Root'))
+
+    await waitFor(() => {
+      expect(checkboxOf('Root')).toHaveClass('ant-tree-checkbox-checked')
+      expect(checkboxOf('Sub')).toHaveClass('ant-tree-checkbox-checked')
+    })
+    expect(checkboxOf('contract.pdf')).toHaveClass('ant-tree-checkbox-checked')
+    await waitFor(() => {
+      expect(checkboxOf('Empty')).toHaveClass('ant-tree-checkbox-disabled')
+    })
+    expect(checkboxOf('Empty')).not.toHaveClass('ant-tree-checkbox-checked')
+  })
+
+  it('drops a folder back to half-checked when one of its files is unticked', async () => {
+    const user = userEvent.setup()
+    render(<Harness browse={browse} />)
+
+    await user.click(checkboxOf('Root'))
+    await waitFor(() => {
+      expect(checkboxOf('Sub')).toHaveClass('ant-tree-checkbox-checked')
+    })
+    await expand(user, 'Sub')
+    await user.click(checkboxOf('notes.pdf'))
+
+    await waitFor(() => {
+      expect(checkboxOf('notes.pdf')).not.toHaveClass('ant-tree-checkbox-checked')
+      expect(checkboxOf('Sub')).not.toHaveClass('ant-tree-checkbox-checked')
+      expect(checkboxOf('Sub')).not.toHaveClass('ant-tree-checkbox-indeterminate')
+      expect(checkboxOf('Root')).toHaveClass('ant-tree-checkbox-indeterminate')
+    })
+  })
+
+  it('ticks a folder once every file beneath it has been ticked one by one', async () => {
+    const user = userEvent.setup()
+    render(<Harness browse={browse} />)
+
+    await expand(user, 'Sub')
+    await user.click(checkboxOf('contract.pdf'))
+    await user.click(checkboxOf('notes.pdf'))
+
+    await waitFor(() => {
+      expect(checkboxOf('Sub')).toHaveClass('ant-tree-checkbox-checked')
+      expect(checkboxOf('Root')).toHaveClass('ant-tree-checkbox-checked')
+    })
+  })
+
+  it('unticks every file beneath a folder when the folder is unticked', async () => {
+    const user = userEvent.setup()
+    render(<Harness browse={browse} />)
+
+    await user.click(checkboxOf('Root'))
+    await waitFor(() => {
+      expect(checkboxOf('Root')).toHaveClass('ant-tree-checkbox-checked')
+      expect(checkboxOf('Sub')).toHaveClass('ant-tree-checkbox-checked')
+      expect(checkboxOf('contract.pdf')).toHaveClass('ant-tree-checkbox-checked')
+    })
+    await user.click(checkboxOf('Root'))
+
+    await waitFor(() => {
+      expect(checkboxOf('Root')).not.toHaveClass('ant-tree-checkbox-checked')
+      expect(checkboxOf('Sub')).not.toHaveClass('ant-tree-checkbox-checked')
+      expect(checkboxOf('contract.pdf')).not.toHaveClass('ant-tree-checkbox-checked')
+    })
+  })
+
+  it('recovers a folder whose background subtree fetch failed once', async () => {
+    let subCalls = 0
     vi.mocked(browseApi.fetchSubtreeDocuments).mockImplementation(async (folderId: number) => {
-      if (folderId === 2) {
-        return {
-          folder: { folder_id: 2, name: 'Sub', parent_id: 1, has_children: false },
-          documents: subtreeDocs,
-          folder_count: 1,
-          truncated: false,
-        }
-      }
+      if (folderId === 2 && subCalls++ === 0) throw new Error('network')
       return {
-        folder: { folder_id: 1, name: 'Root', parent_id: null, has_children: false },
-        documents: folderDocuments,
+        folder: folderNode(folderId, `Folder ${folderId}`, folderId === 1 ? null : 1),
+        documents: subtreeByFolder[folderId] ?? [],
         folder_count: 1,
         truncated: false,
       }
     })
+    window.localStorage.setItem('docu_selected_documents', JSON.stringify(['doc-1', 'doc-2']))
+    render(<Harness browse={browse} />)
 
-    const browse = createBrowseFixture({
-      cache: new Map([
-        [
-          1,
-          {
-            contents: {
-              folder: { folder_id: 1, name: 'Root', parent_id: null, has_children: false },
-              folders: [{ folder_id: 2, name: 'Sub', parent_id: 1, has_children: true }],
-              documents: [],
-              page: 0,
-              has_more_documents: false,
-            },
-            loadedPages: new Set([0]),
-          },
-        ],
-        // Deliberately no cache entry for folder 2 — it has never been expanded.
-      ]),
-    })
-    const selection = createSelectionFixture()
-
-    const user = userEvent.setup()
-    render(<FolderSidebar browse={browse} selection={selection} />)
-
-    const subRow = screen.getByText('Sub').closest('.ant-tree-treenode') as HTMLElement
-    const checkbox = subRow.querySelector('.ant-tree-checkbox') as HTMLElement
-    await user.click(checkbox)
-
-    expect(browseApi.fetchSubtreeDocuments).toHaveBeenCalledWith(2)
     await waitFor(() => {
-      expect(selection.mergeSelection).toHaveBeenCalledWith(['doc-2'])
+      expect(checkboxOf('Root')).toHaveClass('ant-tree-checkbox-checked')
+      expect(checkboxOf('Sub')).toHaveClass('ant-tree-checkbox-checked')
     })
-    expect(subRow.querySelector('.ant-tree-checkbox')).toHaveClass('ant-tree-checkbox-checked')
+    expect(subCalls).toBe(2)
   })
 })
