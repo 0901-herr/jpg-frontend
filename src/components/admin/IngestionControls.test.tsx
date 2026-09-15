@@ -9,7 +9,6 @@ import IngestionControls from '../../components/admin/IngestionControls'
 import {
   mockControlPaused,
   mockControlRunning,
-  mockOverviewIdle,
   mockOverviewPaused,
   mockOverviewRunning,
 } from '../../test/adminFixtures'

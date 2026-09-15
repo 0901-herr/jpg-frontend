@@ -6,7 +6,6 @@ import React from 'react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { vi } from 'vitest'
 import * as adminApi from '../../api/admin'
-import type { AdminDocumentQuery } from '../../api/types/admin'
 import IngestionOverviewPage from './IngestionOverviewPage'
 import {
   mockControlPaused,

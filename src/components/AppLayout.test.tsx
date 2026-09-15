@@ -1,7 +1,7 @@
 import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React, { useState } from 'react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../api/http'
 import type { MqaMetadataResponse, QueryScopeResponse } from '../api/types/browse'
 import type { SendMessageRequest, SendMessageResponse } from '../api/types/query'
@@ -132,6 +132,32 @@ vi.mock('./Sidebar', () => ({
 
 // Imported after the mocks above so AppLayout picks up the mocked modules.
 const { default: AppLayout } = await import('./AppLayout')
+
+// AppLayout renders antd Tooltip/Dropdown popups (rc-trigger), which measure
+// the scrollbar via getComputedStyle(el, '::-webkit-scrollbar') when a popup
+// opens or repositions. jsdom has no implementation for the pseudo-element
+// overload, and a popup's own close/measure cycle can still be in flight
+// when a test's assertions finish and testing-library unmounts it — so the
+// "Not implemented" console error prints non-deterministically, after the
+// test that triggered it has already completed. Delegate to the real
+// getComputedStyle for the normal (no pseudo-element) case and return an
+// empty style for the pseudo-element case, exactly like a browser without a
+// visible scrollbar would report — this only changes what the test
+// environment answers, not any AppLayout production behaviour.
+let getComputedStyleSpy: ReturnType<typeof vi.spyOn>
+
+beforeAll(() => {
+  const realGetComputedStyle = window.getComputedStyle.bind(window)
+  getComputedStyleSpy = vi
+    .spyOn(window, 'getComputedStyle')
+    .mockImplementation((elt: Element, pseudoElt?: string | null) =>
+      pseudoElt ? ({} as CSSStyleDeclaration) : realGetComputedStyle(elt),
+    )
+})
+
+afterAll(() => {
+  getComputedStyleSpy.mockRestore()
+})
 
 describe('AppLayout — abort on New chat / select chat while streaming', () => {
   beforeEach(() => {
