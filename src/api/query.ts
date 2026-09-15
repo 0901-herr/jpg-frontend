@@ -84,6 +84,33 @@ function stripTrailingCitationMarker(text: string): string {
   return text.replace(/\s*\[[^[\]\n]*\]\s*$/, '')
 }
 
+/** Matches text that ends a sentence: one of `. ! ? : ;`, optionally
+ * followed by a single closing quote or bracket (a period can land just
+ * inside a closing quote/paren, e.g. `done."` or `(see above.)`). */
+const SENTENCE_TERMINATOR_RE = /[.!?:;]["'”’)\]}]?$/
+
+/**
+ * rag-engine's AnswerSegmenter ends a segment at an inline `[DocN]` marker,
+ * not at a sentence boundary — so a single sentence like "The minutes
+ * [Doc2] document the framework but…" arrives as two segments ("The
+ * minutes", cited; "document the framework but…", uncited), each with a
+ * *different* citation ref (or none). Naively treating every citation
+ * change as a new fact/new paragraph (see `citationChanged` below) reads
+ * that mid-sentence split as two unrelated topics.
+ *
+ * A segment is a continuation of the same sentence — joined with a single
+ * space, never a new paragraph — when it starts with a lowercase letter
+ * (a genuinely new sentence never does), or when the text accumulated so
+ * far (its own trailing `[DocN]` marker aside — that's punctuation *we*
+ * appended, not the model's) doesn't already end a sentence. This holds
+ * regardless of whether the citation ref changed.
+ */
+function isSentenceContinuation(content: string, segmentText: string): boolean {
+  if (/^[a-z]/.test(segmentText.trimStart())) return true
+  const priorText = stripTrailingCitationMarker(content)
+  return !SENTENCE_TERMINATOR_RE.test(priorText)
+}
+
 /** True if the last line of `text` is a Markdown list item *with* label
  * text — used to decide whether a following list-item segment continues
  * the same list (single newline) or starts a new one (blank line first).
@@ -309,11 +336,14 @@ async function streamQuery(
                 // way `isListItem`'s own separator can; only a segment
                 // that already supplies a full blank line is left alone.
                 delta = alreadyBlankSeparated ? rawDelta : `\n\n${rawDelta.replace(/^\s*\n+\s*/, '')}`
-              } else if (citationChanged) {
-                // A new source outside a list starts a new paragraph, but
-                // a segment that already brought its own separator (even a
-                // single newline — no list to lazily continue here) is
-                // left as the backend shaped it.
+              } else if (citationChanged && !isSentenceContinuation(content, segmentText)) {
+                // A genuinely new fact outside a list starts a new
+                // paragraph, but a segment that already brought its own
+                // separator (even a single newline — no list to lazily
+                // continue here) is left as the backend shaped it. A
+                // segment that merely continues the sentence the citation
+                // change split mid-way through (see isSentenceContinuation)
+                // never starts a new paragraph, citation change or not.
                 delta = alreadySeparated ? rawDelta : `\n\n${rawDelta}`
               } else {
                 delta = rawDelta

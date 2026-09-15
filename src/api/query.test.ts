@@ -153,6 +153,88 @@ describe('sendMessage delta handling', () => {
     expect(result.content).toBe('Claim one. [Doc1]\nClaim two. [Doc2]')
   })
 
+  it('joins a mid-sentence citation-marker split as a continuation, not a new paragraph, when the next segment starts lowercase', async () => {
+    // Live bug: rag-engine ends an `answer` segment at the inline [DocN]
+    // marker, not at the sentence boundary, so "The minutes [Doc2]
+    // document the framework but do not mention an approval process..."
+    // arrives as "The minutes" (cited) + "document the framework but..."
+    // (uncited) — a citation change with no sentence break at all.
+    scriptedEvents = [
+      { event: 'citation', data: { doc_ref: '[Doc2]', chunk_id: 'c2', item_id: 'doc1', page: 2 } },
+      { event: 'answer', data: { text: 'The minutes', chunk_id: 'c2', item_id: 'doc1', page: 2 } },
+      {
+        event: 'answer',
+        data: { text: 'document the framework but do not mention an approval process or approver.' },
+      },
+      { event: 'done', data: {} },
+    ]
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'Summarize.',
+      documents: ['doc1'],
+      callbacks: {},
+    })
+
+    expect(result.content).toBe(
+      'The minutes [Doc2] document the framework but do not mention an approval process or approver.',
+    )
+    expect(result.content).not.toContain('\n\n')
+  })
+
+  it('joins a citation-marker split as a continuation when the prior text has no sentence-ending punctuation, even if the next segment starts uppercase', async () => {
+    scriptedEvents = [
+      { event: 'citation', data: { doc_ref: '[Doc1]', chunk_id: 'c1', item_id: 'doc1', page: 1 } },
+      { event: 'citation', data: { doc_ref: '[Doc2]', chunk_id: 'c2', item_id: 'doc1', page: 2 } },
+      {
+        event: 'answer',
+        data: { text: 'The team discussed the new plan', chunk_id: 'c1', item_id: 'doc1', page: 1 },
+      },
+      {
+        event: 'answer',
+        data: { text: 'Which was well received.', chunk_id: 'c2', item_id: 'doc1', page: 2 },
+      },
+      { event: 'done', data: {} },
+    ]
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'Summarize.',
+      documents: ['doc1'],
+      callbacks: {},
+    })
+
+    expect(result.content).toBe('The team discussed the new plan [Doc1] Which was well received. [Doc2]')
+    expect(result.content).not.toContain('\n\n')
+  })
+
+  it('still starts a new paragraph for a genuinely new fact: citation changed, prior sentence terminated, next segment capitalized', async () => {
+    scriptedEvents = [
+      { event: 'citation', data: { doc_ref: '[Doc1]', chunk_id: 'c1', item_id: 'doc1', page: 1 } },
+      { event: 'citation', data: { doc_ref: '[Doc2]', chunk_id: 'c2', item_id: 'doc1', page: 2 } },
+      {
+        event: 'answer',
+        data: { text: 'The budget was approved.', chunk_id: 'c1', item_id: 'doc1', page: 1 },
+      },
+      {
+        event: 'answer',
+        data: { text: 'Staffing remains under review.', chunk_id: 'c2', item_id: 'doc1', page: 2 },
+      },
+      { event: 'done', data: {} },
+    ]
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'Summarize.',
+      documents: ['doc1'],
+      callbacks: {},
+    })
+
+    expect(result.content).toBe(
+      'The budget was approved. [Doc1]\n\nStaffing remains under review. [Doc2]',
+    )
+  })
+
   it('does not insert a paragraph break between consecutive segments citing the same source', async () => {
     scriptedEvents = [
       { event: 'citation', data: { doc_ref: '[Doc1]', chunk_id: 'c1', item_id: 'doc1', page: 1 } },
