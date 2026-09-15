@@ -117,6 +117,67 @@ export function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
+/** Matches a single `[DocN]`-shaped bracket group, one or more entries
+ * (comma-separated), each an optional-space "Doc" + number, with an
+ * optional ":page" hint the model sometimes tacks on — everything from a
+ * lone `[Doc3]` up to a raw multi-doc list like `[Doc1, Doc2, Doc6]` or
+ * `[Doc1:2, Doc3]`. Case-insensitive since the model doesn't always
+ * capitalize "Doc" consistently. */
+const BRACKET_DOC_GROUP_RE =
+  /\[\s*doc\s*\d+(?:\s*:\s*\d+)?\s*(?:,\s*doc\s*\d+(?:\s*:\s*\d+)?\s*)*\]/gi
+const DOC_ENTRY_RE = /^doc\s*(\d+)(?:\s*:\s*\d+)?$/i
+
+/**
+ * rag-engine only strips single, well-formed `[DocN]` markers from the raw
+ * model output — it doesn't recognise (and so doesn't strip) a
+ * comma-separated multi-doc marker the model sometimes writes instead
+ * (`[Doc1, Doc2, Doc6]`), which otherwise reaches the screen as raw
+ * bracket text. This expands every such bracket group — including a
+ * "list" of just one entry, and two markers written back-to-back with no
+ * comma (`[Doc1][Doc3]`, matched as two separate one-entry groups) — into
+ * one canonical `[DocN]` token per entry that actually has a matching
+ * source, so the existing per-ref split below turns each into its own
+ * citation. An entry with no matching source is dropped silently; if a
+ * whole group resolves to nothing, the group disappears rather than ever
+ * showing raw, meaningless "[Doc…]" text. */
+function expandBracketDocGroups(content: string, byRef: Map<string, Source>): string {
+  return content.replace(BRACKET_DOC_GROUP_RE, (match) => {
+    const resolved = match
+      .slice(1, -1)
+      .split(',')
+      .map((entry) => entry.trim())
+      .map((entry) => {
+        const docMatch = DOC_ENTRY_RE.exec(entry)
+        if (!docMatch) return null
+        const ref = `[Doc${docMatch[1]}]`
+        return byRef.has(ref) ? ref : null
+      })
+      .filter((ref): ref is string => ref != null)
+    return resolved.join('')
+  })
+}
+
+type AnswerSegment =
+  | { type: 'text'; value: string }
+  | { type: 'ref'; value: string; source: Source }
+
+/** Inserts a plain space between two `ref` segments that ended up directly
+ * adjacent with nothing between them — the shape produced by
+ * `expandBracketDocGroups` turning "[Doc1, Doc2]" into the back-to-back
+ * tokens "[Doc1][Doc2]", and by the model itself sometimes writing
+ * consecutive markers the same way. Without it, two citation pills would
+ * render glued together with no gap. */
+function spaceAdjacentRefs(parts: AnswerSegment[]): AnswerSegment[] {
+  const result: AnswerSegment[] = []
+  for (const part of parts) {
+    if (part.type === 'ref' && result[result.length - 1]?.type === 'ref') {
+      result.push({ type: 'text', value: ' ' })
+    }
+    result.push(part)
+  }
+  return result
+}
+
 /** Split answer text into segments, marking doc_ref tokens for linking. */
 export function splitAnswerByDocRefs(
   content: string,
@@ -128,19 +189,21 @@ export function splitAnswerByDocRefs(
   }
 
   const byRef = new Map(refs.map((s) => [s.docRef!, s]))
+  const expandedContent = expandBracketDocGroups(content, byRef)
   const pattern = [...byRef.keys()]
     .sort((a, b) => b.length - a.length)
     .map(escapeRegExp)
     .join('|')
 
-  if (!pattern) return [{ type: 'text', value: content }]
+  if (!pattern) return [{ type: 'text', value: expandedContent }]
 
-  const parts = content.split(new RegExp(`(${pattern})`, 'g'))
-  return parts
+  const parts = expandedContent.split(new RegExp(`(${pattern})`, 'g'))
+  const segments = parts
     .filter((part) => part.length > 0)
     .map((part) => {
       const source = byRef.get(part)
       if (source) return { type: 'ref' as const, value: part, source }
       return { type: 'text' as const, value: part }
     })
+  return spaceAdjacentRefs(segments)
 }
