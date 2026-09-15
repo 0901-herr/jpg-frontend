@@ -6,6 +6,7 @@ import { type, typeColor } from '../styles/typography'
 import { radius } from '../styles/theme'
 import { createAnswerMarkdownComponents, createStreamingTailPlugin } from '../utils/markdownRenderers'
 import { useElapsedSeconds } from '../hooks/useElapsedSeconds'
+import { ChatBubbleIcon, ChatInfoIcon } from '../icons/chat'
 import type { ChatMessage, CoverageInfo, Source } from '../types'
 import CitationList from './CitationList'
 
@@ -62,6 +63,10 @@ function StreamingProgressLabel({ message }: { message: ChatMessage }) {
   return <p className={`${type.caption} ${typeColor.muted}`}>{text}</p>
 }
 
+/** A quiet inline callout — thin border, muted background, small icon —
+ * for every status/error/abstain state (client feedback: UI polish pass).
+ * Replaces the earlier loud amber/yellow alert box: the copy asserted by
+ * tests is unchanged, only the presentation. */
 function ErrorMessage({
   content,
   progressHint,
@@ -71,13 +76,16 @@ function ErrorMessage({
 }) {
   return (
     <div
-      className={`${radius.md} border border-amber-200 bg-amber-50 px-4 py-3 ${type.body} text-amber-950`}
+      className={`${radius.md} border border-[#ececec] bg-[var(--docu-bg-muted)] px-4 py-3 ${type.body} ${typeColor.body}`}
       role="alert"
     >
-      <p className="font-medium mb-1">Couldn&apos;t finish this answer</p>
+      <p className="flex items-center gap-2 font-medium mb-1">
+        <ChatInfoIcon className="shrink-0 text-[var(--docu-text-muted)]" aria-hidden />
+        Couldn&apos;t finish this answer
+      </p>
       <p className="leading-relaxed">{content}</p>
       {progressHint && (
-        <p className={`${type.caption} mt-2 text-amber-800/80`}>
+        <p className={`${type.caption} mt-2 ${typeColor.muted}`}>
           Last step: {progressHint.replace(/…$/, '')}
         </p>
       )}
@@ -221,6 +229,19 @@ function AssistantMessage({ message }: AssistantMessageProps) {
   )
 }
 
+/** A small muted label above every assistant turn (client feedback: UI
+ * polish pass) — not a heavy card, just enough to read as "this is the
+ * assistant speaking" the way a mainstream AI-chat layout marks its
+ * replies, without repeating on every paragraph inside one answer. */
+function AssistantLabel() {
+  return (
+    <div className="flex items-center gap-1.5 mb-2" aria-hidden="true">
+      <ChatBubbleIcon sx={{ fontSize: 16 }} className={typeColor.muted} />
+      <span className={`${type.caption} font-medium ${typeColor.muted}`}>ARCHE AI</span>
+    </div>
+  )
+}
+
 interface ChatMessageItemProps {
   message: ChatMessage
   showDivider?: boolean
@@ -236,7 +257,10 @@ export default function ChatMessageItem({ message, showDivider }: ChatMessageIte
           <Text className={`${type.body} ${typeColor.body}`}>{message.content}</Text>
         </div>
       ) : (
-        <AssistantMessage message={message} />
+        <div className="mb-4">
+          <AssistantLabel />
+          <AssistantMessage message={message} />
+        </div>
       )}
       {showDivider && <hr className="my-6 border-0 border-t border-[#ececec]" />}
     </div>

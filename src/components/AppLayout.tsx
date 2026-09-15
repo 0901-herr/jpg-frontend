@@ -1054,23 +1054,26 @@ export default function AppLayout() {
           <Content className="flex flex-col h-full min-h-0">
             <div
               ref={scrollContainerRef}
-              className="docu-chat-scroll flex-1 overflow-y-auto px-6 pt-6 pb-4 min-h-0 scroll-smooth flex flex-col"
+              className="docu-chat-scroll flex-1 overflow-y-auto px-4 sm:px-6 pt-6 pb-4 min-h-0 scroll-smooth flex flex-col"
             >
+              {/* max-w-3xl (48rem) — the conversation column width of a
+                  mainstream AI-chat layout (client feedback: UI polish
+                  pass), matched by the composer's own column below. */}
               <div
-                className={`max-w-4xl mx-auto w-full min-w-0 flex-1 flex flex-col space-y-0 ${
+                className={`max-w-3xl mx-auto w-full min-w-0 flex-1 flex flex-col space-y-0 ${
                   messagePairs.length === 0 ? 'justify-center' : ''
                 }`}
               >
                 {messagePairs.length === 0 ? (
                   <div className="flex flex-col items-center justify-center text-center px-4 py-8">
-                    <div className="w-12 h-12 rounded-xl bg-zinc-100 flex items-center justify-center mb-4 text-zinc-400">
+                    <div className="w-12 h-12 rounded-xl bg-[var(--docu-bg-muted)] flex items-center justify-center mb-4 text-[var(--docu-text-muted)]">
                       <ChatBubbleIconLg />
                     </div>
-                    <p className={`text-[#0d0d0d] ${type.body} font-semibold mb-1`}>
-                      Start a conversation
+                    <p className={`${typeColor.primary} ${type.body} font-semibold mb-1`}>
+                      How can I help with your documents?
                     </p>
                     <p className={`${typeColor.muted} ${type.caption}`}>
-                      Select documents in the sidebar, then ask a question
+                      Select files in the sidebar, then ask a question.
                     </p>
                   </div>
                 ) : (

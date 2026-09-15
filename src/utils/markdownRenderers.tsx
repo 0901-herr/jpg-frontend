@@ -124,7 +124,9 @@ const LIST_CLASS = 'pl-5 space-y-1'
 // comment there) — this class only carries the per-cell border, alignment,
 // and wrapping, none of which any unlayered rule contests.
 const CELL_CLASS = 'border border-[#ececec] text-left align-top break-words [overflow-wrap:anywhere]'
-const INLINE_CODE_CLASS = 'rounded bg-black/[0.05] px-1 py-0.5 font-mono text-[0.9em]'
+// `rounded-lg` (8px) rather than the Tailwind default `rounded` (4px) —
+// consistency rule: radii are 8/12/16px only across the app.
+const INLINE_CODE_CLASS = 'rounded-lg bg-black/[0.05] px-1 py-0.5 font-mono text-[0.9em]'
 
 /** Builds the react-markdown `components` map for one answer render —
  * `sources` closes over the citations available for this specific message,
@@ -150,7 +152,7 @@ export function createAnswerMarkdownComponents(sources: Source[]): Components {
     li: citationAwareBlock('li', 'leading-relaxed', sources, numbers, 'li'),
     blockquote: citationAwareBlock(
       'blockquote',
-      `border-l-2 border-[#ececec] pl-3 text-[#676767] ${PARAGRAPH_SPACING}`,
+      `border-l-2 border-[#ececec] pl-3 text-[#6b6b6b] ${PARAGRAPH_SPACING}`,
       sources,
       numbers,
       'bq',
@@ -196,7 +198,7 @@ export function createAnswerMarkdownComponents(sources: Source[]): Components {
           : child,
       )
       return (
-        <pre className="whitespace-pre-wrap break-words rounded bg-black/[0.05] p-3 text-[0.9em] font-mono">
+        <pre className="whitespace-pre-wrap break-words rounded-lg bg-black/[0.05] p-3 text-[0.9em] font-mono">
           {content}
         </pre>
       )
@@ -206,7 +208,7 @@ export function createAnswerMarkdownComponents(sources: Source[]): Components {
         href={href}
         target="_blank"
         rel="noopener noreferrer"
-        className="underline decoration-[#c8c8c8] underline-offset-2 hover:decoration-[#676767]"
+        className="underline decoration-[#c8c8c8] underline-offset-2 hover:decoration-[#6b6b6b]"
       >
         {linkifyNode(children, sources, numbers, 'a')}
       </a>
