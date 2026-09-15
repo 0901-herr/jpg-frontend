@@ -9,6 +9,7 @@ import { useElapsedSeconds } from '../hooks/useElapsedSeconds'
 import { ChatBubbleIcon, ChatInfoIcon } from '../icons/chat'
 import type { ChatMessage, CoverageInfo, Source } from '../types'
 import CitationList from './CitationList'
+import { answerHasInlineCitation } from '../utils/citations'
 
 const { Text } = Typography
 
@@ -111,7 +112,21 @@ function InterruptedNote() {
  * documents when the backend abstained — retrieval found nothing it could
  * answer from. A short, honest caption rather than silently rendering the
  * canned "couldn't find relevant content" answer as if it were backed by
- * sources. */
+ * sources.
+ *
+ * The "Related documents" list itself (rendered near the bottom of
+ * `AssistantMessage`) is gated on two independent things, either of which
+ * hides it: `message.abstained` (set from a backend `abstention` SSE
+ * event, so this caption shows too), and — separately, for a completed
+ * answer that was never flagged as abstained — whether the answer text
+ * actually cites any of `message.sources` inline
+ * (`answerHasInlineCitation`). The second gate covers a refusal sentence
+ * ("The provided context does not contain...") that carries leftover
+ * `sources` from retrieval but quotes none of them, and a marker that
+ * resolves to nothing (a stray `[DocN]` placeholder). No caption is shown
+ * for that second case — the refusal sentence is the message. Only query
+ * answers (`src/api/query.ts`) ever set `sources`, so summary and
+ * categorize chat messages are unaffected by either gate. */
 function AbstainedCaption() {
   return <p className={`${type.caption} ${typeColor.muted}`}>No matching content</p>
 }
@@ -224,7 +239,10 @@ function AssistantMessage({ message }: AssistantMessageProps) {
       {!message.abstained &&
         message.sources &&
         message.sources.length > 0 &&
-        message.status !== 'streaming' && <CitationList sources={message.sources} />}
+        message.status !== 'streaming' &&
+        answerHasInlineCitation(message.content, message.sources) && (
+          <CitationList sources={message.sources} />
+        )}
     </div>
   )
 }

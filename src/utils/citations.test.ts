@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { numberCitations, splitAnswerByDocRefs } from './citations'
+import { answerHasInlineCitation, numberCitations, splitAnswerByDocRefs } from './citations'
 import type { Source } from '../types'
 
 function source(overrides: Partial<Source> & { index: number; docRef: string }): Source {
@@ -170,5 +170,60 @@ describe('splitAnswerByDocRefs — raw multi-document markers', () => {
       { type: 'ref', value: '[Doc1]', source: sources[0] },
       { type: 'text', value: ' directly.' },
     ])
+  })
+})
+
+describe('literal "[DocN]" placeholder (the model copied the prompt template verbatim — N is a letter, not a number)', () => {
+  it('removes a lone "[DocN]" from the text and produces no ref segment', () => {
+    const sources = [source({ index: 1, docRef: '[Doc1]' })]
+
+    const segments = splitAnswerByDocRefs('Not covered by the provided context [DocN].', sources)
+
+    expect(segments.filter((s) => s.type === 'ref')).toHaveLength(0)
+    expect(segments.map((s) => s.value).join('')).toBe('Not covered by the provided context .')
+  })
+
+  it('drops the DocN entry from a mixed bracket list, keeping the matching Doc1 entry', () => {
+    const sources = [source({ index: 1, docRef: '[Doc1]' })]
+
+    const segments = splitAnswerByDocRefs('per the filing [Doc1, DocN]', sources)
+
+    expect(segments.filter((s) => s.type === 'ref').map((r) => r.value)).toEqual(['[Doc1]'])
+  })
+
+  it('leaves "[Document]", "[Docs]" and "[Doctor]" untouched — none of those is a DocN match', () => {
+    const sources = [source({ index: 1, docRef: '[Doc1]' })]
+
+    for (const text of [
+      'See the [Document] for details.',
+      'Refer to the [Docs] folder.',
+      'Ask the [Doctor] about it.',
+    ]) {
+      const segments = splitAnswerByDocRefs(text, sources)
+      expect(segments.filter((s) => s.type === 'ref')).toHaveLength(0)
+      expect(segments.map((s) => s.value).join('')).toBe(text)
+    }
+  })
+})
+
+describe('answerHasInlineCitation', () => {
+  it('is true when the content has a marker matching a source', () => {
+    const sources = [source({ index: 1, docRef: '[Doc1]' })]
+    expect(answerHasInlineCitation('See the flags in [Doc1].', sources)).toBe(true)
+  })
+
+  it('is false when the content has no marker at all', () => {
+    const sources = [source({ index: 1, docRef: '[Doc1]' })]
+    expect(
+      answerHasInlineCitation(
+        'The provided context does not contain any information about that.',
+        sources,
+      ),
+    ).toBe(false)
+  })
+
+  it('is false when the marker present has no matching source', () => {
+    const sources = [source({ index: 1, docRef: '[Doc1]' })]
+    expect(answerHasInlineCitation('as noted [Doc9]', sources)).toBe(false)
   })
 })

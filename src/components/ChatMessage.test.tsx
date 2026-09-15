@@ -260,6 +260,55 @@ describe('abstained answer', () => {
   })
 })
 
+describe('marker-less refusal', () => {
+  const source: Source = { index: 1, filename: 'Report.pdf', docRef: '[Doc1]', documentId: 'd1' }
+
+  it('renders no Related documents list for a completed, non-abstained answer that cites nothing inline', () => {
+    render(
+      <ChatMessageItem
+        message={assistantMessage({
+          content:
+            'The provided context does not contain any information about C++ compiler flags.',
+          status: 'complete',
+          sources: [source],
+        })}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: /Related documents/ })).not.toBeInTheDocument()
+    expect(screen.queryByText('Report.pdf')).not.toBeInTheDocument()
+  })
+
+  it('still renders Related documents when the same message cites a source inline', () => {
+    render(
+      <ChatMessageItem
+        message={assistantMessage({
+          content: 'See the flags in [Doc1].',
+          status: 'complete',
+          sources: [source],
+        })}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: /Related documents/ })).toBeInTheDocument()
+  })
+
+  it('never renders a literal "[DocN]" placeholder in a completed answer', () => {
+    render(
+      <ChatMessageItem
+        message={assistantMessage({
+          content: 'See the flags in [Doc1, DocN].',
+          status: 'complete',
+          sources: [source],
+        })}
+      />,
+    )
+
+    expect(screen.queryByText(/DocN/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Report\.pdf/ })).toBeInTheDocument()
+  })
+})
+
 describe('progress label elapsed-time ticker', () => {
   beforeEach(() => {
     vi.useFakeTimers()

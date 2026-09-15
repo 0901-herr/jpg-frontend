@@ -147,13 +147,18 @@ export function escapeRegExp(value: string): string {
 }
 
 /** Matches a single `[DocN]`-shaped bracket group, one or more entries
- * (comma-separated), each an optional-space "Doc" + number, with an
- * optional ":page" hint the model sometimes tacks on — everything from a
- * lone `[Doc3]` up to a raw multi-doc list like `[Doc1, Doc2, Doc6]` or
- * `[Doc1:2, Doc3]`. Case-insensitive since the model doesn't always
- * capitalize "Doc" consistently. */
+ * (comma-separated), each an optional-space "Doc" + either a number or the
+ * literal letter "N" — the model sometimes copies the prompt's own
+ * `[DocN]` placeholder verbatim instead of filling in a real number — with
+ * an optional ":page" hint the model sometimes tacks on — everything from
+ * a lone `[Doc3]` up to a raw multi-doc list like `[Doc1, Doc2, Doc6]`,
+ * `[Doc1:2, Doc3]`, or a placeholder entry like `[DocN]` / `[Doc1, DocN]`.
+ * Case-insensitive since the model doesn't always capitalize "Doc"
+ * consistently. `DOC_ENTRY_RE` below stays digits-only, so a `DocN` entry
+ * never resolves to a source and is dropped exactly like an unmatched
+ * number. */
 const BRACKET_DOC_GROUP_RE =
-  /\[\s*doc\s*\d+(?:\s*:\s*\d+)?\s*(?:,\s*doc\s*\d+(?:\s*:\s*\d+)?\s*)*\]/gi
+  /\[\s*doc\s*(?:\d+|n)(?:\s*:\s*\d+)?\s*(?:,\s*doc\s*(?:\d+|n)(?:\s*:\s*\d+)?\s*)*\]/gi
 const DOC_ENTRY_RE = /^doc\s*(\d+)(?:\s*:\s*\d+)?$/i
 
 /**
@@ -235,4 +240,14 @@ export function splitAnswerByDocRefs(
       return { type: 'text' as const, value: part }
     })
   return spaceAdjacentRefs(segments)
+}
+
+/** True iff `content` quotes at least one of `sources` inline — i.e.
+ * `splitAnswerByDocRefs` produces at least one `ref` segment. Used to
+ * decide whether a completed answer earns a "Related documents" list: an
+ * answer that names no source inline (a refusal, or one where every marker
+ * turned out to be unresolvable, like a stray `[DocN]` placeholder)
+ * shouldn't claim to quote documents it never actually cited. */
+export function answerHasInlineCitation(content: string, sources: Source[]): boolean {
+  return splitAnswerByDocRefs(content, sources).some((segment) => segment.type === 'ref')
 }
