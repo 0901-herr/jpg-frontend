@@ -109,26 +109,6 @@ export function citationNumberKey(source: Source): string {
   return `${source.documentId ?? source.filename}:${source.page ?? ''}`
 }
 
-/** Assigns a stable, 1-based number to each distinct `(document_id, page)`
- * pair in `sources`, in order of first appearance — a citation that repeats
- * later in the same message (the same page cited more than once) reuses
- * its earlier number rather than taking a new one. Both the inline pill
- * (`CitationLink`, via `markdownRenderers.tsx`) and the "Related documents"
- * page chips (`CitationList`) call this over the same message's `sources`
- * array so a reader can map a pill's digit straight to its list entry. */
-export function numberCitations(sources: Source[]): Map<string, number> {
-  const numbers = new Map<string, number>()
-  let next = 1
-  for (const source of sources) {
-    const key = citationNumberKey(source)
-    if (!numbers.has(key)) {
-      numbers.set(key, next)
-      next += 1
-    }
-  }
-  return numbers
-}
-
 /** Friendly inline citation label, e.g. "(Report.pdf, Page 22)" — replaces
  * the raw [DocN] marker, which means nothing to a user reading the answer. */
 export function citationDisplayLabel(source: Source): string {
@@ -250,4 +230,142 @@ export function splitAnswerByDocRefs(
  * shouldn't claim to quote documents it never actually cited. */
 export function answerHasInlineCitation(content: string, sources: Source[]): boolean {
   return splitAnswerByDocRefs(content, sources).some((segment) => segment.type === 'ref')
+}
+
+/** Assigns a stable, 1-based number to each distinct `(document_id, page)`
+ * pair *as it is first cited in the answer text itself* — i.e. walking
+ * `content` left to right via `splitAnswerByDocRefs` (which already
+ * resolves bracket groups and dedupes back-to-back markers) rather than
+ * numbering by the backend's SOURCE-LIST order. A source the answer never
+ * quotes gets no entry at all — "uncited" isn't "the last number", it's
+ * absent. A repeated marker for the same `(document_id, page)` (including
+ * two occurrences inside one bracket group, e.g. `[Doc6, Doc7, Doc6]`)
+ * reuses the number from its first appearance rather than taking a new
+ * one, since a `Map.has` check guards every assignment.
+ *
+ * Both the inline pill (`CitationLink`, via `markdownRenderers.tsx`) and
+ * the "Related documents" page chips (`CitationList`) call this over the
+ * same message's `content` + `sources` so a reader can map a pill's digit
+ * straight to its list entry, and so the second question in a chat starts
+ * back at 1 instead of continuing the first question's count (each
+ * message's own `content` is scoped to that message only). */
+export function numberCitationsByAnswerOrder(content: string, sources: Source[]): Map<string, number> {
+  const numbers = new Map<string, number>()
+  let next = 1
+  for (const segment of splitAnswerByDocRefs(content, sources)) {
+    if (segment.type !== 'ref') continue
+    const key = citationNumberKey(segment.source)
+    if (!numbers.has(key)) {
+      numbers.set(key, next)
+      next += 1
+    }
+  }
+  return numbers
+}
+
+/** Splits raw answer Markdown into "clauses" — one per sentence inside a
+ * paragraph, or one per whole list-item line — the unit `citationContextByAnswerOrder`
+ * treats as "the answer sentence or list item that carries this pill".
+ * A list-item line (`- …`, `* …`, `1. …`) is kept whole rather than
+ * sentence-split, since a short bullet reads as one unit even with an
+ * internal period ("Approved by J. Tan."). */
+function splitIntoAnswerClauses(content: string): string[] {
+  return content
+    .split(/\n+/)
+    .flatMap((line) => (/^\s*(?:[-*]|\d+\.)\s+/.test(line) ? [line] : line.split(/(?<=[.!?])\s+/)))
+    .map((clause) => clause.trim())
+    .filter(Boolean)
+}
+
+/** Strips a leading list-marker (`- `, `* `, `1. `) and collapses the
+ * whitespace `splitAnswerByDocRefs` leaves behind once its `ref` segments
+ * are removed (e.g. a trailing space before a period from "point [Doc1]."
+ * becoming "point .") into normal prose spacing, then truncates to ~140
+ * chars on a word boundary with an ellipsis. */
+function cleanClauseText(text: string): string {
+  const cleaned = text
+    .replace(/^\s*(?:[-*]|\d+\.)\s+/, '')
+    .replace(/\s+([.,!?;:])/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (cleaned.length <= 140) return cleaned
+  return `${cleaned.slice(0, 139).trimEnd()}…`
+}
+
+/** Maps each cited `(document_id, page)` key to the answer sentence / list
+ * item that first cites it — the text `CitationList` shows as `Cited for:
+ * "…"` under that entry, so a reader can see *why* a document made the
+ * list instead of only that it did. Walks the same clauses
+ * `numberCitationsByAnswerOrder` would number, in order, and keeps only
+ * the first clause seen for each key (matching that function's
+ * first-appearance numbering). */
+export function citationContextByAnswerOrder(content: string, sources: Source[]): Map<string, string> {
+  const contexts = new Map<string, string>()
+  for (const clause of splitIntoAnswerClauses(content)) {
+    const segments = splitAnswerByDocRefs(clause, sources)
+    const refs = segments.filter((s): s is Extract<typeof s, { type: 'ref' }> => s.type === 'ref')
+    if (refs.length === 0) continue
+
+    const text = cleanClauseText(
+      segments
+        .filter((s) => s.type === 'text')
+        .map((s) => s.value)
+        .join(''),
+    )
+    for (const ref of refs) {
+      const key = citationNumberKey(ref.source)
+      if (!contexts.has(key)) contexts.set(key, text)
+    }
+  }
+  return contexts
+}
+
+/** Grammatical function words excluded from question-word highlighting
+ * even when they happen to be ≥ 4 letters (e.g. "with", "about") — only
+ * content words like "students" or "lecturer" should stand out in a
+ * snippet, since those are what actually distinguish one document's
+ * relevance from another's. */
+const QUESTION_STOP_WORDS = new Set([
+  'this', 'that', 'these', 'those', 'with', 'from', 'have', 'has', 'had',
+  'were', 'was', 'will', 'would', 'could', 'should', 'your', 'about',
+  'which', 'their', 'there', 'when', 'where', 'what', 'who', 'whom',
+  'whose', 'than', 'then', 'them', 'they', 'into', 'such', 'some', 'each',
+  'every', 'only', 'also', 'just', 'very', 'more', 'most', 'much', 'many',
+  'while', 'being', 'been', 'does', 'doing', 'done', 'over', 'under',
+  'again', 'further', 'once', 'here', 'both', 'other', 'same', 'because',
+  'before', 'after', 'above', 'below', 'between', 'through', 'during',
+  'like', 'want', 'need', 'please', 'tell', 'know', 'give',
+])
+
+/** The set of "significant" words in a user question — lowercased, ≥ 4
+ * letters, stop-words removed — used to highlight a citation snippet's
+ * matching words so a reader can see at a glance which part of the
+ * snippet actually answers the question, rather than skimming the whole
+ * thing (client feedback: a snippet about "the lecturer" reads as
+ * irrelevant when the question asked about "the students"). */
+export function significantQuestionWords(question: string): Set<string> {
+  const words = question.toLowerCase().match(/[a-z0-9']+/g) ?? []
+  return new Set(words.filter((word) => word.length >= 4 && !QUESTION_STOP_WORDS.has(word)))
+}
+
+export interface HighlightSegment {
+  text: string
+  highlight: boolean
+}
+
+/** Splits `text` into segments, flagging each word that matches a
+ * significant word from `question` (see `significantQuestionWords`) so
+ * the caller can render those words bolder than the rest of the snippet.
+ * Punctuation and whitespace are preserved verbatim as non-highlighted
+ * segments; matching is case-insensitive and whole-word only, so
+ * "lecture" in the question never highlights "lecturer" in a snippet. */
+export function highlightSignificantWords(text: string, question: string): HighlightSegment[] {
+  if (!text) return []
+  const words = significantQuestionWords(question)
+  if (words.size === 0) return [{ text, highlight: false }]
+
+  return text
+    .split(/(\b[a-zA-Z0-9']+\b)/g)
+    .filter((part) => part.length > 0)
+    .map((part) => ({ text: part, highlight: words.has(part.toLowerCase()) }))
 }

@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { answerHasInlineCitation, numberCitations, splitAnswerByDocRefs } from './citations'
+import {
+  answerHasInlineCitation,
+  citationContextByAnswerOrder,
+  citationNumberKey,
+  highlightSignificantWords,
+  numberCitationsByAnswerOrder,
+  significantQuestionWords,
+  splitAnswerByDocRefs,
+} from './citations'
 import type { Source } from '../types'
 
 function source(overrides: Partial<Source> & { index: number; docRef: string }): Source {
@@ -10,72 +18,159 @@ function source(overrides: Partial<Source> & { index: number; docRef: string }):
   }
 }
 
-function plainSource(overrides: Partial<Source> & { index: number; filename: string }): Source {
+function docSource(n: number, overrides: Partial<Source> = {}): Source {
   return {
-    documentId: undefined,
-    page: undefined,
-    docRef: undefined,
+    index: n,
+    filename: `Doc${n}.pdf`,
+    documentId: `doc-${n}`,
+    docRef: `[Doc${n}]`,
     ...overrides,
   }
 }
 
-describe('numberCitations', () => {
-  it('numbers distinct (document_id, page) pairs 1, 2, 3… in order of first appearance', () => {
-    const sources: Source[] = [
-      plainSource({ index: 1, filename: 'A.pdf', documentId: 'doc-a', page: 2 }),
-      plainSource({ index: 2, filename: 'B.pdf', documentId: 'doc-b', page: 1 }),
-      plainSource({ index: 3, filename: 'C.pdf', documentId: 'doc-c', page: 4 }),
-    ]
+describe('numberCitationsByAnswerOrder', () => {
+  it('numbers citations by first appearance in the answer text, not by source-list order', () => {
+    const sources = [6, 7, 8].map((n) => docSource(n))
+    const content = 'First [Doc6]. Then [Doc7]. Also [Doc6] again. And [Doc8].'
 
-    const numbers = numberCitations(sources)
+    const numbers = numberCitationsByAnswerOrder(content, sources)
 
-    expect(numbers.get('doc-a:2')).toBe(1)
-    expect(numbers.get('doc-b:1')).toBe(2)
-    expect(numbers.get('doc-c:4')).toBe(3)
+    expect(numbers.get(citationNumberKey(sources[0]))).toBe(1) // Doc6
+    expect(numbers.get(citationNumberKey(sources[1]))).toBe(2) // Doc7
+    expect(numbers.get(citationNumberKey(sources[2]))).toBe(3) // Doc8
+    expect(numbers.size).toBe(3)
   })
 
-  it('reuses the same number for a repeated (document_id, page) citation', () => {
-    const sources: Source[] = [
-      plainSource({ index: 1, filename: 'A.pdf', documentId: 'doc-a', page: 2 }),
-      plainSource({ index: 2, filename: 'B.pdf', documentId: 'doc-b', page: 1 }),
-      plainSource({ index: 3, filename: 'A.pdf', documentId: 'doc-a', page: 2 }),
-    ]
+  it('gives a bracket group ([Doc6, Doc7, Doc6, Doc8]) one number per distinct source, deduped', () => {
+    const sources = [6, 7, 8].map((n) => docSource(n))
+    const content = 'See the notes [Doc6, Doc7, Doc6, Doc8] for detail.'
 
-    const numbers = numberCitations(sources)
+    const numbers = numberCitationsByAnswerOrder(content, sources)
 
-    expect(numbers.size).toBe(2)
-    expect(numbers.get('doc-a:2')).toBe(1)
-    expect(numbers.get('doc-b:1')).toBe(2)
+    expect(numbers.get(citationNumberKey(sources[0]))).toBe(1)
+    expect(numbers.get(citationNumberKey(sources[1]))).toBe(2)
+    expect(numbers.get(citationNumberKey(sources[2]))).toBe(3)
+    expect(numbers.size).toBe(3)
   })
 
-  it('treats the same document on two different pages as two distinct citations', () => {
-    const sources: Source[] = [
-      plainSource({ index: 1, filename: 'A.pdf', documentId: 'doc-a', page: 2 }),
-      plainSource({ index: 2, filename: 'A.pdf', documentId: 'doc-a', page: 5 }),
-    ]
+  it('assigns no number to a source the answer never cites', () => {
+    const cited = docSource(1)
+    const uncited = docSource(2)
 
-    const numbers = numberCitations(sources)
+    const numbers = numberCitationsByAnswerOrder('Only cites [Doc1] here.', [cited, uncited])
 
-    expect(numbers.get('doc-a:2')).toBe(1)
-    expect(numbers.get('doc-a:5')).toBe(2)
+    expect(numbers.get(citationNumberKey(cited))).toBe(1)
+    expect(numbers.has(citationNumberKey(uncited))).toBe(false)
   })
 
-  it('falls back to filename as the identity when documentId is absent', () => {
-    const sources: Source[] = [
-      plainSource({ index: 1, filename: 'A.pdf', page: 1 }),
-      plainSource({ index: 2, filename: 'A.pdf', page: 1 }),
-      plainSource({ index: 3, filename: 'B.pdf', page: 1 }),
-    ]
+  it("starts back at 1 for a different message's content — a second question never continues the first's count", () => {
+    const sources = [6, 7].map((n) => docSource(n))
+    const secondQuestionContent = 'Now [Doc7] first, then [Doc6].'
 
-    const numbers = numberCitations(sources)
+    const numbers = numberCitationsByAnswerOrder(secondQuestionContent, sources)
 
-    expect(numbers.size).toBe(2)
-    expect(numbers.get('A.pdf:1')).toBe(1)
-    expect(numbers.get('B.pdf:1')).toBe(2)
+    expect(numbers.get(citationNumberKey(sources[1]))).toBe(1) // Doc7 cited first here
+    expect(numbers.get(citationNumberKey(sources[0]))).toBe(2) // Doc6 second
   })
 
-  it('returns an empty map for an empty source list', () => {
-    expect(numberCitations([]).size).toBe(0)
+  it('returns an empty map when nothing in the content matches a source', () => {
+    expect(numberCitationsByAnswerOrder('No markers here.', [docSource(1)]).size).toBe(0)
+  })
+})
+
+describe('citationContextByAnswerOrder', () => {
+  it('maps a cited source to the sentence that carries its pill', () => {
+    const sourceA = docSource(1)
+    const sourceB = docSource(2)
+    const content = 'First point about revenue [Doc1]. Second point about staffing [Doc2].'
+
+    const contexts = citationContextByAnswerOrder(content, [sourceA, sourceB])
+
+    expect(contexts.get(citationNumberKey(sourceA))).toBe('First point about revenue.')
+    expect(contexts.get(citationNumberKey(sourceB))).toBe('Second point about staffing.')
+  })
+
+  it('keeps the first sentence a repeated citation appears in, not a later repeat', () => {
+    const sourceA = docSource(1)
+    const content = 'First mention here [Doc1]. Repeats the same source later [Doc1] again.'
+
+    const contexts = citationContextByAnswerOrder(content, [sourceA])
+
+    expect(contexts.get(citationNumberKey(sourceA))).toBe('First mention here.')
+  })
+
+  it('uses the whole list-item line as the context for a marker inside a bullet', () => {
+    const sourceA = docSource(1)
+    const content = '- The finding is described here [Doc1]\n- An unrelated bullet with no marker'
+
+    const contexts = citationContextByAnswerOrder(content, [sourceA])
+
+    expect(contexts.get(citationNumberKey(sourceA))).toBe('The finding is described here')
+  })
+
+  it('has no entry for a source the answer never cites', () => {
+    const uncited = docSource(9)
+
+    const contexts = citationContextByAnswerOrder('Nothing cited here.', [uncited])
+
+    expect(contexts.has(citationNumberKey(uncited))).toBe(false)
+  })
+
+  it('truncates a long citing sentence to ~140 chars with an ellipsis', () => {
+    const sourceA = docSource(1)
+    const longSentence = 'a'.repeat(200)
+    const content = `${longSentence} [Doc1].`
+
+    const contexts = citationContextByAnswerOrder(content, [sourceA])
+    const text = contexts.get(citationNumberKey(sourceA))!
+
+    expect(text.length).toBeLessThanOrEqual(140)
+    expect(text.endsWith('…')).toBe(true)
+  })
+})
+
+describe('significantQuestionWords', () => {
+  it('keeps content words of 4+ letters and drops stop words and short words', () => {
+    const words = significantQuestionWords(
+      'What is the name of the students mentioned in the report?',
+    )
+
+    expect(words.has('students')).toBe(true)
+    expect(words.has('mentioned')).toBe(true)
+    expect(words.has('report')).toBe(true)
+    expect(words.has('name')).toBe(true)
+    expect(words.has('what')).toBe(false) // stop word
+    expect(words.has('the')).toBe(false) // < 4 letters
+    expect(words.has('is')).toBe(false) // < 4 letters
+  })
+})
+
+describe('highlightSignificantWords', () => {
+  it('flags words matching the question, case-insensitively, and leaves the rest unflagged', () => {
+    const segments = highlightSignificantWords(
+      'The lecturer discussed the students briefly.',
+      'Who are the students mentioned?',
+    )
+
+    expect(segments.filter((s) => s.highlight).map((s) => s.text)).toEqual(['students'])
+
+    const notHighlighted = segments
+      .filter((s) => !s.highlight)
+      .map((s) => s.text)
+      .join('')
+    expect(notHighlighted).toContain('lecturer')
+  })
+
+  it('is a whole-word match — "lecture" in the question never highlights "lecturer" in the text', () => {
+    const segments = highlightSignificantWords('The lecturer spoke.', 'What was the lecture about?')
+    expect(segments.some((s) => s.highlight)).toBe(false)
+  })
+
+  it('returns the text unflagged when the question has no significant words', () => {
+    const segments = highlightSignificantWords('Some snippet text.', 'is it ok')
+
+    expect(segments.every((s) => !s.highlight)).toBe(true)
+    expect(segments.map((s) => s.text).join('')).toBe('Some snippet text.')
   })
 })
 

@@ -10,7 +10,12 @@ import {
 import type { Components } from 'react-markdown'
 import type { Element, ElementContent, Root } from 'hast'
 import type { Plugin } from 'unified'
-import { citationDisplayLabel, citationNumberKey, numberCitations, splitAnswerByDocRefs } from './citations'
+import {
+  citationDisplayLabel,
+  citationNumberKey,
+  numberCitationsByAnswerOrder,
+  splitAnswerByDocRefs,
+} from './citations'
 import { CitationLink } from '../components/CitationList'
 import type { Source } from '../types'
 
@@ -28,8 +33,8 @@ import type { Source } from '../types'
  * hasn't run yet), so `cloneElement`-ing it with linkified children is safe
  * — the substitution is in place before React ever mounts it.
  *
- * `numbers` is this message's `numberCitations(sources)` map (computed
- * once in `createAnswerMarkdownComponents`, below) — each `CitationLink`
+ * `numbers` is this message's `numberCitationsByAnswerOrder(content, sources)`
+ * map (computed once in `createAnswerMarkdownComponents`, below) — each `CitationLink`
  * gets the stable per-message number for its own `(document_id, page)`
  * rather than renumbering locally per call site, so two pills citing the
  * same page anywhere in the answer always show the same digit. The
@@ -140,11 +145,14 @@ const INLINE_CODE_CLASS = 'rounded-lg bg-black/[0.05] px-1 py-0.5 font-mono text
 /** Builds the react-markdown `components` map for one answer render —
  * `sources` closes over the citations available for this specific message,
  * since `[DocN]` markers only resolve against that message's own sources.
- * `numbers` is computed once here (`numberCitations(sources)`) and threaded
+ * `numbers` is computed once here (`numberCitationsByAnswerOrder(content,
+ * sources)`) — by *answer order*, i.e. the order citations are first
+ * quoted in `content`, not the backend's source-list order — and threaded
  * through every citation-aware block so every inline pill in this answer,
- * however deeply nested, numbers consistently — see `linkifyNode`. */
-export function createAnswerMarkdownComponents(sources: Source[]): Components {
-  const numbers = numberCitations(sources)
+ * however deeply nested, numbers consistently and starts back at 1 for
+ * every new message — see `linkifyNode`. */
+export function createAnswerMarkdownComponents(content: string, sources: Source[]): Components {
+  const numbers = numberCitationsByAnswerOrder(content, sources)
   return {
     p: citationAwareBlock('p', PARAGRAPH_SPACING, sources, numbers, 'p'),
     // Headings demoted to bold text — an LLM answer has no document

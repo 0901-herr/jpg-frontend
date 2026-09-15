@@ -171,7 +171,10 @@ export function MarkdownAnswer({
   sources: Source[]
   liveText?: string
 }) {
-  const components = useMemo(() => createAnswerMarkdownComponents(sources), [sources])
+  const components = useMemo(
+    () => createAnswerMarkdownComponents(content, sources),
+    [content, sources],
+  )
   const rehypePlugins = useMemo(
     () => (liveText === undefined ? [] : [createStreamingTailPlugin(liveText)]),
     [liveText],
@@ -241,7 +244,7 @@ function AssistantMessage({ message }: AssistantMessageProps) {
         message.sources.length > 0 &&
         message.status !== 'streaming' &&
         answerHasInlineCitation(message.content, message.sources) && (
-          <CitationList sources={message.sources} />
+          <CitationList sources={message.sources} content={message.content} question={message.question} />
         )}
     </div>
   )

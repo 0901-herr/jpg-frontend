@@ -567,3 +567,95 @@ describe('.docu-answer table/list CSS contract', () => {
     expect(list![1]).toMatch(/margin-bottom\s*:/)
   })
 })
+
+describe('answer-order citation numbering (client feedback: a second question used to keep counting from the first)', () => {
+  it('numbers a message whose source indices start at 6 back at pill 1 — this message’s own answer text is all that counts', () => {
+    const sourceSix: Source = {
+      index: 6,
+      filename: 'F6.pdf',
+      docRef: '[Doc6]',
+      documentId: 'doc-6',
+      page: 1,
+    }
+    const sourceSeven: Source = {
+      index: 7,
+      filename: 'F7.pdf',
+      docRef: '[Doc7]',
+      documentId: 'doc-7',
+      page: 1,
+    }
+    const content = 'Cites the first one [Doc6] then the second [Doc7].'
+    render(
+      <ChatMessageItem
+        message={assistantMessage({ content, sources: [sourceSix, sourceSeven] })}
+      />,
+    )
+
+    expect(screen.getByTitle('F6.pdf · p. 1')).toHaveTextContent('1')
+    expect(screen.getByTitle('F7.pdf · p. 1')).toHaveTextContent('2')
+  })
+
+  it('numbers pills by the order sources are cited in the text, not by their order in `sources`', () => {
+    const sourceA: Source = { index: 1, filename: 'A.pdf', docRef: '[Doc1]', documentId: 'doc-a' }
+    const sourceB: Source = { index: 2, filename: 'B.pdf', docRef: '[Doc2]', documentId: 'doc-b' }
+    // `sources` lists B before A, but the answer cites A first.
+    const content = 'First cites A [Doc1], then cites B [Doc2].'
+    render(
+      <ChatMessageItem message={assistantMessage({ content, sources: [sourceB, sourceA] })} />,
+    )
+
+    expect(screen.getByRole('button', { name: /A\.pdf/ })).toHaveTextContent('1')
+    expect(screen.getByRole('button', { name: /B\.pdf/ })).toHaveTextContent('2')
+  })
+
+  it('lists an uncited source under a collapsed "Also searched" section, separate from the cited "Related documents" count', async () => {
+    const user = userEvent.setup()
+    const cited: Source = { index: 1, filename: 'Cited.pdf', docRef: '[Doc1]', documentId: 'doc-c' }
+    const uncited: Source = { index: 2, filename: 'Uncited.pdf', documentId: 'doc-u' }
+    const content = 'The answer cites [Doc1] only.'
+    render(
+      <ChatMessageItem
+        message={assistantMessage({ content, sources: [cited, uncited] })}
+      />,
+    )
+
+    expect(screen.getByText('(1)')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Related documents/ }))
+    expect(screen.getByText('Cited.pdf')).toBeInTheDocument()
+    expect(screen.queryByText('Uncited.pdf')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /Also searched \(1\)/ }))
+    expect(screen.getByText('Uncited.pdf')).toBeInTheDocument()
+  })
+
+  it('shows "Cited for" with the citing sentence, and highlights the question’s significant words in the snippet', async () => {
+    const user = userEvent.setup()
+    const cited: Source = {
+      index: 1,
+      filename: 'Notes.pdf',
+      docRef: '[Doc1]',
+      documentId: 'doc-1',
+      snippet: 'The lecturer discussed the students briefly.',
+    }
+    const content = 'The students mentioned are listed here [Doc1].'
+    render(
+      <ChatMessageItem
+        message={assistantMessage({
+          content,
+          sources: [cited],
+          question: 'Who are the students mentioned?',
+        })}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /Related documents/ }))
+
+    expect(
+      screen.getByText('Cited for: "The students mentioned are listed here."'),
+    ).toBeInTheDocument()
+
+    const highlighted = screen.getByText('students')
+    expect(highlighted.tagName).toBe('SPAN')
+    expect(highlighted.className).toContain('font-medium')
+  })
+})

@@ -51,6 +51,13 @@ export interface ChatMessage {
    * list, which would otherwise show retrieval candidates as if they had
    * backed an answer that was never written. */
   abstained?: boolean
+  /** The user question this answer responds to — set once, when the
+   * assistant placeholder is created (`AppLayout.tsx`'s `handleSend`), so
+   * `CitationList` can highlight the words in each snippet that actually
+   * matter to this specific question, without having to look back at the
+   * preceding user message in the session. Only query answers set this;
+   * summary/categorize/metadata chat messages leave it unset. */
+  question?: string
 }
 
 export interface ChatSession {

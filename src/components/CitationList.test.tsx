@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
 import { describe, expect, it, vi } from 'vitest'
@@ -20,13 +20,28 @@ function source(overrides: Partial<Source> & { index: number; filename: string }
     page: undefined,
     snippet: undefined,
     reference: undefined,
-    docRef: undefined,
+    // Every source is "citable" by default — most tests care about
+    // grouping/ordering/numbering, not about the cited/uncited split, so a
+    // default docRef plus a `content` string built with `contentCiting`
+    // keeps those tests short. Tests that specifically want an uncited
+    // ("Also searched") entry override `docRef: undefined` or simply omit
+    // that source from the `content` they build.
+    docRef: `[Doc${overrides.index}]`,
     ...overrides,
   }
 }
 
+/** Builds an answer string that cites each given source, in order, as its
+ * own short sentence — e.g. for two sources, "Cites [Doc1]. Cites [Doc2]."
+ * — so `numberCitationsByAnswerOrder`/`citationContextByAnswerOrder` have
+ * real answer text to walk, matching how `ChatMessage` actually calls
+ * `CitationList` with `message.content`. */
+function contentCiting(...sources: Source[]): string {
+  return sources.map((s) => `Cites ${s.docRef}.`).join(' ')
+}
+
 describe('CitationList grouping', () => {
-  it('shows the group count, not the raw citation count, in the header', async () => {
+  it('shows the cited-group count, not the raw citation count, in the header', async () => {
     const user = userEvent.setup()
     const sources: Source[] = [
       source({ index: 1, filename: 'A.pdf', documentId: 'doc-a', page: 2 }),
@@ -35,7 +50,7 @@ describe('CitationList grouping', () => {
       source({ index: 4, filename: 'C.pdf', documentId: 'doc-c', page: 4 }),
     ]
 
-    render(<CitationList sources={sources} />)
+    render(<CitationList sources={sources} content={contentCiting(...sources)} />)
 
     expect(screen.getByText('Related documents')).toBeInTheDocument()
     expect(screen.getByText('(3)')).toBeInTheDocument()
@@ -55,7 +70,7 @@ describe('CitationList grouping', () => {
       source({ index: 3, filename: 'A.pdf', documentId: 'doc-a', page: 7 }),
     ]
 
-    render(<CitationList sources={sources} />)
+    render(<CitationList sources={sources} content={contentCiting(...sources)} />)
     await user.click(screen.getByRole('button', { name: /Related documents/ }))
 
     expect(screen.getByText('1 · p. 2')).toBeInTheDocument()
@@ -71,11 +86,11 @@ describe('CitationList grouping', () => {
       source({ index: 3, filename: 'A.pdf', documentId: 'doc-a', page: 5 }),
     ]
 
-    render(<CitationList sources={sources} />)
+    render(<CitationList sources={sources} content={contentCiting(...sources)} />)
     await user.click(screen.getByRole('button', { name: /Related documents/ }))
 
-    // First appearance order across the whole sources array: doc-a p2 → 1,
-    // doc-b p1 → 2, doc-a p5 → 3 — independent of how they group by document.
+    // First appearance order in the answer text: doc-a p2 → 1, doc-b p1 →
+    // 2, doc-a p5 → 3 — independent of how they group by document.
     expect(screen.getByText('1 · p. 2')).toBeInTheDocument()
     expect(screen.getByText('2 · p. 1')).toBeInTheDocument()
     expect(screen.getByText('3 · p. 5')).toBeInTheDocument()
@@ -89,7 +104,7 @@ describe('CitationList grouping', () => {
       source({ index: 2, filename: 'A.pdf', documentId: 'doc-a', page: 2, url: 'https://logicaldoc.example/a' }),
     ]
 
-    render(<CitationList sources={sources} />)
+    render(<CitationList sources={sources} content={contentCiting(...sources)} />)
     await user.click(screen.getByRole('button', { name: /Related documents/ }))
     await user.click(screen.getByRole('button', { name: 'A.pdf' }))
 
@@ -103,18 +118,150 @@ describe('CitationList grouping', () => {
 
   it('keeps a document with no url/documentId non-clickable', async () => {
     const user = userEvent.setup()
+    // A source with neither `url` nor `documentId` can never resolve to an
+    // inline `ref` (see `splitAnswerByDocRefs`'s own filter), so it always
+    // lands in "Also searched" here regardless of `content` — this test is
+    // only about the filename area's clickability, not its cited status.
     const sources: Source[] = [source({ index: 1, filename: 'A.pdf', page: 2 })]
 
-    render(<CitationList sources={sources} />)
+    render(<CitationList sources={sources} content={contentCiting(...sources)} />)
     await user.click(screen.getByRole('button', { name: /Related documents/ }))
+    await user.click(screen.getByRole('button', { name: /Also searched/ }))
 
     expect(screen.queryByRole('button', { name: 'A.pdf' })).not.toBeInTheDocument()
     expect(screen.getByText('A.pdf')).toBeInTheDocument()
   })
 
   it('renders nothing when there are no sources', () => {
-    const { container } = render(<CitationList sources={[]} />)
+    const { container } = render(<CitationList sources={[]} content="" />)
     expect(container).toBeEmptyDOMElement()
+  })
+})
+
+describe('CitationList — answer-order numbering (Task 2)', () => {
+  it('numbers cited groups 1, 2, 3 in answer order (deduped within a repeated bracket group)', async () => {
+    const user = userEvent.setup()
+    const doc6 = source({ index: 6, filename: 'F6.pdf', documentId: 'doc-6', page: 1 })
+    const doc7 = source({ index: 7, filename: 'F7.pdf', documentId: 'doc-7', page: 1 })
+    const doc8 = source({ index: 8, filename: 'F8.pdf', documentId: 'doc-8', page: 1 })
+    const content = `See the notes [Doc6, Doc7, Doc6, Doc8] for detail.`
+
+    render(<CitationList sources={[doc6, doc7, doc8]} content={content} />)
+    await user.click(screen.getByRole('button', { name: /Related documents/ }))
+
+    expect(screen.getByText('1 · p. 1')).toBeInTheDocument()
+    expect(screen.getByText('2 · p. 1')).toBeInTheDocument()
+    expect(screen.getByText('3 · p. 1')).toBeInTheDocument()
+  })
+
+  it('puts a source the answer never cites under a collapsed "Also searched" section, separate from the cited count', async () => {
+    const user = userEvent.setup()
+    const cited = source({ index: 1, filename: 'Cited.pdf', documentId: 'doc-c', page: 1 })
+    const uncited = source({ index: 2, filename: 'Uncited.pdf', documentId: 'doc-u', page: 1 })
+
+    render(<CitationList sources={[cited, uncited]} content={contentCiting(cited)} />)
+
+    // Header count reflects only the cited group.
+    expect(screen.getByText('(1)')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /Related documents/ }))
+    expect(screen.getByText('Cited.pdf')).toBeInTheDocument()
+    expect(screen.queryByText('Uncited.pdf')).not.toBeInTheDocument()
+
+    const alsoSearchedToggle = screen.getByRole('button', { name: /Also searched \(1\)/ })
+    expect(alsoSearchedToggle).toBeInTheDocument()
+
+    await user.click(alsoSearchedToggle)
+    expect(screen.getByText('Uncited.pdf')).toBeInTheDocument()
+  })
+
+  it('orders cited groups ascending by first-cited number, ahead of the uncited "Also searched" ones', async () => {
+    const user = userEvent.setup()
+    const alpha = source({ index: 1, filename: 'Alpha.pdf', documentId: 'doc-alpha', page: 1 })
+    const beta = source({ index: 2, filename: 'Beta.pdf', documentId: 'doc-beta', page: 1 })
+    // Beta is cited first in the answer text, so it must get number 1 and
+    // sort ahead of Alpha even though Alpha appears first in `sources`.
+    const content = `Cites ${beta.docRef} first, then ${alpha.docRef}.`
+
+    render(<CitationList sources={[alpha, beta]} content={content} />)
+    await user.click(screen.getByRole('button', { name: /Related documents/ }))
+
+    const rowFilenames = screen.getAllByText(/\.pdf$/).map((el) => el.textContent)
+    expect(rowFilenames).toEqual(['Beta.pdf', 'Alpha.pdf'])
+  })
+
+  it('shows "Cited for" with the citing sentence under a cited entry', async () => {
+    const user = userEvent.setup()
+    const cited = source({ index: 1, filename: 'Report.pdf', documentId: 'doc-r', page: 1 })
+    const content = `The budget grew significantly ${cited.docRef}.`
+
+    render(<CitationList sources={[cited]} content={content} />)
+    await user.click(screen.getByRole('button', { name: /Related documents/ }))
+
+    expect(screen.getByText('Cited for: "The budget grew significantly."')).toBeInTheDocument()
+  })
+
+  it('shows "Searched, not cited" under an uncited entry instead of a "Cited for" line', async () => {
+    const user = userEvent.setup()
+    const cited = source({ index: 1, filename: 'Cited.pdf', documentId: 'doc-c', page: 1 })
+    const uncited = source({ index: 2, filename: 'Uncited.pdf', documentId: 'doc-u', page: 1 })
+
+    render(<CitationList sources={[cited, uncited]} content={contentCiting(cited)} />)
+    await user.click(screen.getByRole('button', { name: /Related documents/ }))
+    // The cited entry (Cited.pdf) legitimately keeps its own "Cited for"
+    // line — this test only checks the uncited row's own subtitle, scoped
+    // to that row so it isn't confused by the cited row's.
+    await user.click(screen.getByRole('button', { name: /Also searched/ }))
+
+    const uncitedRow = screen.getByText('Uncited.pdf').closest('li')!
+    expect(within(uncitedRow).getByText('Searched, not cited')).toBeInTheDocument()
+    expect(within(uncitedRow).queryByText(/^Cited for:/)).not.toBeInTheDocument()
+  })
+
+  it("highlights the question's significant words (≥ 4 letters, stop-words excluded) inside the snippet", async () => {
+    const user = userEvent.setup()
+    const withSnippet = source({
+      index: 1,
+      filename: 'Notes.pdf',
+      documentId: 'doc-1',
+      page: 1,
+      snippet: 'The lecturer discussed the students briefly.',
+    })
+
+    render(
+      <CitationList
+        sources={[withSnippet]}
+        content={contentCiting(withSnippet)}
+        question="Who are the students mentioned?"
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: /Related documents/ }))
+
+    const highlighted = screen.getByText('students')
+    expect(highlighted.tagName).toBe('SPAN')
+    expect(highlighted.className).toContain('font-medium')
+    expect(highlighted.className).toContain('text-[#0d0d0d]')
+
+    // "lecturer" isn't a significant word in this question, so it stays
+    // part of the plain (non-highlighted) snippet text.
+    expect(screen.queryByText('lecturer')).not.toBeInTheDocument()
+    expect(screen.getByText(/lecturer/)).toBeInTheDocument()
+  })
+
+  it('renders the snippet with no highlighting when no question is passed', async () => {
+    const user = userEvent.setup()
+    const withSnippet = source({
+      index: 1,
+      filename: 'Notes.pdf',
+      documentId: 'doc-1',
+      page: 1,
+      snippet: 'The lecturer discussed the students briefly.',
+    })
+
+    render(<CitationList sources={[withSnippet]} content={contentCiting(withSnippet)} />)
+    await user.click(screen.getByRole('button', { name: /Related documents/ }))
+
+    expect(screen.getByText('The lecturer discussed the students briefly.')).toBeInTheDocument()
   })
 })
 

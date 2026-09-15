@@ -531,12 +531,14 @@ export default function AppLayout() {
       }
 
       const assistantId = crypto.randomUUID()
+      const question = options?.displayText ?? text
       const thinkingMsg: ChatMessage = {
         id: assistantId,
         role: 'assistant',
         content: '',
         status: 'thinking',
         startedAt,
+        question,
       }
 
       shouldStickToBottomRef.current = true
@@ -675,6 +677,7 @@ export default function AppLayout() {
           thinkingSeconds: response.thinkingSeconds,
           coverage: response.coverage ?? coverage,
           abstained: abstainedRef.current,
+          question,
         }
 
         setSessions((prev) =>
