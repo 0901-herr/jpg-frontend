@@ -836,6 +836,24 @@ describe('answer-order citation numbering (client feedback: a second question us
     expect(pills.map((pill) => pill.textContent)).toEqual(['1', '2', '3'])
   })
 
+  it('collapses an adjacent citation run to one pill each with no separator text, and moves the sentence period before the run (Item B, round 3: was rendering "1 , 2 , 3 . 4")', () => {
+    const sourceFive: Source = { index: 5, filename: 'F5.pdf', docRef: '[Doc5]', documentId: 'doc-5', page: 1 }
+    const sourceSix: Source = { index: 6, filename: 'F6.pdf', docRef: '[Doc6]', documentId: 'doc-6', page: 1 }
+    const sourceSeven: Source = { index: 7, filename: 'F7.pdf', docRef: '[Doc7]', documentId: 'doc-7', page: 1 }
+    const content = 'Follow-up actions, [Doc5], [Doc6], [Doc7].'
+    const { container } = render(
+      <ChatMessageItem
+        message={assistantMessage({ content, sources: [sourceFive, sourceSix, sourceSeven] })}
+      />,
+    )
+
+    const pills = Array.from(container.querySelectorAll('.docu-citation-pill'))
+    expect(pills.map((pill) => pill.textContent)).toEqual(['1', '2', '3'])
+    // No stray ", " between pills and no period stranded after the last
+    // one — the whole paragraph reads as one clean sentence.
+    expect(container.querySelector('p')?.textContent).toBe('Follow-up actions. 1 2 3')
+  })
+
   it('numbers pills by the order sources are cited in the text, not by their order in `sources`', () => {
     const sourceA: Source = { index: 1, filename: 'A.pdf', docRef: '[Doc1]', documentId: 'doc-a' }
     const sourceB: Source = { index: 2, filename: 'B.pdf', docRef: '[Doc2]', documentId: 'doc-b' }

@@ -332,6 +332,101 @@ describe('literal "[DocN]" placeholder (the model copied the prompt template ver
   })
 })
 
+// Item B (round 3): "adjacent citation runs render as '1 , 2 , 3 . 4'" —
+// a citation run (one or more resolved markers separated only by
+// whitespace and/or `,` `;` `and` `&` `/`) collapses to a single
+// space-separated sequence of pills with no separator text, deduplicated
+// by identity across the whole run (not just within one bracket group);
+// sentence punctuation (`.` `!` `?`, optionally after whitespace)
+// immediately after the run moves to immediately before it, dropping any
+// `,`/`;` immediately before the run at the same time. Asserted via the
+// reconstructed `[DocN]` text (`segments.map(s => s.value).join('')`,
+// same convention the bracket-list tests above use) so these stay
+// decoupled from pill *numbering*, which `numberCitationsByAnswerOrder`
+// covers separately and this rule must never change.
+describe('splitAnswerByDocRefs — citation runs (Item B)', () => {
+  const renderedText = (content: string, sources: Source[]) =>
+    splitAnswerByDocRefs(content, sources)
+      .map((s) => s.value)
+      .join('')
+
+  it.each([
+    [
+      'trailing comma run + period: drops the leading comma, moves the period before the run',
+      'actions, [Doc5], [Doc6], [Doc7].',
+      [docSource(5), docSource(6), docSource(7)],
+      'actions. [Doc5] [Doc6] [Doc7]',
+    ],
+    [
+      'a bracket group + a lone marker + "and" + a repeat: dedupes across all of it, one number each',
+      'listed, [Doc1, Doc2], [Doc3] and [Doc1].',
+      [docSource(1), docSource(2), docSource(3)],
+      'listed. [Doc1] [Doc2] [Doc3]',
+    ],
+    [
+      'what follows the run (a new sentence) is untouched',
+      'Monitoring, [Doc1], [Doc2]. Next',
+      [docSource(1), docSource(2)],
+      'Monitoring. [Doc1] [Doc2] Next',
+    ],
+    [
+      '"and" with no trailing sentence punctuation: run still collapses, nothing about punctuation moves',
+      'see [Doc1] and [Doc2] for details',
+      [docSource(1), docSource(2)],
+      'see [Doc1] [Doc2] for details',
+    ],
+    [
+      'a single marker is unaffected apart from existing single-marker handling — text intervenes before the period',
+      '[Doc1] alone.',
+      [docSource(1)],
+      '[Doc1] alone.',
+    ],
+    [
+      'a single marker directly before a period is also unaffected — the punctuation move is scoped to runs of 2+',
+      'as stated [Doc1].',
+      [docSource(1)],
+      'as stated [Doc1].',
+    ],
+    [
+      'semicolon separator, and a period-then-marker boundary ending the run one marker later',
+      'follow-up actions, [Doc5], [Doc6]. [Doc7]',
+      [docSource(5), docSource(6), docSource(7)],
+      'follow-up actions. [Doc5] [Doc6] [Doc7]',
+    ],
+    [
+      'ampersand and slash separators both count as connectors',
+      'per [Doc1] & [Doc2] / [Doc3].',
+      [docSource(1), docSource(2), docSource(3)],
+      'per. [Doc1] [Doc2] [Doc3]',
+    ],
+    [
+      'a long run mixing commas and "and", with several repeats scattered through it, still dedupes to first-appearance order',
+      'Dr. Aisha Rahman chaired each meeting listed, [Doc1], [Doc2], [Doc3], [Doc4], [Doc5], [Doc3], [Doc4], [Doc5], [Doc1] and [Doc2].',
+      [1, 2, 3, 4, 5].map((n) => docSource(n)),
+      'Dr. Aisha Rahman chaired each meeting listed. [Doc1] [Doc2] [Doc3] [Doc4] [Doc5]',
+    ],
+    [
+      'plain prose "and" between two non-marker tokens is never touched',
+      'The report covers cats and dogs, not [Doc1] or [Doc2].',
+      [docSource(1), docSource(2)],
+      'The report covers cats and dogs, not [Doc1] or [Doc2].',
+    ],
+  ])('%s', (_label, content, sources, expected) => {
+    expect(renderedText(content, sources)).toBe(expected)
+  })
+
+  it('still numbers citations by first appearance in the answer, unaffected by run-collapsing or the within-run dedupe', () => {
+    const sources = [docSource(1), docSource(2), docSource(3)]
+    const content = 'listed, [Doc1, Doc2], [Doc3] and [Doc1].'
+
+    const numbers = numberCitationsByAnswerOrder(content, sources)
+
+    expect(numbers.get(citationNumberKey(sources[0]))).toBe(1)
+    expect(numbers.get(citationNumberKey(sources[1]))).toBe(2)
+    expect(numbers.get(citationNumberKey(sources[2]))).toBe(3)
+  })
+})
+
 describe('answerHasInlineCitation', () => {
   it('is true when the content has a marker matching a source', () => {
     const sources = [source({ index: 1, docRef: '[Doc1]' })]

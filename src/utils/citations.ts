@@ -212,6 +212,129 @@ function spaceAdjacentRefs(parts: AnswerSegment[]): AnswerSegment[] {
   return result
 }
 
+/** Text that can appear only as a *connector* between two markers inside one
+ * citation run: any combination of whitespace and the separators `,` `;`
+ * `&` `/` and the word "and" (case-insensitive — the model doesn't always
+ * capitalize it, though it never needs to mid-sentence). Anything else in
+ * the text between two refs — including a comma followed by real prose,
+ * not just another marker — means the run has ended; a run is never
+ * inferred from two markers that just happen to be nearby, only from
+ * markers the model wrote back-to-back with nothing but these connectors
+ * between them. This is also what keeps plain prose safe: "cats and dogs"
+ * has no `ref` segments on either side of "and" at all, so it's never
+ * examined as a possible run boundary in the first place. */
+const RUN_CONNECTOR_RE = /^(?:\s+|[,;&/]|and)*$/i
+
+/** Optional whitespace then one sentence-ending mark, anchored to the start
+ * of the text right after a citation run. */
+const RUN_TRAILING_PUNCTUATION_RE = /^(\s*)([.!?])/
+
+/** An optional trailing `,`/`;` plus any whitespace up to the very end of
+ * the text right before a citation run — stripped only together with a
+ * detected trailing sentence mark (see `collapseCitationRuns`), never on
+ * its own. The comma/semicolon itself is optional so plain trailing
+ * whitespace with no comma ("per " before "[Doc1] & [Doc2].") still gets
+ * trimmed — otherwise the moved-in period would land one space after the
+ * preceding word ("per .") instead of directly against it ("per."). */
+const RUN_LEADING_COMMA_RE = /[,;]?\s*$/
+
+type RefSegment = Extract<AnswerSegment, { type: 'ref' }>
+
+/**
+ * Collapses a "citation run" — one or more `ref` segments separated only by
+ * whitespace and/or `,` `;` `and` `&` `/` (`RUN_CONNECTOR_RE`) — into a
+ * single space-separated sequence of pills with no separator text between
+ * them, deduplicated by `citationNumberKey` (the same document+page
+ * identity `expandBracketDocGroups` already dedupes *within* one bracket
+ * group by — this extends that across an *, and* / comma-joined chain of
+ * separate groups and lone markers too, e.g. "[Doc1, Doc2], [Doc3] and
+ * [Doc1]" → pills 1, 2, 3, the trailing repeat of Doc1 dropped).
+ *
+ * A run of 2+ markers that's immediately followed by sentence-ending
+ * punctuation (optionally after whitespace) also has that punctuation
+ * moved to immediately before the run, with a `,`/`;` immediately before
+ * the run dropped at the same time — "actions, [Doc5], [Doc6]." would
+ * otherwise read as "actions, 5, 6." with the period stranded after the
+ * last pill instead of ending the sentence. Gated to *runs of 2+* rather
+ * than every single citation: a lone "[Doc1]." at the end of an ordinary
+ * sentence is the overwhelmingly common case across every answer and has
+ * its own existing, unremarkable rendering ("text 1." reads fine) that the
+ * client never flagged — only adjacent multi-marker runs ("1 , 2 , 3 . 4")
+ * were reported as broken, and this keeps the fix scoped to that. A run
+ * with nothing (or non-punctuation text) after it is left exactly where it
+ * was, comma included.
+ *
+ * Never changes `numberCitationsByAnswerOrder`: dropping a duplicate ref
+ * here never changes which key is numbered first, since a duplicate never
+ * earned its own number to begin with (that function's own `Map.has`
+ * guard) — only which/how many segments render, not the numbering.
+ */
+function collapseCitationRuns(segments: AnswerSegment[]): AnswerSegment[] {
+  const result: AnswerSegment[] = []
+  let i = 0
+
+  while (i < segments.length) {
+    const segment = segments[i]
+    if (segment.type !== 'ref') {
+      result.push(segment)
+      i += 1
+      continue
+    }
+
+    // Extend the run through every following (connector-text, ref) pair.
+    let end = i
+    while (end + 2 < segments.length) {
+      const connector = segments[end + 1]
+      const nextRef = segments[end + 2]
+      if (connector.type !== 'text' || nextRef.type !== 'ref') break
+      if (!RUN_CONNECTOR_RE.test(connector.value)) break
+      end += 2
+    }
+
+    const runRefs = segments
+      .slice(i, end + 1)
+      .filter((s): s is RefSegment => s.type === 'ref')
+    const seen = new Set<string>()
+    const dedupedRefs = runRefs.filter((ref) => {
+      const key = citationNumberKey(ref.source)
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+
+    const after = segments[end + 1]
+    const punctuationMatch =
+      runRefs.length >= 2 && after?.type === 'text' ? RUN_TRAILING_PUNCTUATION_RE.exec(after.value) : null
+
+    if (punctuationMatch) {
+      const [full, , mark] = punctuationMatch
+      const before = result[result.length - 1]
+      if (before?.type === 'text') {
+        result[result.length - 1] = { type: 'text', value: before.value.replace(RUN_LEADING_COMMA_RE, '') + mark }
+      } else {
+        result.push({ type: 'text', value: mark })
+      }
+      result.push({ type: 'text', value: ' ' })
+      dedupedRefs.forEach((ref, idx) => {
+        if (idx > 0) result.push({ type: 'text', value: ' ' })
+        result.push(ref)
+      })
+      const remainder = after.value.slice(full.length)
+      if (remainder) result.push({ type: 'text', value: remainder })
+      i = end + 2
+      continue
+    }
+
+    dedupedRefs.forEach((ref, idx) => {
+      if (idx > 0) result.push({ type: 'text', value: ' ' })
+      result.push(ref)
+    })
+    i = end + 1
+  }
+
+  return result
+}
+
 /** Split answer text into segments, marking doc_ref tokens for linking. */
 export function splitAnswerByDocRefs(
   content: string,
@@ -239,7 +362,7 @@ export function splitAnswerByDocRefs(
       if (source) return { type: 'ref' as const, value: part, source }
       return { type: 'text' as const, value: part }
     })
-  return spaceAdjacentRefs(segments)
+  return collapseCitationRuns(spaceAdjacentRefs(segments))
 }
 
 /** True iff `content` quotes at least one of `sources` inline — i.e.
