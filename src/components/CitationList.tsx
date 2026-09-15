@@ -38,7 +38,7 @@ interface CitationLinkProps {
 
 /** Base pill styling shared by the openable (`<button>`) and non-openable
  * (`<span>`) shapes — a small round numbered chip inline with the answer
- * text ("1", "2", …, ChatGPT/Glean-style), replacing the earlier filename
+ * text ("1", "2", …, numbered-pill style), replacing the earlier filename
  * chip: the client asked for something that reads as a citation marker,
  * not a second copy of the filename crowding the answer text; the full
  * "<filename> · p. <page>" reference is still one hover away, in `title`
