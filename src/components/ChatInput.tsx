@@ -3,6 +3,7 @@ import { useState } from 'react'
 import {
   ChatCategorizeIcon,
   ChatCloseIcon,
+  ChatInfoIcon,
   ChatMetadataIcon,
   ChatSendIcon,
   ChatSummarizeIcon,
@@ -114,9 +115,16 @@ export default function ChatInput({
 
   return (
     <div className="docu-chat-input-footer bg-[var(--docu-bg-app)]">
-      <div className="max-w-4xl mx-auto docu-chat-input">
+      {/* max-w-3xl matches the conversation column above (AppLayout.tsx) —
+          one consistent column width for the whole page. */}
+      <div className="max-w-3xl mx-auto docu-chat-input">
         {disabledReason && (
-          <p className={`${type.caption} text-amber-700 px-1 mb-2`}>{disabledReason}</p>
+          <p
+            className={`flex items-center gap-1.5 ${type.caption} ${typeColor.secondary} px-1 mb-2`}
+          >
+            <ChatInfoIcon className="shrink-0 text-[var(--docu-text-muted)]" aria-hidden />
+            {disabledReason}
+          </p>
         )}
 
         <div className="docu-chat-input-stack">
@@ -185,14 +193,8 @@ export default function ChatInput({
                   className="docu-chat-composer-summarize"
                   aria-label="Summarize selected document"
                 >
-                  {isPhone ? (
-                    <>
-                      <ChatSummarizeIcon aria-hidden />
-                      <span>Sum.</span>
-                    </>
-                  ) : (
-                    'Summarize'
-                  )}
+                  <ChatSummarizeIcon aria-hidden />
+                  <span>{isPhone ? 'Sum.' : 'Summarize'}</span>
                 </button>
               </span>
             </Tooltip>
@@ -209,14 +211,8 @@ export default function ChatInput({
                   className="docu-chat-composer-categorize"
                   aria-label="Categorize selected document"
                 >
-                  {isPhone ? (
-                    <>
-                      <ChatCategorizeIcon aria-hidden />
-                      <span>Cat.</span>
-                    </>
-                  ) : (
-                    'Categorize'
-                  )}
+                  <ChatCategorizeIcon aria-hidden />
+                  <span>{isPhone ? 'Cat.' : 'Categorize'}</span>
                 </button>
               </span>
             </Tooltip>
@@ -237,14 +233,8 @@ export default function ChatInput({
                   className="docu-chat-composer-extract"
                   aria-label="Extract MQA metadata"
                 >
-                  {isPhone ? (
-                    <>
-                      <ChatMetadataIcon aria-hidden />
-                      <span>Meta</span>
-                    </>
-                  ) : (
-                    'Extract metadata'
-                  )}
+                  <ChatMetadataIcon aria-hidden />
+                  <span>{isPhone ? 'Meta' : 'Extract metadata'}</span>
                 </button>
               </span>
             </Tooltip>
@@ -276,7 +266,11 @@ export default function ChatInput({
           </div>
         </div>
 
-        <p className={`docu-chat-input-disclaimer ${type.caption} ${typeColor.muted}`}>
+        {/* Centred, single line at desktop/tablet widths where the 48rem
+            column comfortably fits it; left free to wrap on its own below
+            that (no forced truncation — this line carries real
+            information about single-question mode, not just decoration). */}
+        <p className={`docu-chat-input-disclaimer ${type.caption} ${typeColor.muted} text-center`}>
           Single question mode: this chat is{' '}
           <span className={typeColor.primary}>not context-aware</span>. Each question is a{' '}
           <span className={typeColor.primary}>separate question</span>, not a follow-up.
