@@ -51,4 +51,10 @@ describe('IngestionControls', () => {
     await waitFor(() => expect(adminApi.resumeIngestion).toHaveBeenCalled())
   })
 
+  it('names the operator link "ARCHE AI session", not the old "AI chat session" copy', () => {
+    renderControls()
+    expect(screen.getByText('ARCHE AI session')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open ARCHE AI session' })).toBeInTheDocument()
+    expect(screen.queryByText(/AI chat session/i)).not.toBeInTheDocument()
+  })
 })

@@ -1,10 +1,11 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
-import { beforeEach, vi } from 'vitest'
+import { afterEach, beforeEach, vi } from 'vitest'
 import FolderSidebar from './FolderSidebar'
 import * as useBrowseCategoriesModule from '../hooks/useBrowseCategories'
 import * as browseApi from '../api/browse'
+import { FEATURES } from '../config/features'
 import type { BrowseTreeState } from '../hooks/useBrowseTree'
 import type { DocumentSelection } from '../hooks/useDocumentSelection'
 import type { BrowseDocumentItem } from '../api/types/browse'
@@ -12,6 +13,10 @@ import { useDocumentSelection } from '../hooks/useDocumentSelection'
 
 vi.mock('../hooks/useBrowseCategories')
 vi.mock('../api/browse')
+// Mutable mock object: individual tests flip `.categoryView` rather than
+// re-mocking the module, since every describe block below needs a
+// different value and vi.mock's factory only runs once per file.
+vi.mock('../config/features', () => ({ FEATURES: { categoryView: true } }))
 
 beforeEach(() => {
   vi.mocked(browseApi.fetchSubtreeDocuments).mockResolvedValue({
@@ -20,6 +25,11 @@ beforeEach(() => {
     folder_count: 1,
     truncated: false,
   })
+  FEATURES.categoryView = true
+})
+
+afterEach(() => {
+  FEATURES.categoryView = true
 })
 
 const folderDocuments: BrowseDocumentItem[] = [
@@ -389,5 +399,48 @@ describe('FolderSidebar file tree checkbox', () => {
       expect(checkboxOf('Sub')).toHaveClass('ant-tree-checkbox-checked')
     })
     expect(subCalls).toBe(2)
+  })
+})
+
+describe('FolderSidebar with the category-view flag off', () => {
+  beforeEach(() => {
+    FEATURES.categoryView = false
+    vi.mocked(useBrowseCategoriesModule.useBrowseCategories).mockClear()
+  })
+
+  it('renders no Folder/Category toggle', async () => {
+    render(<FolderSidebar browse={createBrowseFixture()} selection={createSelectionFixture()} />)
+    await screen.findByText('contract.pdf')
+
+    expect(screen.queryByRole('tablist', { name: 'Browse view' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: 'Category' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: 'Folder' })).not.toBeInTheDocument()
+  })
+
+  it('never calls useBrowseCategories — no network traffic to /browse/categories', async () => {
+    render(<FolderSidebar browse={createBrowseFixture()} selection={createSelectionFixture()} />)
+
+    await waitFor(() => {
+      expect(browseApi.fetchSubtreeDocuments).toHaveBeenCalled()
+    })
+
+    expect(useBrowseCategoriesModule.useBrowseCategories).not.toHaveBeenCalled()
+    expect(browseApi.fetchBrowseCategories).not.toHaveBeenCalled()
+  })
+
+  it('renders no CategoryTag chip on a file row', async () => {
+    render(<FolderSidebar browse={createBrowseFixture()} selection={createSelectionFixture()} />)
+
+    await waitFor(() => {
+      expect(screen.getByText('contract.pdf')).toBeInTheDocument()
+    })
+
+    expect(screen.queryByText('Contracts')).not.toBeInTheDocument()
+  })
+
+  it('still renders the folder file tree', async () => {
+    render(<FolderSidebar browse={createBrowseFixture()} selection={createSelectionFixture()} />)
+
+    expect(await screen.findByText('contract.pdf')).toBeInTheDocument()
   })
 })

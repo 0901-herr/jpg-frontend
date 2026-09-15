@@ -14,6 +14,7 @@ import { sidebar, typeColor } from '../styles/typography'
 import type { BrowseTreeState } from '../hooks/useBrowseTree'
 import type { DocumentSelection } from '../hooks/useDocumentSelection'
 import { useBrowseCategories } from '../hooks/useBrowseCategories'
+import { FEATURES } from '../config/features'
 import { fetchSubtreeDocuments } from '../api/browse'
 import type { BrowseDocumentItem } from '../api/types/browse'
 import {
@@ -171,14 +172,24 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
     }
   }, [viewMode, rootFolderId, loadSubtree])
 
-  const { serverCategories, categoriesLoading: serverCategoriesLoading } = useBrowseCategories(
-    allDocuments,
-    {
-      enabled: viewMode === 'category',
-      activeFolderId: rootFolderId,
-      refreshActiveFolder: browse.refreshActiveFolder,
-    },
-  )
+  // FEATURES.categoryView is a build-time constant (baked in from
+  // VITE_FEATURE_CATEGORY_VIEW at build time, see src/config/features.ts)
+  // — it can never change between renders of a running app, so gating the
+  // hook call itself on it does not violate the rules of hooks in
+  // practice. Doing it this way (rather than always calling the hook with
+  // `enabled: false`) is deliberate: the client asked for the whole
+  // category feature — including its polling of /browse/categories — to
+  // be inert with the flag off, and this is what lets a test assert the
+  // hook itself was never invoked.
+  const { serverCategories, categoriesLoading: serverCategoriesLoading } =
+    FEATURES.categoryView
+      ? // eslint-disable-next-line react-hooks/rules-of-hooks -- see comment above
+        useBrowseCategories(allDocuments, {
+          enabled: viewMode === 'category',
+          activeFolderId: rootFolderId,
+          refreshActiveFolder: browse.refreshActiveFolder,
+        })
+      : { serverCategories: null, categoriesLoading: false }
   const categoriesLoading = allDocumentsLoading || serverCategoriesLoading
 
   const categorySourceDocuments = useMemo(
@@ -267,7 +278,7 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
         >
           {doc.filename}
         </span>
-        <CategoryTag category={doc.classification_category} />
+        {FEATURES.categoryView && <CategoryTag category={doc.classification_category} />}
         <IndexingStatusBadge status={doc.indexing_status} statusReason={doc.status_reason} compact />
       </span>
     )
@@ -468,7 +479,7 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
         type="error"
         showIcon
         message="Session expired"
-        description="Reopen AI Chat from LogicalDOC to continue."
+        description="Reopen ARCHE AI from LogicalDOC to continue."
         className="!text-xs !m-0"
       />
     )
@@ -496,9 +507,9 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
 
   return (
     <div className="flex flex-col min-h-0 flex-1 gap-3">
-      <BrowseViewToggle mode={viewMode} onChange={setViewMode} />
+      {FEATURES.categoryView && <BrowseViewToggle mode={viewMode} onChange={setViewMode} />}
 
-      {viewMode === 'category' && (
+      {FEATURES.categoryView && viewMode === 'category' && (
         <div className="shrink-0">
           <span className={sectionLabel}>
             <ChatAppsIcon />

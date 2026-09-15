@@ -1,9 +1,18 @@
 import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import DocumentChecklist from './DocumentChecklist'
+import { FEATURES } from '../config/features'
 import type { BrowseDocumentItem } from '../api/types/browse'
+
+// The category tag is gated by FEATURES.categoryView (OFF by default) —
+// the rows below test its rendering, so they need it on.
+vi.mock('../config/features', () => ({ FEATURES: { categoryView: true } }))
+
+afterEach(() => {
+  FEATURES.categoryView = true
+})
 
 function doc(overrides: Partial<BrowseDocumentItem> = {}): BrowseDocumentItem {
   return {
@@ -358,5 +367,23 @@ describe('DocumentChecklist "Select all" toggle', () => {
     )
 
     expect(screen.getByText('1/2')).toBeInTheDocument()
+  })
+})
+
+describe('DocumentChecklist with the category-view flag off', () => {
+  it('renders no CategoryTag chip on a row', () => {
+    FEATURES.categoryView = false
+    render(
+      <DocumentChecklist
+        documents={[doc({ indexing_status: 'READY', queryable: true, classification_category: 'Contracts' })]}
+        selectedIds={new Set()}
+        onToggle={vi.fn()}
+        onSelectAll={vi.fn()}
+        onDeselectAll={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('contract.pdf')).toBeInTheDocument()
+    expect(screen.queryByText('Contracts')).not.toBeInTheDocument()
   })
 })

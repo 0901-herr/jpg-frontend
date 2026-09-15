@@ -2,6 +2,7 @@ import { Checkbox, Spin, Tooltip } from 'antd'
 import { useMemo } from 'react'
 import type { BrowseDocumentItem } from '../api/types/browse'
 import { sidebar, typeColor } from '../styles/typography'
+import { FEATURES } from '../config/features'
 import CategoryTag from './CategoryTag'
 import IndexingStatusBadge, {
   getDocumentSelectionHint,
@@ -124,7 +125,7 @@ export default function DocumentChecklist({
                 keeps its own tooltip too (status_reason, else the long label)
                 for anyone hovering the badge directly. */}
             <div className="docu-document-row-meta flex flex-wrap items-center gap-1.5 pl-[1.625rem]">
-              <CategoryTag category={doc.classification_category} />
+              {FEATURES.categoryView && <CategoryTag category={doc.classification_category} />}
               <IndexingStatusBadge
                 status={doc.indexing_status}
                 statusReason={doc.status_reason}

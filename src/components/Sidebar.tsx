@@ -67,7 +67,7 @@ export default function Sidebar({
     >
       <div className={`flex flex-col h-full min-h-0 ${spacing.panelLg}`}>
         <div className="shrink-0 mb-3 text-left">
-          <span className={`text-lg font-semibold ${typeColor.primary}`}>Docu Arch AI</span>
+          <span className={`text-lg font-semibold ${typeColor.primary}`}>ARCHE AI</span>
         </div>
 
         <div className={`flex flex-col flex-1 min-h-0 ${spacing.section} overflow-hidden`}>

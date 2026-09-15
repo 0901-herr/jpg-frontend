@@ -1,4 +1,4 @@
-# jpg-frontend — Docu Arch AI
+# jpg-frontend — ARCHE AI
 
 React chat UI and admin ingestion dashboard for **jpg-adapter**.
 
@@ -20,7 +20,7 @@ npm run dev
 
 | Page | URL |
 |------|-----|
-| **AI Chat** | http://localhost:3000/chat |
+| **ARCHE AI** | http://localhost:3000/chat |
 | **Admin — ingestion** | http://localhost:3000/admin/ingestion |
 | **Admin — activity log** | http://localhost:3000/admin/ingestion?tab=activity |
 
@@ -43,12 +43,13 @@ VITE_AUTH_BYPASS=true
 | `VITE_API_BASE_URL` | API prefix (default `/api` — use proxy in dev) |
 | `VITE_AUTH_BYPASS=true` | Show chat UI without cookie login check (dev only) |
 | `VITE_ADMIN_API_KEY` | Optional — must match adapter `ADAPTER_QUERY_API_KEY` if set |
+| `VITE_FEATURE_CATEGORY_VIEW=true` | Build-time flag — turns the Folder/Category browse toggle back on (OFF by default; code stays in place, see `src/config/features.ts`) |
 
 **Chat session:** `VITE_AUTH_BYPASS` only bypasses the frontend login screen. Folder browse and queries still need an adapter `ai_session` cookie unless adapter has `AI_SESSION_DEV_BYPASS=true`.
 
 Get a session:
 
-- Open AI Chat from LogicalDOC (recommended), or
+- Open ARCHE AI from LogicalDOC (recommended), or
 - Visit a one-time exchange URL from adapter handoff — see [LD_CHAT_SETUP.md](../jpg-adapter/docs/ai-chat/LD_CHAT_SETUP.md)
 
 Use **`localhost`** everywhere (not `127.0.0.1`) for cookies.
@@ -84,7 +85,7 @@ src/
 
 ### Chat history
 
-When a user opens AI Chat from LogicalDOC, the adapter creates an `ai_session` cookie and exposes the LogicalDOC **`userId`** via `GET /api/auth/me`. The frontend uses that id as the persistence key.
+When a user opens ARCHE AI from LogicalDOC, the adapter creates an `ai_session` cookie and exposes the LogicalDOC **`userId`** via `GET /api/auth/me`. The frontend uses that id as the persistence key.
 
 | What | Where |
 |------|--------|

@@ -354,7 +354,7 @@ describe('useBrowseTree init error copy', () => {
     expect(result.current.sessionExpired).toBe(false)
     expect(result.current.initError).toEqual({
       title: 'You do not have access',
-      body: 'Your LogicalDOC session does not allow browsing these folders. Reopen AI Chat from LogicalDOC.',
+      body: 'Your LogicalDOC session does not allow browsing these folders. Reopen ARCHE AI from LogicalDOC.',
     })
   })
 
