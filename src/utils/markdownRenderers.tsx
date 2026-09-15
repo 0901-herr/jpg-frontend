@@ -46,7 +46,16 @@ function linkifyNode(
   if (typeof node === 'string') {
     if (!node) return node
     const segments = splitAnswerByDocRefs(node, sources)
-    if (segments.length === 1 && segments[0].type === 'text') return node
+    // A single text-only segment usually means nothing changed, so the
+    // original node can be returned as-is (fast path, no extra Fragment
+    // wrapping). But `splitAnswerByDocRefs` can also strip a bracket group
+    // down to nothing without producing any `ref` segment — an
+    // unresolvable placeholder like a raw "[DocN]" — in which case the one
+    // remaining text segment's value differs from `node` and that
+    // stripped value must be what actually renders.
+    if (segments.length === 1 && segments[0].type === 'text') {
+      return segments[0].value === node ? node : segments[0].value
+    }
     return segments.map((segment, i) =>
       segment.type === 'ref' ? (
         <CitationLink

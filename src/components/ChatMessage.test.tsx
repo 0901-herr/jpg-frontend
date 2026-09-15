@@ -307,6 +307,22 @@ describe('marker-less refusal', () => {
     expect(screen.queryByText(/DocN/)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Report\.pdf/ })).toBeInTheDocument()
   })
+
+  it('strips a bare "[DocN]" placeholder with no other marker in the paragraph, and shows no Related documents', () => {
+    render(
+      <ChatMessageItem
+        message={assistantMessage({
+          content:
+            'There is no explicit information about action items in the provided context. [DocN]',
+          status: 'complete',
+          sources: [source],
+        })}
+      />,
+    )
+
+    expect(document.body.textContent).not.toMatch(/\[DocN\]/)
+    expect(screen.queryByRole('button', { name: /Related documents/ })).not.toBeInTheDocument()
+  })
 })
 
 describe('progress label elapsed-time ticker', () => {
