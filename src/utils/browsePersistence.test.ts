@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
+  loadPersistedExpandedFolders,
   loadPersistedSelection,
+  persistExpandedFolders,
   persistSelection,
 } from './browsePersistence'
 
@@ -27,5 +29,22 @@ describe('browsePersistence', () => {
   it('returns a Set of the persisted ids', () => {
     persistSelection(new Set(['5012', '5026']))
     expect(loadPersistedSelection()).toEqual(new Set(['5012', '5026']))
+  })
+
+  it('round-trips persisted expanded-folder ids', () => {
+    persistExpandedFolders(new Set([1, 2, 5054]))
+    expect(loadPersistedExpandedFolders()).toEqual(new Set([1, 2, 5054]))
+  })
+
+  it('ignores unknown/garbage expanded-folder ids instead of throwing — a stale/deleted folder id is simply a number nothing else recognizes', () => {
+    localStorage.setItem('docu_expanded_folders', JSON.stringify(['5054', 'not-a-number', '']))
+    expect(() => loadPersistedExpandedFolders()).not.toThrow()
+    expect(loadPersistedExpandedFolders()).toEqual(new Set([5054]))
+  })
+
+  it('does not throw on malformed JSON for the expanded-folders key', () => {
+    localStorage.setItem('docu_expanded_folders', '{not json')
+    expect(() => loadPersistedExpandedFolders()).not.toThrow()
+    expect(loadPersistedExpandedFolders()).toEqual(new Set())
   })
 })

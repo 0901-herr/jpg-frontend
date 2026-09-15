@@ -391,3 +391,116 @@ describe('useBrowseTree init error copy', () => {
     expect(result.current.initError).toBeNull()
   })
 })
+
+describe('useBrowseTree — remembered active folder gone or unreachable at init', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    localStorage.clear()
+    fetchBrowseRoot.mockResolvedValue(root)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.doUnmock('../config/browse')
+    localStorage.clear()
+  })
+
+  it('a 404 on the remembered active folder falls back to root, never sets initError, and forgets the stale persisted id', async () => {
+    localStorage.setItem('docu_active_folder', '5054')
+    const ApiError = await importApiError()
+    fetchFolderContents.mockImplementation(async (folderId: number) => {
+      if (folderId === 5054) throw new ApiError('Folder not found', 404)
+      return rootContents('READY')
+    })
+
+    const result = await initHook()
+
+    expect(result.current.initError).toBeNull()
+    expect(result.current.sessionExpired).toBe(false)
+    expect(result.current.activeFolderId).toBe(root.root_folder_id)
+    expect(localStorage.getItem('docu_active_folder')).toBeNull()
+  })
+
+  it('a 500 on the remembered active folder also falls back to root without setting initError', async () => {
+    localStorage.setItem('docu_active_folder', '5054')
+    const ApiError = await importApiError()
+    fetchFolderContents.mockImplementation(async (folderId: number) => {
+      if (folderId === 5054) throw new ApiError('Internal Server Error', 500)
+      return rootContents('READY')
+    })
+
+    const result = await initHook()
+
+    expect(result.current.initError).toBeNull()
+    expect(result.current.activeFolderId).toBe(root.root_folder_id)
+    expect(localStorage.getItem('docu_active_folder')).toBeNull()
+  })
+
+  it('a 401 on the remembered active folder still routes to session-expired, not a root fallback', async () => {
+    localStorage.setItem('docu_active_folder', '5054')
+    const ApiError = await importApiError()
+    fetchFolderContents.mockImplementation(async (folderId: number) => {
+      if (folderId === 5054) throw new ApiError('Unauthorized', 401)
+      return rootContents('READY')
+    })
+
+    const result = await initHook()
+
+    expect(result.current.sessionExpired).toBe(true)
+    expect(result.current.initError).toBeNull()
+  })
+})
+
+describe('useBrowseTree — switching to a folder that no longer exists', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    fetchBrowseRoot.mockResolvedValue(root)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.doUnmock('../config/browse')
+  })
+
+  it('stays on the current folder and warns, without throwing, when switching to a folder that 404s', async () => {
+    const { message } = await import('antd')
+    const errorSpy = vi.spyOn(message, 'error').mockImplementation(() => '' as never)
+
+    fetchFolderContents.mockResolvedValueOnce(rootContents('READY'))
+    const result = await initHook()
+    expect(result.current.activeFolderId).toBe(1)
+
+    const ApiError = await importApiError()
+    fetchFolderContents.mockRejectedValueOnce(new ApiError('Folder not found', 404))
+
+    await act(async () => {
+      await result.current.handleSelectFolder(2)
+    })
+
+    expect(result.current.activeFolderId).toBe(1)
+    expect(errorSpy).toHaveBeenCalledWith('That folder no longer exists.')
+
+    errorSpy.mockRestore()
+  })
+
+  it('still propagates a non-404 error when switching folders, without changing the active folder', async () => {
+    fetchFolderContents.mockResolvedValueOnce(rootContents('READY'))
+    const result = await initHook()
+    expect(result.current.activeFolderId).toBe(1)
+
+    const ApiError = await importApiError()
+    fetchFolderContents.mockRejectedValueOnce(new ApiError('Bad Gateway', 502))
+
+    await expect(
+      act(async () => {
+        await result.current.handleSelectFolder(2)
+      }),
+    ).rejects.toThrow()
+
+    expect(result.current.activeFolderId).toBe(1)
+  })
+})

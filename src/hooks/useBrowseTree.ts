@@ -1,4 +1,4 @@
-import type { TreeSelectProps } from 'antd'
+import { message, type TreeSelectProps } from 'antd'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError } from '../api/http'
 import { fetchBrowseRoot, fetchBrowseStatus, fetchFolderContents } from '../api/browse'
@@ -12,7 +12,15 @@ import {
   loadPersistedActiveFolder,
   persistActiveFolder,
 } from '../utils/browsePersistence'
-import { toUserFacingFolderLoadError, type FolderLoadError } from '../utils/userFacingErrors'
+import {
+  FOLDER_LOAD_SERVER_ERROR,
+  toUserFacingFolderLoadError,
+  type FolderLoadError,
+} from '../utils/userFacingErrors'
+
+const REMEMBERED_FOLDER_GONE_WARNING =
+  'The remembered folder no longer exists — showing the root folder.'
+const FOLDER_NO_LONGER_EXISTS_WARNING = 'That folder no longer exists.'
 
 /** Fields the cheap /browse/status endpoint can patch onto a cached document. */
 type DocumentStatusPatch = Pick<
@@ -282,7 +290,30 @@ export function useBrowseTree(onDocumentsLoaded?: (event: DocumentsLoadedEvent) 
 
         await loadFolder(root.root_folder_id)
         if (activeId !== root.root_folder_id && !cancelled) {
-          await loadFolder(activeId)
+          try {
+            await loadFolder(activeId)
+          } catch (activeErr) {
+            if (cancelled) return
+            // A 401 keeps the existing session-expired handling (already
+            // set by loadFolder above) — it overrides the whole sidebar
+            // regardless of which folder was active, so there is nothing
+            // else to reconcile here.
+            if (activeErr instanceof ApiError && activeErr.status === 401) {
+              return
+            }
+            // The remembered active folder is gone or unreachable, but the
+            // root loaded fine — this must never be fatal (never set
+            // initError): fall back to the root folder as active, forget
+            // the stale persisted id so the next load doesn't retry it,
+            // and only bother the user with a warning for it.
+            setActiveFolderId(root.root_folder_id)
+            persistActiveFolder(null)
+            if (activeErr instanceof ApiError && activeErr.status === 404) {
+              message.warning(REMEMBERED_FOLDER_GONE_WARNING)
+            } else {
+              message.warning(FOLDER_LOAD_SERVER_ERROR.body)
+            }
+          }
         }
       } catch (err) {
         if (cancelled) return
@@ -332,14 +363,42 @@ export function useBrowseTree(onDocumentsLoaded?: (event: DocumentsLoadedEvent) 
 
   const handleSelectFolder = useCallback(
     async (folderId: number) => {
-      setActiveFolderId(folderId)
-      persistActiveFolder(folderId)
-      if (!cache.has(folderId)) {
-        await loadFolder(folderId)
-      } else {
+      if (cache.has(folderId)) {
+        setActiveFolderId(folderId)
+        persistActiveFolder(folderId)
         const docs = cache.get(folderId)?.contents.documents ?? []
         onDocumentsLoaded?.({ folderId, documents: docs, page: 0 })
+        return
       }
+
+      try {
+        await loadFolder(folderId)
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 404) {
+          // Deleted meanwhile (e.g. in LogicalDOC) — never commit the
+          // switch to a folder that no longer exists: stay on whichever
+          // folder was active before, and drop the stale id from the tree
+          // cache/metadata so it doesn't linger as a selectable node.
+          message.error(FOLDER_NO_LONGER_EXISTS_WARNING)
+          setCache((prev) => {
+            if (!prev.has(folderId)) return prev
+            const next = new Map(prev)
+            next.delete(folderId)
+            return next
+          })
+          setFolderMeta((prev) => {
+            if (!prev.has(folderId)) return prev
+            const next = new Map(prev)
+            next.delete(folderId)
+            return next
+          })
+          return
+        }
+        throw err
+      }
+
+      setActiveFolderId(folderId)
+      persistActiveFolder(folderId)
     },
     [cache, loadFolder, onDocumentsLoaded],
   )
