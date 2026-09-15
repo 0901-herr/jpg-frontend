@@ -33,7 +33,7 @@ describe('QueryTierDropdown tooltip', () => {
     await user.hover(screen.getByRole('button', { name: /query speed: accurate/i }))
 
     expect(await screen.findByRole('tooltip')).toHaveTextContent(
-      'Most thorough answer. Can take up to a minute or more on this server.',
+      'Most thorough answer. Can take a minute or more.',
     )
   })
 
@@ -51,7 +51,7 @@ describe('QueryTierDropdown tooltip', () => {
     await user.hover(button.parentElement as HTMLElement)
 
     expect(await screen.findByRole('tooltip')).toHaveTextContent(
-      'Most thorough answer. Can take up to a minute or more on this server.',
+      'Most thorough answer. Can take a minute or more.',
     )
   })
 })

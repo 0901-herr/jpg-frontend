@@ -62,7 +62,7 @@ describe('getStatusLabel', () => {
   it('maps every status to the demo copy', () => {
     expect(getStatusLabel('READY')).toBe('Ready')
     expect(getStatusLabel('PARTIAL')).toBe('Partially indexed — searchable')
-    expect(getStatusLabel('INDEXING')).toBe('Indexing…')
+    expect(getStatusLabel('INDEXING')).toBe('Indexing')
     expect(getStatusLabel('NOT_INDEXED')).toBe('Queued')
     expect(getStatusLabel('FAILED')).toBe('Failed')
   })
@@ -103,7 +103,7 @@ describe('IndexingStatusBadge compact mode', () => {
   const compactLabels: Record<string, string> = {
     READY: 'Ready',
     PARTIAL: 'Partial',
-    INDEXING: 'Indexing…',
+    INDEXING: 'Indexing',
     FAILED: 'Failed',
     NOT_INDEXED: 'Queued',
   }
@@ -111,7 +111,7 @@ describe('IndexingStatusBadge compact mode', () => {
   const longLabels: Record<string, string> = {
     READY: 'Ready',
     PARTIAL: 'Partially indexed — searchable',
-    INDEXING: 'Indexing…',
+    INDEXING: 'Indexing',
     FAILED: 'Failed',
     NOT_INDEXED: 'Queued',
   }
@@ -190,7 +190,7 @@ describe('StatusIcon (compact file-row marker)', () => {
   const expectedAriaLabel: Record<string, string> = {
     READY: 'Ready',
     PARTIAL: 'Partially indexed — searchable',
-    INDEXING: 'Indexing…',
+    INDEXING: 'Indexing',
     FAILED: 'Failed',
     NOT_INDEXED: 'Queued',
   }

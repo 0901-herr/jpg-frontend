@@ -17,11 +17,11 @@ export function getExtractMetadataDisabledReason(options: {
 }): string | null {
   const { selectedCount, document, isResponding, disabled } = options
 
-  if (isResponding) return 'Wait for the current response to finish'
-  if (disabled) return 'Sign in to extract metadata'
-  if (selectedCount === 0) return 'Select a document to extract metadata'
-  if (selectedCount > 1) return 'Select only one document to extract metadata'
-  if (!document) return 'Select a document to extract metadata'
+  if (isResponding) return 'Wait for response to finish'
+  if (disabled) return 'Sign in to continue'
+  if (selectedCount === 0) return 'Select one document'
+  if (selectedCount > 1) return 'Select only one document'
+  if (!document) return 'Select one document'
   if (isMqaMetadataReady(document)) return null
-  return getDocumentSelectionHint(document) ?? 'Document is not ready for extraction yet'
+  return getDocumentSelectionHint(document) ?? 'Document not ready yet'
 }

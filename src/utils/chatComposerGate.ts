@@ -7,8 +7,8 @@ export function getSendDisabledReason(options: {
   const { selectedCount, hasMessage, isResponding, disabled } = options
 
   if (isResponding) return null
-  if (selectedCount === 0) return 'Select at least one document to send a question'
-  if (disabled) return 'Sign in to send a question'
+  if (selectedCount === 0) return 'Select at least one document'
+  if (disabled) return 'Sign in to continue'
   if (!hasMessage) return 'Enter a question first'
   return null
 }

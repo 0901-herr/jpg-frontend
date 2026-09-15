@@ -37,7 +37,7 @@ describe('getCategorizeDisabledReason', () => {
         isResponding: true,
         disabled: true,
       }),
-    ).toBe('Wait for the current response to finish')
+    ).toBe('Wait for response to finish')
   })
 
   it('blocks when signed out', () => {
@@ -49,7 +49,7 @@ describe('getCategorizeDisabledReason', () => {
         isResponding: false,
         disabled: true,
       }),
-    ).toBe('Sign in to categorize documents')
+    ).toBe('Sign in to continue')
   })
 
   it('blocks when nothing is selected', () => {
@@ -61,7 +61,7 @@ describe('getCategorizeDisabledReason', () => {
         isResponding: false,
         disabled: false,
       }),
-    ).toBe('Select one file to categorize')
+    ).toBe('Select one file')
   })
 
   it('blocks when more than one file is selected', () => {
@@ -73,7 +73,7 @@ describe('getCategorizeDisabledReason', () => {
         isResponding: false,
         disabled: false,
       }),
-    ).toBe('Select only one file to categorize')
+    ).toBe('Select only one file')
   })
 
   it('blocks when the selected document is not queryable', () => {
@@ -85,7 +85,7 @@ describe('getCategorizeDisabledReason', () => {
         isResponding: false,
         disabled: false,
       }),
-    ).toBe('Wait until the file is Partial or Ready')
+    ).toBe('File not ready yet')
 
     expect(
       getCategorizeDisabledReason({
@@ -95,7 +95,7 @@ describe('getCategorizeDisabledReason', () => {
         isResponding: false,
         disabled: false,
       }),
-    ).toBe('Wait until the file is Partial or Ready')
+    ).toBe('File not ready yet')
   })
 
   it('treats a missing document (selection not resolved yet) as not queryable', () => {
@@ -107,7 +107,7 @@ describe('getCategorizeDisabledReason', () => {
         isResponding: false,
         disabled: false,
       }),
-    ).toBe('Wait until the file is Partial or Ready')
+    ).toBe('File not ready yet')
   })
 
   it('allows a Partial document, not only Ready', () => {
@@ -131,7 +131,7 @@ describe('getCategorizeDisabledReason', () => {
         isResponding: false,
         disabled: false,
       }),
-    ).toBe('This file is already in a folder with no subfolders — nothing to categorize')
+    ).toBe('Not available in a leaf folder')
   })
 
   it('stays enabled when the folder node is not loaded — the adapter 409 is the backstop', () => {

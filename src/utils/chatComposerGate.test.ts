@@ -10,7 +10,7 @@ describe('getSendDisabledReason', () => {
         isResponding: false,
         disabled: false,
       }),
-    ).toBe('Select at least one document to send a question')
+    ).toBe('Select at least one document')
   })
 
   it('explains when message is empty', () => {
@@ -32,7 +32,7 @@ describe('getSendDisabledReason', () => {
         isResponding: false,
         disabled: true,
       }),
-    ).toBe('Sign in to send a question')
+    ).toBe('Sign in to continue')
   })
 
   it('returns null when send is allowed or while responding', () => {

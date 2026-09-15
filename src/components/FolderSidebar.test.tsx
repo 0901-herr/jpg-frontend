@@ -467,7 +467,7 @@ describe('FolderSidebar file row status icon', () => {
     expect(screen.queryByText('Ready')).not.toBeInTheDocument()
   })
 
-  it('shows the full filename and the status label + reason in the row tooltip on hover', async () => {
+  it('shows only the status label + reason in the row tooltip on hover — not the filename (client feedback)', async () => {
     const failedDoc: BrowseDocumentItem = {
       ...folderDocuments[0],
       indexing_status: 'FAILED',
@@ -500,7 +500,10 @@ describe('FolderSidebar file row status icon', () => {
     await user.hover(await screen.findByText('contract.pdf'))
 
     const tooltip = await screen.findByRole('tooltip')
-    expect(tooltip).toHaveTextContent('contract.pdf')
     expect(tooltip).toHaveTextContent('Failed — Unsupported file format.')
+    expect(tooltip.textContent).not.toContain('contract.pdf')
+    // The filename keeps its own native title attribute — a separate
+    // element/mechanism from the antd Tooltip asserted above.
+    expect(screen.getByText('contract.pdf')).toHaveAttribute('title', 'contract.pdf')
   })
 })

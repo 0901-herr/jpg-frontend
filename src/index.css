@@ -703,6 +703,12 @@ button.docu-citation-pill:hover {
     padding: 0 0.5rem;
     font-size: 0.75rem;
   }
+
+  /* Selected-files popover can't exceed the viewport at phone width — see
+     the unconstrained max-width just below this block. */
+  .docu-selected-files-tooltip .ant-tooltip-inner {
+    max-width: calc(100vw - 32px);
+  }
 }
 
 /* Slim top bar hamburger, shown below 768px in place of the desktop
@@ -760,7 +766,7 @@ button.docu-citation-pill:hover {
 }
 
 .docu-selected-files-tooltip .ant-tooltip-inner {
-  max-width: 320px;
+  max-width: 440px;
   padding: 10px 12px;
 }
 

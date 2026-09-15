@@ -18,7 +18,7 @@ export const QUERY_TIER_NORMAL_TOOLTIP =
   'Balanced speed and accuracy. Typically under a minute.'
 
 export const QUERY_TIER_ACCURATE_TOOLTIP =
-  'Most thorough answer. Can take up to a minute or more on this server.'
+  'Most thorough answer. Can take a minute or more.'
 
 /** Every tier warns about (or reassures on) waiting time — scope item 8. */
 export function getQueryTierTooltip(tier: QueryTier): string {

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -23,16 +23,17 @@ function renderChatInput(props: Partial<React.ComponentProps<typeof ChatInput>> 
 }
 
 describe('ChatInput', () => {
-  it('labels the disclaimer as single question mode', () => {
+  it('shows the not-context-aware disclaimer with no "Single question mode" prefix', () => {
     renderChatInput()
 
-    expect(screen.getByText(/Single question mode/)).toBeInTheDocument()
+    expect(screen.getByText(/not context-aware/)).toBeInTheDocument()
+    expect(screen.queryByText(/Single question mode/)).not.toBeInTheDocument()
   })
 
   it('disables Extract metadata and shows the reason when no file is selected', () => {
     renderChatInput({
       selectedCount: 0,
-      extractMetadataDisabledReason: 'Select a document to extract metadata',
+      extractMetadataDisabledReason: 'Select one document',
     })
 
     const button = screen.getByRole('button', { name: 'Extract MQA metadata' })
@@ -43,16 +44,14 @@ describe('ChatInput', () => {
     const user = userEvent.setup()
     renderChatInput({
       selectedCount: 2,
-      extractMetadataDisabledReason: 'Select only one document to extract metadata',
+      extractMetadataDisabledReason: 'Select only one document',
     })
 
     const button = screen.getByRole('button', { name: 'Extract MQA metadata' })
     expect(button).toBeDisabled()
 
     await user.hover(button.parentElement ?? button)
-    expect(
-      await screen.findByText('Select only one document to extract metadata'),
-    ).toBeInTheDocument()
+    expect(await screen.findByText('Select only one document')).toBeInTheDocument()
   })
 
   it('enables Extract metadata for exactly one ready file', () => {
@@ -99,28 +98,28 @@ describe('ChatInput', () => {
     const user = userEvent.setup()
     renderChatInput({
       selectedCount: 0,
-      categorizeDisabledReason: 'Select one file to categorize',
+      categorizeDisabledReason: 'Select one file',
     })
 
     const button = screen.getByRole('button', { name: 'Categorize selected document' })
     expect(button).toBeDisabled()
 
     await user.hover(button.parentElement ?? button)
-    expect(await screen.findByText('Select one file to categorize')).toBeInTheDocument()
+    expect(await screen.findByText('Select one file')).toBeInTheDocument()
   })
 
   it('disables Categorize and shows the reason when two files are selected', async () => {
     const user = userEvent.setup()
     renderChatInput({
       selectedCount: 2,
-      categorizeDisabledReason: 'Select only one file to categorize',
+      categorizeDisabledReason: 'Select only one file',
     })
 
     const button = screen.getByRole('button', { name: 'Categorize selected document' })
     expect(button).toBeDisabled()
 
     await user.hover(button.parentElement ?? button)
-    expect(await screen.findByText('Select only one file to categorize')).toBeInTheDocument()
+    expect(await screen.findByText('Select only one file')).toBeInTheDocument()
   })
 
   it('enables Categorize for exactly one ready file', () => {
@@ -164,7 +163,7 @@ describe('ChatInput — narrow phone widths (<480px)', () => {
     vi.restoreAllMocks()
   })
 
-  it('shows short labels for Summarize, Categorize and Extract metadata, with the full label still the accessible name', () => {
+  it('keeps full labels for Summarize and Categorize, and shortens only Extract metadata to "Extract" (accessible name stays full)', () => {
     vi.spyOn(window, 'matchMedia').mockReturnValue(mockMediaQueryList(true))
 
     renderChatInput({ selectedCount: 1, categorizeDisabledReason: null, extractMetadataDisabledReason: null })
@@ -173,15 +172,13 @@ describe('ChatInput — narrow phone widths (<480px)', () => {
     const categorize = screen.getByRole('button', { name: 'Categorize selected document' })
     const extract = screen.getByRole('button', { name: 'Extract MQA metadata' })
 
-    expect(summarize).toHaveTextContent('Sum.')
-    expect(summarize).not.toHaveTextContent('Summarize')
-    expect(categorize).toHaveTextContent('Cat.')
-    expect(categorize).not.toHaveTextContent('Categorize')
-    expect(extract).toHaveTextContent('Meta')
+    expect(summarize).toHaveTextContent('Summarize')
+    expect(categorize).toHaveTextContent('Categorize')
+    expect(extract).toHaveTextContent('Extract')
     expect(extract).not.toHaveTextContent('Extract metadata')
   })
 
-  it('carries the full label in the tooltip when enabled', async () => {
+  it('shows no tooltip on an enabled Summarize/Categorize button — the visible label is already the full word', async () => {
     vi.spyOn(window, 'matchMedia').mockReturnValue(mockMediaQueryList(true))
     const user = userEvent.setup()
 
@@ -189,25 +186,38 @@ describe('ChatInput — narrow phone widths (<480px)', () => {
 
     const summarize = screen.getByRole('button', { name: 'Summarize selected document' })
     await user.hover(summarize.parentElement ?? summarize)
+    await new Promise((resolve) => setTimeout(resolve, 300))
 
-    expect(await screen.findByText('Summarize')).toBeInTheDocument()
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
   })
 
-  it('combines the full label and the disabled reason in the tooltip when disabled', async () => {
+  it('carries the full word in the tooltip for the enabled, phone-abbreviated Extract metadata button', async () => {
+    vi.spyOn(window, 'matchMedia').mockReturnValue(mockMediaQueryList(true))
+    const user = userEvent.setup()
+
+    renderChatInput({ selectedCount: 1, extractMetadataDisabledReason: null })
+
+    const extract = screen.getByRole('button', { name: 'Extract MQA metadata' })
+    await user.hover(extract.parentElement ?? extract)
+
+    expect(await screen.findByText('Extract metadata')).toBeInTheDocument()
+  })
+
+  it('shows just the short reason, with no action-name prefix, in the tooltip when disabled', async () => {
     vi.spyOn(window, 'matchMedia').mockReturnValue(mockMediaQueryList(true))
     const user = userEvent.setup()
 
     renderChatInput({
       selectedCount: 0,
-      categorizeDisabledReason: 'Select one file to categorize',
+      categorizeDisabledReason: 'Select one file',
     })
 
     const categorize = screen.getByRole('button', { name: 'Categorize selected document' })
     await user.hover(categorize.parentElement ?? categorize)
 
-    expect(
-      await screen.findByText('Categorize — Select one file to categorize'),
-    ).toBeInTheDocument()
+    const tooltip = await screen.findByRole('tooltip')
+    expect(tooltip).toHaveTextContent('Select one file')
+    expect(tooltip.textContent).not.toContain('Categorize —')
   })
 
   it('still shows the full-word labels at desktop/tablet widths', () => {
@@ -224,6 +234,68 @@ describe('ChatInput — narrow phone widths (<480px)', () => {
     expect(screen.getByRole('button', { name: 'Extract MQA metadata' })).toHaveTextContent(
       'Extract metadata',
     )
+  })
+
+  it('splits the toolbar into two rows: files chip + tier dropdown + send on row 1, action buttons (full labels) on row 2', () => {
+    vi.spyOn(window, 'matchMedia').mockReturnValue(mockMediaQueryList(true))
+
+    const { container } = renderChatInput({
+      selectedCount: 2,
+      selectedFiles: ['a.pdf', 'b.pdf'],
+      categorizeDisabledReason: null,
+      extractMetadataDisabledReason: null,
+    })
+
+    const row1 = container.querySelector('.docu-chat-composer-row1')
+    const row2 = container.querySelector('.docu-chat-composer-row2')
+    expect(row1).not.toBeNull()
+    expect(row2).not.toBeNull()
+
+    expect(row1).toContainElement(screen.getByText('2 files'))
+    expect(row1).toContainElement(screen.getByRole('button', { name: /query speed/i }))
+    expect(row1).toContainElement(screen.getByRole('button', { name: 'Send message' }))
+
+    expect(row2).toContainElement(
+      screen.getByRole('button', { name: 'Summarize selected document' }),
+    )
+    expect(row2).toContainElement(
+      screen.getByRole('button', { name: 'Categorize selected document' }),
+    )
+    expect(row2).toContainElement(screen.getByRole('button', { name: 'Extract MQA metadata' }))
+    expect(row2).toHaveTextContent('Summarize')
+    expect(row2).toHaveTextContent('Categorize')
+  })
+
+  it('keeps a single toolbar row at desktop/tablet widths (no row1/row2 split)', () => {
+    vi.spyOn(window, 'matchMedia').mockReturnValue(mockMediaQueryList(false))
+
+    const { container } = renderChatInput({ selectedCount: 1 })
+
+    expect(container.querySelector('.docu-chat-composer-row1')).toBeNull()
+    expect(container.querySelector('.docu-chat-composer-row2')).toBeNull()
+  })
+})
+
+describe('ChatInput — selected files popover', () => {
+  it('renders an ordered, numbered list with one <li> per selected file, in selection order, truncated to one line each', async () => {
+    const user = userEvent.setup()
+    const files = ['charlie.pdf', 'alpha.pdf', 'bravo.pdf']
+    renderChatInput({ selectedCount: files.length, selectedFiles: files })
+
+    await user.hover(screen.getByText(`${files.length} files`))
+
+    const tooltip = await screen.findByRole('tooltip')
+    const list = tooltip.querySelector('ol')
+    expect(list).not.toBeNull()
+    expect(list).toHaveClass('list-decimal')
+
+    const items = within(tooltip).getAllByRole('listitem')
+    expect(items).toHaveLength(files.length)
+    expect(items.map((li) => li.textContent)).toEqual(files)
+    for (const li of items) {
+      expect(li).toHaveClass('truncate')
+      expect(li).not.toHaveClass('break-all')
+    }
   })
 })
 

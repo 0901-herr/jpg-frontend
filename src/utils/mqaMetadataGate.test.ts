@@ -35,7 +35,7 @@ describe('mqaMetadataGate', () => {
         isResponding: false,
         disabled: false,
       }),
-    ).toBe('Select a document to extract metadata')
+    ).toBe('Select one document')
 
     expect(
       getExtractMetadataDisabledReason({
@@ -44,7 +44,7 @@ describe('mqaMetadataGate', () => {
         isResponding: false,
         disabled: false,
       }),
-    ).toBe('Select only one document to extract metadata')
+    ).toBe('Select only one document')
 
     expect(
       getExtractMetadataDisabledReason({
@@ -82,7 +82,7 @@ describe('mqaMetadataGate', () => {
         isResponding: true,
         disabled: false,
       }),
-    ).toBe('Wait for the current response to finish')
+    ).toBe('Wait for response to finish')
 
     expect(
       getExtractMetadataDisabledReason({
@@ -91,6 +91,6 @@ describe('mqaMetadataGate', () => {
         isResponding: false,
         disabled: true,
       }),
-    ).toBe('Sign in to extract metadata')
+    ).toBe('Sign in to continue')
   })
 })

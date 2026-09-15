@@ -12,22 +12,22 @@ export function getSummarizeDisabledReason(options: {
 }): string | null {
   const { selectedCount, document, isResponding, disabled } = options
 
-  if (isResponding) return 'Wait for the current response to finish'
-  if (disabled) return 'Sign in to summarize documents'
-  if (selectedCount === 0) return 'Select a document to summarize'
-  if (selectedCount > 1) return 'Select only one document to summarize'
-  if (!document) return 'Select a document to summarize'
+  if (isResponding) return 'Wait for response to finish'
+  if (disabled) return 'Sign in to continue'
+  if (selectedCount === 0) return 'Select one document'
+  if (selectedCount > 1) return 'Select only one document'
+  if (!document) return 'Select one document'
 
   switch (document.summary_status) {
     case 'READY':
       return null
     case 'PENDING':
-      return 'Summary is still being generated'
+      return 'Summary not ready yet'
     case 'FAILED':
-      return 'Summary is not available for this document'
+      return 'Summary not available'
     case 'NOT_AVAILABLE':
-      return 'Summary is not available for this document'
+      return 'Summary not available'
     default:
-      return 'Summary is not ready for this document yet'
+      return 'Summary not ready yet'
   }
 }

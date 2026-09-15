@@ -263,19 +263,16 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
   // Building a doc's tree row: a 14px status icon, then the filename
   // filling the rest of the line and eliding under a long name — never the
   // reverse, where a wide status badge used to crowd the filename off to
-  // one line and leave it unreadable (client feedback). One Tooltip on the
-  // whole row carries the full filename plus the status label and reason
-  // (`describeStatus`), covering both what a hover on the icon alone used
-  // to show and — since `describeStatus` folds in the adapter's own reason
-  // — why a disabled row's checkbox can't be ticked.
+  // one line and leave it unreadable (client feedback). The row's Tooltip
+  // carries only the status label and reason (`describeStatus`) — the
+  // filename is not repeated here (client feedback: "the file name isn't
+  // necessary here, only the status would do"). The filename itself keeps
+  // its own native `title` attribute on the row's text span below, which
+  // is a separate element/mechanism from this antd Tooltip, so a long name
+  // is still discoverable without duplicating it in the status hover.
   const buildDocLeaf = useCallback((doc: BrowseDocumentItem): DataNode => {
     const selectable = isDocumentSelectable(doc.indexing_status, doc.queryable)
-    const tooltip = (
-      <>
-        <div>{doc.filename}</div>
-        <div>{describeStatus(doc.indexing_status, doc.status_reason)}</div>
-      </>
-    )
+    const tooltip = describeStatus(doc.indexing_status, doc.status_reason)
     const row = (
       <span
         className={`docu-document-row-primary flex min-w-0 flex-1 items-center gap-1.5 ${

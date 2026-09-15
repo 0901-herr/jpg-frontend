@@ -143,7 +143,7 @@ export default function DocumentChecklist({
           disabled={isLoadingMore}
           className={`w-full mt-1 py-2 text-center ${sidebar.caption} ${typeColor.muted} disabled:opacity-50`}
         >
-          {isLoadingMore ? 'Loading…' : 'Load more'}
+          {isLoadingMore ? 'Loading' : 'Load more'}
         </button>
       )}
     </div>

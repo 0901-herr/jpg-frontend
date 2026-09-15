@@ -32,8 +32,8 @@ const STATUS_CONFIG: Record<
     icon: <StatusIndexingIcon />,
   },
   INDEXING: {
-    label: 'Indexing…',
-    compactLabel: 'Indexing…',
+    label: 'Indexing',
+    compactLabel: 'Indexing',
     className: 'bg-amber-50 text-amber-700',
     icon: <StatusIndexingIcon />,
   },

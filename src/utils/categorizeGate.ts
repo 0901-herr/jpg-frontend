@@ -16,15 +16,15 @@ export function getCategorizeDisabledReason(options: {
 }): string | null {
   const { selectedCount, document, folder, isResponding, disabled } = options
 
-  if (isResponding) return 'Wait for the current response to finish'
-  if (disabled) return 'Sign in to categorize documents'
-  if (selectedCount === 0) return 'Select one file to categorize'
-  if (selectedCount > 1) return 'Select only one file to categorize'
+  if (isResponding) return 'Wait for response to finish'
+  if (disabled) return 'Sign in to continue'
+  if (selectedCount === 0) return 'Select one file'
+  if (selectedCount > 1) return 'Select only one file'
   if (!document || !isDocumentSelectable(document.indexing_status, document.queryable)) {
-    return 'Wait until the file is Partial or Ready'
+    return 'File not ready yet'
   }
   if (folder && !folder.has_children) {
-    return 'This file is already in a folder with no subfolders — nothing to categorize'
+    return 'Not available in a leaf folder'
   }
   return null
 }

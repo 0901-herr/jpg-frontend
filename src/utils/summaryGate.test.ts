@@ -30,7 +30,7 @@ describe('summaryGate', () => {
         isResponding: false,
         disabled: false,
       }),
-    ).toBe('Select a document to summarize')
+    ).toBe('Select one document')
 
     expect(
       getSummarizeDisabledReason({
@@ -39,7 +39,7 @@ describe('summaryGate', () => {
         isResponding: false,
         disabled: false,
       }),
-    ).toBe('Select only one document to summarize')
+    ).toBe('Select only one document')
 
     expect(
       getSummarizeDisabledReason({
@@ -48,7 +48,7 @@ describe('summaryGate', () => {
         isResponding: false,
         disabled: false,
       }),
-    ).toBe('Summary is still being generated')
+    ).toBe('Summary not ready yet')
 
     expect(
       getSummarizeDisabledReason({
