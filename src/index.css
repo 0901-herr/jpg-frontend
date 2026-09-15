@@ -703,12 +703,6 @@ button.docu-citation-pill:hover {
     padding: 0 0.5rem;
     font-size: 0.75rem;
   }
-
-  /* Selected-files popover can't exceed the viewport at phone width — see
-     the unconstrained max-width just below this block. */
-  .docu-selected-files-tooltip .ant-tooltip-inner {
-    max-width: calc(100vw - 32px);
-  }
 }
 
 /* Slim top bar hamburger, shown below 768px in place of the desktop
@@ -765,9 +759,50 @@ button.docu-citation-pill:hover {
   border-radius: 9999px;
 }
 
+/* Selected-files popover (ChatInput.tsx `SelectedFilesTooltip`) — width is
+   set from the component via the Tooltip's `styles.root` prop, not here:
+   antd v6 caps the tooltip ROOT (`.ant-tooltip`, the `tooltipMaxWidth`
+   token) at 250px via CSS-in-JS, so a stylesheet rule for `-inner` (a
+   child of that already-capped root) can never widen the popover — see the
+   comment on the `Tooltip` in ChatInput.tsx. This rule only owns the inner
+   content's padding, which the root's `maxWidth` doesn't touch. */
 .docu-selected-files-tooltip .ant-tooltip-inner {
-  max-width: 440px;
   padding: 10px 12px;
+}
+
+/* Numbered entries (`.docu-selected-files-item`, one per `<li>`) as a flex
+   row with a CSS-counter marker instead of `list-style: decimal` — see the
+   comment on `SelectedFilesTooltip` in ChatInput.tsx for why a native
+   `outside` marker doesn't survive truncating the filename next to it. A
+   real list-style marker is also right-aligned by its trailing period in
+   every browser tested (so "1." and "10." line up on the period, not the
+   leading digit) where the brief calls for a left-aligned number column;
+   the counter in a flex item with `text-align: left` gets that for free. */
+.docu-selected-files-tooltip .docu-selected-files-list {
+  padding-left: 0;
+  counter-reset: docu-selected-file;
+}
+
+.docu-selected-files-tooltip .docu-selected-files-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35em;
+  counter-increment: docu-selected-file;
+}
+
+.docu-selected-files-tooltip .docu-selected-files-item::before {
+  content: counter(docu-selected-file) '.';
+  flex: 0 0 auto;
+  min-width: 1.5em;
+  text-align: left;
+}
+
+/* The filename itself is the only part that ellipsizes — `min-width: 0`
+   lets it shrink inside the flex row (a flex item's default `min-width:
+   auto` would otherwise refuse to shrink below its own text's intrinsic
+   width and defeat `truncate`'s `overflow: hidden`). */
+.docu-selected-files-tooltip .docu-selected-files-item > span {
+  min-width: 0;
 }
 
 .docu-document-checklist .ant-checkbox-wrapper {

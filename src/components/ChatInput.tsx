@@ -56,18 +56,32 @@ interface ChatInputProps {
 }
 
 // Numbered, single-line-per-entry list (client feedback: "they should be
-// numbered, try to keep the texts compact without wrapping") — `truncate`
-// ellipsizes a long filename on its own line instead of `break-all`
-// wrapping it across several, and `list-decimal pl-5` keeps the number
-// column aligned. Widened + max-height sized via `.docu-selected-files-tooltip`
-// in index.css (keeps the vertical scroll for long lists).
+// numbered, try to keep the texts compact without wrapping").
+//
+// Root cause (round 3, Item A): this used to be Tailwind's `list-decimal`
+// (a native list-style marker) plus `truncate` directly on the `<li>`.
+// `truncate` sets `overflow: hidden` on whatever it's applied to, and for
+// a `list-style-position: outside` marker (the default) the marker box is
+// painted in that same element's own box — so putting `overflow: hidden`
+// on the `<li>` clips its own "1." … "5." marker along with the text, in
+// every browser tested live. The fix drops native list markers entirely:
+// `.docu-selected-files-item` (index.css) renders the number as a CSS
+// counter in a flex row, and only the filename's own inner `<span>` (never
+// the `<li>`) carries `overflow: hidden` — ellipsizing the filename can no
+// longer clip the number next to it. See the CSS comment in index.css for
+// the rest of the reasoning, including the left-alignment and popover-width
+// fixes. `role="list"` guards against Safari/VoiceOver dropping list
+// semantics once native markers (and the `list-style` they imply) are gone.
 function SelectedFilesTooltip({ files }: { files: string[] }) {
   if (files.length === 0) return null
   return (
-    <ol className="m-0 list-decimal pl-5 text-left max-h-56 overflow-y-auto space-y-0.5">
+    <ol
+      role="list"
+      className="docu-selected-files-list m-0 max-h-56 overflow-y-auto space-y-0.5"
+    >
       {files.map((filename) => (
-        <li key={filename} className="text-xs leading-tight truncate">
-          {filename}
+        <li key={filename} className="docu-selected-files-item text-xs leading-tight">
+          <span className="truncate">{filename}</span>
         </li>
       ))}
     </ol>
@@ -131,6 +145,19 @@ export default function ChatInput({
           placement="top"
           mouseEnterDelay={0.2}
           overlayClassName="docu-selected-files-tooltip"
+          // antd v6 caps the tooltip ROOT (`.ant-tooltip`, the
+          // `tooltipMaxWidth` token) at 250px via CSS-in-JS. The old
+          // `.docu-selected-files-tooltip .ant-tooltip-inner { max-width:
+          // 440px }` rule in index.css targeted the INNER content box, a
+          // child of that already-capped root — a child can never render
+          // wider than its parent's content box, so the rule was silently
+          // a no-op (measured live: popover stayed 250px wide at both
+          // 1440 and 390 viewports). `styles.root` (overlayStyle is
+          // deprecated) sets an inline style on the root element itself,
+          // which wins regardless of any stylesheet's specificity, and
+          // reuses the same `isPhone`/`PHONE_QUERY` breakpoint as the rest
+          // of the composer instead of a parallel CSS media query.
+          styles={{ root: { maxWidth: isPhone ? 'calc(100vw - 32px)' : 440 } }}
         >
           <span
             className="docu-chat-composer-files"

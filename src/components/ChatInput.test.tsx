@@ -277,7 +277,7 @@ describe('ChatInput — narrow phone widths (<480px)', () => {
 })
 
 describe('ChatInput — selected files popover', () => {
-  it('renders an ordered, numbered list with one <li> per selected file, in selection order, truncated to one line each', async () => {
+  it('renders an ordered, numbered list with one <li> per selected file, in selection order, with the class hooks the CSS numbering/truncation rules target', async () => {
     const user = userEvent.setup()
     const files = ['charlie.pdf', 'alpha.pdf', 'bravo.pdf']
     renderChatInput({ selectedCount: files.length, selectedFiles: files })
@@ -287,15 +287,55 @@ describe('ChatInput — selected files popover', () => {
     const tooltip = await screen.findByRole('tooltip')
     const list = tooltip.querySelector('ol')
     expect(list).not.toBeNull()
-    expect(list).toHaveClass('list-decimal')
+    // `role="list"` guards against Safari/VoiceOver dropping list semantics
+    // now that the CSS gives the <ol> no native `list-style` (see
+    // index.css) — a screen-reader-visible regression a plain class-hook
+    // assertion wouldn't catch.
+    expect(list).toHaveAttribute('role', 'list')
+    expect(list).toHaveClass('docu-selected-files-list')
 
     const items = within(tooltip).getAllByRole('listitem')
     expect(items).toHaveLength(files.length)
+    // The numbers are CSS-generated `::before` counter content (see
+    // index.css), not DOM text, so each <li>'s own text content is still
+    // just the filename.
     expect(items.map((li) => li.textContent)).toEqual(files)
     for (const li of items) {
-      expect(li).toHaveClass('truncate')
+      expect(li).toHaveClass('docu-selected-files-item')
+      // Regression guard for the round-3 root cause: `truncate` (which
+      // sets `overflow: hidden`) must live on the inner <span>, never on
+      // the <li> itself — an `overflow: hidden` `<li>` clips its own
+      // `list-style` marker box in every browser tested live, which is
+      // exactly how the "1." … "5." markers went missing before this fix.
+      expect(li).not.toHaveClass('truncate')
       expect(li).not.toHaveClass('break-all')
+      const span = li.querySelector('span')
+      expect(span).not.toBeNull()
+      expect(span).toHaveClass('truncate')
+      expect(span?.textContent).toBe(li.textContent)
     }
+  })
+
+  it('caps the popover root at 440px on desktop and calc(100vw - 32px) on phone, via Tooltip styles.root (not a stylesheet rule)', async () => {
+    const user = userEvent.setup()
+
+    vi.spyOn(window, 'matchMedia').mockReturnValue(mockMediaQueryList(false))
+    const { unmount } = renderChatInput({
+      selectedCount: 1,
+      selectedFiles: ['report.pdf'],
+    })
+    await user.hover(screen.getByText('1 file'))
+    let tooltipRoot = (await screen.findByRole('tooltip')).closest('.docu-selected-files-tooltip')
+    expect(tooltipRoot).not.toBeNull()
+    expect((tooltipRoot as HTMLElement).style.maxWidth).toBe('440px')
+    unmount()
+
+    vi.spyOn(window, 'matchMedia').mockReturnValue(mockMediaQueryList(true))
+    renderChatInput({ selectedCount: 1, selectedFiles: ['report.pdf'] })
+    await user.hover(screen.getByText('1 file'))
+    tooltipRoot = (await screen.findByRole('tooltip')).closest('.docu-selected-files-tooltip')
+    expect(tooltipRoot).not.toBeNull()
+    expect((tooltipRoot as HTMLElement).style.maxWidth).toBe('calc(100vw - 32px)')
   })
 })
 
