@@ -4,18 +4,6 @@ import { describe, expect, it } from 'vitest'
 
 const SRC_DIR = path.resolve(__dirname, '..')
 
-// Client feedback: "Remove all ... from the UI too, in the status, in
-// textbox, everywhere, it looks slightly weird." These five files are being
-// fixed on the ui-batch branch; remove after merge — the merger drops this
-// array (and the exclusion check below) entirely.
-const TEMPORARILY_EXCLUDED = new Set([
-  'components/ChatInput.tsx',
-  'utils/queryTier.ts',
-  'components/DocumentChecklist.tsx',
-  'components/IndexingStatusBadge.tsx',
-  'utils/summaryGate.ts',
-])
-
 const ELLIPSIS_PATTERN = /…|\.\.\./
 
 /** Every `.ts`/`.tsx` file under `src/`, relative to `src/`, excluding any
@@ -128,14 +116,7 @@ describe('no ellipsis anywhere in shipped UI copy', () => {
     expect(files.length).toBeGreaterThan(50)
   })
 
-  it('excludes only the five files fixed on the ui-batch branch', () => {
-    const excludedPresent = [...TEMPORARILY_EXCLUDED].filter((f) => files.includes(f))
-    expect(excludedPresent.sort()).toEqual([...TEMPORARILY_EXCLUDED].sort())
-  })
-
   for (const file of listSourceFiles(SRC_DIR)) {
-    if (TEMPORARILY_EXCLUDED.has(file)) continue
-
     it(`${file} has no "…" or "..." in a string literal, template literal, or JSX text`, () => {
       const source = readFileSync(path.join(SRC_DIR, file), 'utf-8')
       expect(findEllipsisViolation(source)).toBe(false)
