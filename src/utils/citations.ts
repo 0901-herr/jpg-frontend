@@ -302,17 +302,28 @@ function collapseCitationRuns(segments: AnswerSegment[]): AnswerSegment[] {
       return true
     })
 
+    const before = result[result.length - 1]
     const after = segments[end + 1]
+    // Moving the run's sentence punctuation to before the run needs an
+    // actual preceding text segment to attach it to. `splitAnswerByDocRefs`
+    // is called per Markdown text node (once per paragraph, table cell,
+    // list item, or the text after an inline `<strong>`/link boundary —
+    // see `linkifyNode`), so a run can legitimately be the very first thing
+    // in the string it's handed, with no `before` segment at all. Without
+    // this guard the mark got pushed as a new leading segment of its own —
+    // a bare "." with nothing in front of it. When there's no predecessor
+    // to attach to, skip the move entirely and leave the punctuation
+    // exactly where it was, after the run.
     const punctuationMatch =
-      runRefs.length >= 2 && after?.type === 'text' ? RUN_TRAILING_PUNCTUATION_RE.exec(after.value) : null
+      runRefs.length >= 2 && before?.type === 'text' && after?.type === 'text'
+        ? RUN_TRAILING_PUNCTUATION_RE.exec(after.value)
+        : null
 
     if (punctuationMatch) {
       const [full, , mark] = punctuationMatch
-      const before = result[result.length - 1]
-      if (before?.type === 'text') {
-        result[result.length - 1] = { type: 'text', value: before.value.replace(RUN_LEADING_COMMA_RE, '') + mark }
-      } else {
-        result.push({ type: 'text', value: mark })
+      result[result.length - 1] = {
+        type: 'text',
+        value: before.value.replace(RUN_LEADING_COMMA_RE, '') + mark,
       }
       result.push({ type: 'text', value: ' ' })
       dedupedRefs.forEach((ref, idx) => {
@@ -456,6 +467,17 @@ export function citationContextByAnswerOrder(content: string, sources: Source[])
         .map((s) => s.value)
         .join(''),
     )
+    // A clause that's nothing but citation markers — e.g. "[Doc1],
+    // [Doc2]." with no surrounding prose at all — leaves only punctuation
+    // debris once the refs are stripped out (a bare "."). `CitationList`
+    // already falls back to "Searched, not cited" when a key has no entry
+    // here at all, which reads far better than `Cited for: "."` would, so
+    // skip *setting* a context in that case rather than storing the
+    // punctuation. The key is deliberately left unseen (not added to
+    // `contexts`), not marked-but-empty, so a later clause that cites the
+    // same document with real prose can still fill it in.
+    if (!/[\p{L}\p{N}]/u.test(text)) continue
+
     for (const ref of refs) {
       const key = citationNumberKey(ref.source)
       if (!contexts.has(key)) contexts.set(key, text)

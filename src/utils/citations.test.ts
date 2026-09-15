@@ -411,6 +411,37 @@ describe('splitAnswerByDocRefs — citation runs (Item B)', () => {
       [docSource(1), docSource(2)],
       'The report covers cats and dogs, not [Doc1] or [Doc2].',
     ],
+    // Fix round 1 (review finding #1): a 2+-marker run at the very start
+    // of the text handed to `splitAnswerByDocRefs` used to push the moved
+    // punctuation as a bare leading segment with nothing before it — since
+    // this function runs per Markdown text node (paragraph, table cell,
+    // list item, or the text after an inline `<strong>`/link boundary —
+    // see `linkifyNode`), "the run opens the node" is an ordinary, not a
+    // rare, shape. There's nothing to attach the moved mark to here, so
+    // the fix leaves the punctuation exactly where it was instead.
+    [
+      'a run at the very start of the text, immediately followed by a period: punctuation stays after the run (nothing to move it in front of)',
+      '[Doc1], [Doc2].',
+      [docSource(1), docSource(2)],
+      '[Doc1] [Doc2].',
+    ],
+    [
+      'a run at the very start of the text, followed by more prose (no trailing sentence punctuation to move either)',
+      '[Doc1] and [Doc2] are both relevant here.',
+      [docSource(1), docSource(2)],
+      '[Doc1] [Doc2] are both relevant here.',
+    ],
+    // Review finding #2: an unresolvable marker inside a run collapses
+    // cleanly through the gap it leaves — `expandBracketDocGroups` strips
+    // any well-formed `[DocN]` bracket to nothing before the run scan even
+    // runs, whether or not it resolves to a source, so the surrounding
+    // resolvable markers still form one run.
+    [
+      'an unresolvable marker inside a run: the run still collapses cleanly around the gap it leaves',
+      'start [Doc1], [Doc99], [Doc2].',
+      [docSource(1), docSource(2)],
+      'start. [Doc1] [Doc2]',
+    ],
   ])('%s', (_label, content, sources, expected) => {
     expect(renderedText(content, sources)).toBe(expected)
   })
@@ -424,6 +455,32 @@ describe('splitAnswerByDocRefs — citation runs (Item B)', () => {
     expect(numbers.get(citationNumberKey(sources[0]))).toBe(1)
     expect(numbers.get(citationNumberKey(sources[1]))).toBe(2)
     expect(numbers.get(citationNumberKey(sources[2]))).toBe(3)
+  })
+
+  it('never gives "Cited for" a bare punctuation context when a citation\'s first clause is nothing but the run itself (review finding #1, second surface)', () => {
+    const sources = [docSource(1), docSource(2)]
+    const content = '[Doc1], [Doc2]. Both confirm the finding.'
+
+    const contexts = citationContextByAnswerOrder(content, sources)
+
+    // The citing clause is pure citation markers with no prose of its own
+    // once the refs are stripped out — CitationList already renders
+    // "Searched, not cited" when a key has no entry here, which reads far
+    // better than `Cited for: "."` would, so no context is set at all
+    // rather than the punctuation debris.
+    expect(contexts.get(citationNumberKey(sources[0]))).toBeUndefined()
+    expect(contexts.get(citationNumberKey(sources[1]))).toBeUndefined()
+  })
+
+  it('falls through to a later clause with real prose when an earlier citing clause of the same document was punctuation-only', () => {
+    const sources = [docSource(1)]
+    const content = '[Doc1]. It is cited again here in a full sentence [Doc1].'
+
+    const contexts = citationContextByAnswerOrder(content, sources)
+
+    expect(contexts.get(citationNumberKey(sources[0]))).toBe(
+      'It is cited again here in a full sentence.',
+    )
   })
 })
 
