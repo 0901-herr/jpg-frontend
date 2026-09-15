@@ -128,36 +128,13 @@ export default function ChatInput({
         )}
 
         <div className="docu-chat-input-stack">
-        <div className="docu-chat-composer flex items-center gap-2">
-          <div className="docu-chat-composer-lead flex items-center shrink-0">
-            {selectedCount > 0 && (
-              <div className="docu-chat-composer-files-wrap">
-                <Tooltip
-                  title={<SelectedFilesTooltip files={selectedFiles} />}
-                  placement="top"
-                  mouseEnterDelay={0.2}
-                  overlayClassName="docu-selected-files-tooltip"
-                >
-                  <span
-                    className="docu-chat-composer-files"
-                    aria-label={`${selectedCount} file${selectedCount === 1 ? '' : 's'} selected`}
-                  >
-                    {selectedCount} {selectedCount === 1 ? 'file' : 'files'}
-                  </span>
-                </Tooltip>
-                <button
-                  type="button"
-                  onClick={onClearSelection}
-                  className="docu-chat-composer-files-clear"
-                  aria-label="Clear selection"
-                >
-                  <ChatCloseIcon className="text-inherit" />
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="docu-chat-composer-textarea-wrap flex-1 min-w-0">
+        {/* Two rows at every width (fix round 1: at 1440px a single row
+            squeezed the textarea to ~200px and wrapped the placeholder to
+            three lines) — row 1 is the textarea alone, full width; row 2
+            is the toolbar (left cluster + send). `flex-col` replaces the
+            old single-row `flex items-center`. */}
+        <div className="docu-chat-composer flex flex-col gap-2">
+          <div className="docu-chat-composer-textarea-wrap w-full min-w-0">
             <Input.TextArea
               value={value}
               onChange={(e) => setValue(e.target.value)}
@@ -168,101 +145,139 @@ export default function ChatInput({
                   : 'Select documents first…'
               }
               disabled={disabled || selectedCount === 0}
-              autoSize={{ minRows: 1, maxRows: 4 }}
+              autoSize={{ minRows: 1, maxRows: 6 }}
               variant="borderless"
               className={`w-full !px-0 !py-0 ${type.body} !shadow-none resize-none !leading-6`}
             />
           </div>
 
-          <div className="docu-chat-composer-actions flex items-center shrink-0">
-            <QueryTierDropdown
-              tier={queryTier}
-              onChange={onQueryTierChange}
-              disabled={disabled || isResponding}
-            />
-            <Tooltip
-              title={composerTooltipTitle('Summarize', summarizeDisabledReason, isPhone)}
-              placement="top"
-              mouseEnterDelay={0.2}
-            >
-              <span className="inline-flex">
-                <button
-                  type="button"
-                  onClick={onSummarize}
-                  disabled={!canSummarize}
-                  className="docu-chat-composer-summarize"
-                  aria-label="Summarize selected document"
-                >
-                  <ChatSummarizeIcon aria-hidden />
-                  <span>{isPhone ? 'Sum.' : 'Summarize'}</span>
-                </button>
-              </span>
-            </Tooltip>
-            <Tooltip
-              title={composerTooltipTitle('Categorize', categorizeDisabledReason, isPhone)}
-              placement="top"
-              mouseEnterDelay={0.2}
-            >
-              <span className="inline-flex">
-                <button
-                  type="button"
-                  onClick={onCategorize}
-                  disabled={!canCategorize}
-                  className="docu-chat-composer-categorize"
-                  aria-label="Categorize selected document"
-                >
-                  <ChatCategorizeIcon aria-hidden />
-                  <span>{isPhone ? 'Cat.' : 'Categorize'}</span>
-                </button>
-              </span>
-            </Tooltip>
-            <Tooltip
-              title={composerTooltipTitle(
-                'Extract metadata',
-                extractMetadataDisabledReason,
-                isPhone,
-              )}
-              placement="top"
-              mouseEnterDelay={0.2}
-            >
-              <span className="inline-flex">
-                <button
-                  type="button"
-                  onClick={onExtractMetadata}
-                  disabled={!canExtractMetadata}
-                  className="docu-chat-composer-extract"
-                  aria-label="Extract MQA metadata"
-                >
-                  <ChatMetadataIcon aria-hidden />
-                  <span>{isPhone ? 'Meta' : 'Extract metadata'}</span>
-                </button>
-              </span>
-            </Tooltip>
-            <Tooltip
-              title={sendDisabledReason ?? undefined}
-              placement="top"
-              mouseEnterDelay={0.2}
-            >
-              <span className="inline-flex">
-                <button
-                  type="button"
-                  onClick={isResponding ? onStop : handleSend}
-                  disabled={!isResponding && !canSend}
-                  className={`w-9 h-9 ${radius.full} flex items-center justify-center transition-colors ${
-                    isResponding || canSend
-                      ? 'bg-[#0084ff] hover:bg-[#0077e6]'
-                      : 'bg-[#ececec] cursor-not-allowed'
-                  }`}
-                  aria-label={isResponding ? 'Stop response' : 'Send message'}
-                >
-                  {isResponding ? (
-                    <span className="block w-3 h-3 bg-white rounded-[2px]" aria-hidden />
-                  ) : (
-                    <ChatSendIcon className={canSend ? '!text-white' : '!text-[#8e8e8e]'} />
-                  )}
-                </button>
-              </span>
-            </Tooltip>
+          <div className="docu-chat-composer-toolbar flex items-center gap-2">
+            {/* Left cluster — wraps onto a further line only when it
+                doesn't fit (in practice <480px, where the action buttons
+                also drop to short labels); the right-hand send button
+                below stays put, vertically centred against whatever
+                height this cluster ends up at. */}
+            <div className="docu-chat-composer-actions flex items-center flex-wrap flex-1 min-w-0">
+              <div className="docu-chat-composer-lead flex items-center shrink-0">
+                {selectedCount > 0 && (
+                  <div className="docu-chat-composer-files-wrap">
+                    <Tooltip
+                      title={<SelectedFilesTooltip files={selectedFiles} />}
+                      placement="top"
+                      mouseEnterDelay={0.2}
+                      overlayClassName="docu-selected-files-tooltip"
+                    >
+                      <span
+                        className="docu-chat-composer-files"
+                        aria-label={`${selectedCount} file${selectedCount === 1 ? '' : 's'} selected`}
+                      >
+                        {selectedCount} {selectedCount === 1 ? 'file' : 'files'}
+                      </span>
+                    </Tooltip>
+                    <button
+                      type="button"
+                      onClick={onClearSelection}
+                      className="docu-chat-composer-files-clear"
+                      aria-label="Clear selection"
+                    >
+                      <ChatCloseIcon className="text-inherit" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <QueryTierDropdown
+                tier={queryTier}
+                onChange={onQueryTierChange}
+                disabled={disabled || isResponding}
+              />
+              <Tooltip
+                title={composerTooltipTitle('Summarize', summarizeDisabledReason, isPhone)}
+                placement="top"
+                mouseEnterDelay={0.2}
+              >
+                <span className="inline-flex">
+                  <button
+                    type="button"
+                    onClick={onSummarize}
+                    disabled={!canSummarize}
+                    className="docu-chat-composer-summarize"
+                    aria-label="Summarize selected document"
+                  >
+                    <ChatSummarizeIcon aria-hidden />
+                    <span>{isPhone ? 'Sum.' : 'Summarize'}</span>
+                  </button>
+                </span>
+              </Tooltip>
+              <Tooltip
+                title={composerTooltipTitle('Categorize', categorizeDisabledReason, isPhone)}
+                placement="top"
+                mouseEnterDelay={0.2}
+              >
+                <span className="inline-flex">
+                  <button
+                    type="button"
+                    onClick={onCategorize}
+                    disabled={!canCategorize}
+                    className="docu-chat-composer-categorize"
+                    aria-label="Categorize selected document"
+                  >
+                    <ChatCategorizeIcon aria-hidden />
+                    <span>{isPhone ? 'Cat.' : 'Categorize'}</span>
+                  </button>
+                </span>
+              </Tooltip>
+              <Tooltip
+                title={composerTooltipTitle(
+                  'Extract metadata',
+                  extractMetadataDisabledReason,
+                  isPhone,
+                )}
+                placement="top"
+                mouseEnterDelay={0.2}
+              >
+                <span className="inline-flex">
+                  <button
+                    type="button"
+                    onClick={onExtractMetadata}
+                    disabled={!canExtractMetadata}
+                    className="docu-chat-composer-extract"
+                    aria-label="Extract MQA metadata"
+                  >
+                    <ChatMetadataIcon aria-hidden />
+                    <span>{isPhone ? 'Meta' : 'Extract metadata'}</span>
+                  </button>
+                </span>
+              </Tooltip>
+            </div>
+
+            <div className="docu-chat-composer-send-wrap shrink-0">
+              <Tooltip
+                title={sendDisabledReason ?? undefined}
+                placement="top"
+                mouseEnterDelay={0.2}
+              >
+                <span className="inline-flex">
+                  <button
+                    type="button"
+                    onClick={isResponding ? onStop : handleSend}
+                    disabled={!isResponding && !canSend}
+                    className={`w-9 h-9 ${radius.full} flex items-center justify-center transition-colors ${
+                      isResponding || canSend
+                        ? 'bg-[#0084ff] hover:bg-[#0077e6]'
+                        : 'bg-[#ececec] cursor-not-allowed'
+                    }`}
+                    aria-label={isResponding ? 'Stop response' : 'Send message'}
+                  >
+                    {isResponding ? (
+                      <span className="block w-3 h-3 bg-white rounded-[2px]" aria-hidden />
+                    ) : (
+                      <ChatSendIcon className={canSend ? '!text-white' : '!text-[#8e8e8e]'} />
+                    )}
+                  </button>
+                </span>
+              </Tooltip>
+            </div>
           </div>
         </div>
 

@@ -1147,7 +1147,18 @@ export default function AppLayout() {
           closable={{ placement: 'end', 'aria-label': 'Close menu' }}
           closeIcon={<ChatCloseIcon />}
           classNames={{ close: 'docu-mobile-drawer-close' }}
-          styles={{ body: { padding: 0 } }}
+          // Fix round 1: the close button used to be the header's only
+          // content — an empty ~56px strip above Sidebar's own "ARCHE AI"
+          // row. `title` puts the wordmark in antd's own header slot
+          // (which already lays out title + close button as one flex
+          // row), so they share a row instead; Sidebar itself skips its
+          // internal wordmark for this `inDrawer` instance (see
+          // Sidebar.tsx) so it isn't rendered twice. Header padding
+          // matches the sidebar body's own inset (`spacing.panelLg`,
+          // 0.625rem) for a continuous left/right edge between the header
+          // row and the "New chat" row directly under it.
+          title={<span className={`text-lg font-semibold ${typeColor.primary}`}>ARCHE AI</span>}
+          styles={{ header: { padding: '0.625rem' }, body: { padding: 0 } }}
         >
           <Sidebar
             width="100%"

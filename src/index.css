@@ -492,8 +492,18 @@ button.docu-citation-pill:hover {
   gap: 0;
 }
 
+/* Toolbar row (row 2): left cluster (files chip, tier dropdown, action
+   buttons) grows to fill the space and wraps onto a further line only
+   when it doesn't fit; the send button (`-send-wrap`) stays fixed on the
+   right, vertically centred against the cluster via the toolbar's own
+   `align-items: center` below. */
+.docu-chat-composer-toolbar {
+  gap: 0.5rem;
+}
+
 .docu-chat-composer-actions {
   gap: 0.5rem;
+  row-gap: 0.375rem;
 }
 
 .docu-chat-composer-files-wrap {
@@ -518,10 +528,15 @@ button.docu-citation-pill:hover {
 
 /* A chip at rest, not just on hover — mainstream composers show the
    attachment/selection count as a small filled pill even when idle, so it
-   reads as "N files" chip rather than a plain link. */
+   reads as "N files" chip rather than a plain link. `height: 2rem` (32px)
+   is explicit rather than left to line-height + padding math, matching
+   the toolbar's shared height rule below (chip / tier dropdown / action
+   buttons all sit on the same 32px, 9999px-radius baseline). */
 .docu-chat-composer-files {
-  display: inline-block;
-  padding: 0.375rem 0.625rem;
+  display: inline-flex;
+  align-items: center;
+  height: 2rem;
+  padding: 0 0.625rem;
   border-radius: 9999px;
   color: var(--docu-text-secondary);
   font-weight: 500;
@@ -572,11 +587,13 @@ button.docu-citation-pill:hover {
 /* Light pill buttons, not filled blue — the accent colour is reserved for
    the primary send action and focus rings (client feedback: "one accent
    colour only"). Icons (ChatInput.tsx) sit inline via `gap`, at every
-   width now, not only the <480px icon+short-label variant. */
+   width now, not only the <480px icon+short-label variant. `height: 2rem`
+   (32px) matches the files chip and tier dropdown — chip/dropdown/buttons
+   share one height and one (9999px) radius on the toolbar row. */
 .docu-chat-composer-summarize,
 .docu-chat-composer-categorize,
 .docu-chat-composer-extract {
-  height: 2.25rem;
+  height: 2rem;
   padding: 0 0.875rem;
   border-radius: 9999px;
   display: inline-flex;
@@ -658,56 +675,31 @@ button.docu-citation-pill:hover {
   box-shadow: none !important;
 }
 
-/* Phone/tablet composer (Task 5, client feedback: "everything just cramps
-   together weirdly" below desktop): the textarea keeps full width on its
-   own row, and the file-count badge + action buttons wrap onto a second
-   row instead of squeezing onto one. `order`/`flex-basis`/`flex-wrap` are
-   layout-only — none of them are among the properties antd's unlayered
-   reset fixes on `<button>`/`<textarea>` (margin, color, font-size,
-   font-family, line-height — see `.docu-citation-pill` above), so this
-   could in principle be plain Tailwind, but stays here next to the rest of
-   `.docu-chat-composer*` for one source of truth on this component's
-   layout, matching the file's existing convention. `.docu-chat-composer`
-   is `flex items-center gap-2` (ChatInput.tsx, Tailwind) with three direct
-   children in DOM order: `-lead` (file badge), `-textarea-wrap`, `-actions`
-   — reordered below without touching that markup. */
-@media (max-width: 767.98px) {
-  .docu-chat-composer {
-    flex-wrap: wrap;
-    /* border-radius comes from the base `.docu-chat-composer` rule
-       (--docu-radius-lg) — no narrower-width override needed now that it
-       isn't a 9999px stadium pill any more. */
-  }
-
-  .docu-chat-composer-textarea-wrap {
-    order: 1;
-    flex-basis: 100%;
-    width: 100%;
-  }
-
-  .docu-chat-composer-lead {
-    order: 2;
-  }
-
-  .docu-chat-composer-actions {
-    order: 3;
-    flex-basis: 100%;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    padding-top: 0.375rem;
-  }
-}
+/* Fix round 1: the composer is two rows (textarea, then a toolbar) at
+   EVERY width now — `.docu-chat-composer` is `flex flex-col` in
+   ChatInput.tsx (Tailwind), not a single row that only wrapped below
+   768px. At 1440px the old single-row layout squeezed the textarea to
+   ~200px and wrapped its own placeholder to three lines while the action
+   buttons ate the rest of the space; the previous `@media (max-width:
+   767.98px)` block that reordered a single row into two only below
+   tablet width is gone — there's no longer a narrower-only case to
+   handle, the base layout already is what that block used to produce.
+   The toolbar's left cluster (`.docu-chat-composer-actions`) still wraps
+   onto a further line on its own via `flex-wrap` (above) whenever it
+   doesn't fit — in practice that only actually happens under ~480-600px,
+   without needing a breakpoint-specific rule to gate it. */
 
 /* <480px only: the composer action buttons drop their full word for an
    icon + short label (ChatInput.tsx renders the short text; the icon's own
    size lives on the MUI `SvgIcon`, not here) — this block only has to
-   shrink the buttons' own box model to fit four of them plus the tier
-   dropdown on one wrapped row without truncating. */
+   shrink the buttons' own horizontal padding and font-size to fit four of
+   them plus the tier dropdown on one wrapped row without truncating.
+   `height` isn't overridden here any more — the base rule is already 2rem
+   (32px), the same shared height as the files chip and tier dropdown. */
 @media (max-width: 479.98px) {
   .docu-chat-composer-summarize,
   .docu-chat-composer-categorize,
   .docu-chat-composer-extract {
-    height: 2rem;
     padding: 0 0.5rem;
     font-size: 0.75rem;
   }
@@ -984,13 +976,21 @@ button.docu-citation-pill:hover {
   }
 }
 
+/* height: 2rem (32px) and border-radius: 9999px match the files chip and
+   the three action buttons — the toolbar row's shared chip/dropdown/
+   button height and radius (fix round 1). The dropdown has no visible
+   background of its own at rest, so the radius only matters once one is
+   added (hover/open state, say), but it's declared here regardless so
+   nothing has to remember to add it later. */
 .docu-query-tier-dropdown {
   display: inline-flex;
   align-items: center;
+  height: 2rem;
   gap: 0.125rem;
   border: none;
+  border-radius: 9999px;
   background: transparent;
-  padding: 0 0.25rem;
+  padding: 0 0.375rem;
   color: #8e8e8e;
   font-size: 0.8125rem;
   font-weight: 500;
@@ -1486,12 +1486,16 @@ button.docu-citation-pill:hover {
    antd Tooltip on the wrapping <span> never opens (the scope requires a
    reason on hover for the greyed Send / Summarize / tier controls). With
    pointer-events off on the disabled button the span is the hover target;
-   the span carries the not-allowed cursor instead. */
-.docu-chat-composer-actions button:disabled,
+   the span carries the not-allowed cursor instead. Scoped to
+   `.docu-chat-composer-toolbar` (fix round 1: covers both the left
+   cluster, `-actions`, and the send button's own wrapper, `-send-wrap`,
+   now that the send button no longer lives inside `-actions`) rather than
+   `-actions` alone. */
+.docu-chat-composer-toolbar button:disabled,
 .docu-query-tier-dropdown:disabled {
   pointer-events: none;
 }
-.docu-chat-composer-actions > span:has(> button:disabled),
-.docu-chat-composer-actions span:has(> .docu-query-tier-dropdown:disabled) {
+.docu-chat-composer-toolbar span:has(> button:disabled),
+.docu-chat-composer-toolbar span:has(> .docu-query-tier-dropdown:disabled) {
   cursor: not-allowed;
 }

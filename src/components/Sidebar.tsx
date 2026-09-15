@@ -85,10 +85,16 @@ export default function Sidebar({
         {/* Compact wordmark row, then "New chat" directly under it as a
             full-width secondary button — mainstream placement (client
             feedback: UI polish pass), rather than pinned at the very
-            bottom below the chat list. */}
-        <div className="shrink-0 mb-3 text-left">
-          <span className={`text-lg font-semibold ${typeColor.primary}`}>ARCHE AI</span>
-        </div>
+            bottom below the chat list. Skipped when `inDrawer`: the
+            Drawer (AppLayout.tsx) renders "ARCHE AI" itself, in its own
+            header, on the same row as the close button (fix round 1) —
+            rendering it again here would duplicate it right below that
+            header instead of sharing its row. */}
+        {!inDrawer && (
+          <div className="shrink-0 mb-3 text-left">
+            <span className={`text-lg font-semibold ${typeColor.primary}`}>ARCHE AI</span>
+          </div>
+        )}
 
         <div className="shrink-0 mb-3">
           <SidebarNavItem
@@ -104,7 +110,14 @@ export default function Sidebar({
         </div>
 
         <div className={`flex flex-col flex-1 min-h-0 ${spacing.section} overflow-hidden`}>
-          <div className="flex flex-col min-h-0 flex-[3] overflow-hidden pt-1">
+          {/* Fix round 1: Files and Chats each scroll independently within
+              their own `min-h-0 overflow-y-auto` section — the Files
+              section (`flex-[3]`, the flexible share) also scrolls at
+              this outer level now, not only inside FolderSidebar's own
+              tree, so a long tree can never push "Chats"/"New chat" off
+              the bottom of a short viewport: this section clips and
+              scrolls its own overflow instead of growing past it. */}
+          <div className="flex flex-col min-h-0 flex-[3] overflow-y-auto overflow-x-hidden pt-1">
             <FolderSidebar browse={browse} selection={selection} />
           </div>
 
@@ -112,10 +125,11 @@ export default function Sidebar({
               the list used to collapse to nothing once Files grew) is a
               floor, not a fixed height — the Files section above still
               takes the rest via flex-[3], and this section still grows
-              past its floor and scrolls its own overflow via the
-              overflow-y-auto list below rather than pushing Files off. */}
+              past its floor and scrolls its own overflow (both here, at
+              the section level, and via the overflow-y-auto list below)
+              rather than pushing Files — or itself — off-screen. */}
           <div
-            className={`flex flex-col flex-1 min-h-[270px] overflow-hidden ${spacing.sectionY}`}
+            className={`flex flex-col flex-1 min-h-[270px] overflow-y-auto overflow-x-hidden ${spacing.sectionY}`}
           >
             <span className={sectionLabel}>
               <ChatMessageIcon />
