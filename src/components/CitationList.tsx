@@ -5,6 +5,7 @@ import { fetchDocumentViewUrl, withPageHint } from '../api/browse'
 import { type, typeColor } from '../styles/typography'
 import { listRow } from '../styles/theme'
 import { groupSourcesByDocument } from '../utils/citationGroups'
+import { citationNumberKey, numberCitations } from '../utils/citations'
 import type { Source } from '../types'
 
 async function resolveSourceUrl(source: Source): Promise<string | null> {
@@ -29,72 +30,60 @@ export async function openSourceInLogicalDoc(source: Source): Promise<void> {
 interface CitationLinkProps {
   source: Source
   label: string
+  /** This citation's stable per-message number (from `numberCitations`) —
+   * the only thing the pill itself displays. */
+  number: number
   className?: string
 }
 
 /** Base pill styling shared by the openable (`<button>`) and non-openable
- * (`<span>`) shapes — a compact filename chip inline with the answer text,
- * replacing the old underlined "(File.pdf, Page 2)" text run. Deliberately
- * subscript-like, clearly smaller than the body text (owner feedback, twice:
- * "something like <sub>", then "still the same size as the normal text").
+ * (`<span>`) shapes — a small round numbered chip inline with the answer
+ * text ("1", "2", …, ChatGPT/Glean-style), replacing the earlier filename
+ * chip: the client asked for something that reads as a citation marker,
+ * not a second copy of the filename crowding the answer text; the full
+ * "<filename> · p. <page>" reference is still one hover away, in `title`
+ * (`citationTooltipText` below), and the same number is repeated next to
+ * the matching page chip in "Related documents" (`CitationList` below) so
+ * a reader can map a pill straight to its document.
  *
- * The size/line-height/margin/colour utilities that used to sit here
- * (`text-[…em]`, `leading-[…]`, `ml-[…]`, `mr-[…]`, `text-[#666]`) never
- * actually applied on the `<button>` shape: `src/main.tsx` loads
- * `antd/dist/reset.css`, which is unlayered and sets
+ * Every box-model and colour property — `font-size`, `line-height`,
+ * `min-width`, `height`, `padding`, `margin`, `border-radius`, `color`,
+ * `background` — lives in the plain, unlayered `.docu-citation-pill` class
+ * in `src/index.css` instead of as Tailwind utilities here, and stays
+ * there even though only five of those properties are actually contested:
+ * `src/main.tsx` loads `antd/dist/reset.css`, which is unlayered and sets
  * `button { margin; color; font-size; font-family; line-height }`, and
  * Tailwind v4 puts every utility in `@layer utilities` — unlayered CSS
  * always wins over layered CSS, regardless of specificity or source order.
- * Those five properties now live in the plain, unlayered `.docu-citation-pill`
- * class in `src/index.css` instead, whose class selector outranks the
- * reset's element selector among unlayered rules. The remaining utilities
- * below (layout, border, background, the baseline nudge) are untouched by
- * the reset, so they stay as Tailwind classes.
+ * This class selector (0,1,0) outranks the reset's element selector (0,0,1)
+ * among unlayered rules, so it wins on both the `<button>` and `<span>`
+ * pill shapes. Keeping the whole set in one place (rather than splitting
+ * "contested" from "uncontested" properties across two files) is what
+ * actually keeps the chip circular — see `src/index.css` for the values.
  *
- * `0.625em` (10px at a 16px body) is the floor at which a mixed-case
- * filename with digits and underscores stays legible; `leading-[1.4]`
- * keeps the chip's box at ~0.875em of the surrounding text so it no longer
- * fills the line like a word does, and `py-0` (all vertical space comes
- * from line-height, not padding) keeps its total height, border included,
- * within the paragraph's line box so a cited line never grows taller than
- * an uncited one. `relative top-[0.2em]` (rather than the `sub` keyword,
+ * The remaining utilities below are layout/position only, untouched by the
+ * reset: `inline-flex items-center justify-center` centers the digit in
+ * the circle, and `relative top-[0.2em]` (rather than the `sub` keyword,
  * whose exact drop varies by browser/font) nudges it below the baseline by
- * a small, fixed amount. Spacing is asymmetric on purpose: a `0.45em`
- * right margin (in the chip's own em, ~4px) separates a chip from the text
- * or chip that follows it, so two citations in a row read as two chips,
- * while the lead-in is only `0.15em` because an inline margin is not
- * collapsed at a wrap point — a bigger left margin would indent a chip
- * that lands at the start of a line. Callers passing `className` must not
- * add their own margin utilities (Tailwind class precedence is not
- * append-order-safe). */
+ * a small, fixed amount so a cited line never grows taller than an uncited
+ * one. Callers passing `className` must not add their own margin/padding
+ * utilities (Tailwind class precedence is not append-order-safe, and those
+ * properties are owned by `.docu-citation-pill` regardless). */
 const CITATION_PILL_CLASS =
-  'docu-citation-pill relative top-[0.2em] inline-flex items-center gap-[0.25em] rounded-full border border-[#e5e5e5] bg-[#f6f6f6] px-[0.6em] py-0 align-baseline'
+  'docu-citation-pill relative top-[0.2em] inline-flex items-center justify-center align-baseline'
 
-const CITATION_PILL_NAME_MAX_LENGTH = 28
-
-/** Drops a trailing "*.ext" — but only a real extension, never a leading
- * dot (a dotfile-shaped name) or a name with no dot at all. */
-function stripFilenameExtension(filename: string): string {
-  const dot = filename.lastIndexOf('.')
-  return dot > 0 ? filename.slice(0, dot) : filename
+/** Full "<filename> · p. <page>" reference shown as the pill's tooltip —
+ * the pill itself only shows the citation's number, so this native `title`
+ * is where a sighted reader actually learns which document and page it
+ * points to (a screen reader gets the same information from `label`,
+ * `citationDisplayLabel`'s "(File.pdf, Page N)" form, as the accessible
+ * name). Unlike the old pill text, this is never truncated — a tooltip has
+ * room for the full filename. */
+function citationTooltipText(source: Source): string {
+  return source.page != null ? `${source.filename} · p. ${source.page}` : source.filename
 }
 
-function truncateForPill(name: string, max = CITATION_PILL_NAME_MAX_LENGTH): string {
-  return name.length > max ? `${name.slice(0, max - 1)}…` : name
-}
-
-/** The pill's own two parts: the extension-stripped, truncated filename,
- * and — only when a page is known — a "· p. N" suffix. Built directly from
- * `source` rather than the `label` prop, which stays around only as the
- * button's/span's accessible name (`citationDisplayLabel`'s full,
- * untruncated "(File.pdf, Page 2)" text) so a screen reader still gets the
- * complete reference even though sighted users see the compact chip. */
-function citationPillText(source: Source): string {
-  const name = truncateForPill(stripFilenameExtension(source.filename))
-  return source.page != null ? `${name} · p. ${source.page}` : name
-}
-
-export function CitationLink({ source, label, className }: CitationLinkProps) {
+export function CitationLink({ source, label, number, className }: CitationLinkProps) {
   const [opening, setOpening] = useState(false)
 
   const handleClick = useCallback(async () => {
@@ -107,16 +96,16 @@ export function CitationLink({ source, label, className }: CitationLinkProps) {
   }, [source])
 
   const canOpen = Boolean(source.url || source.documentId)
-  const pillText = citationPillText(source)
+  const tooltip = citationTooltipText(source)
 
   if (!canOpen) {
     return (
       <span
         className={`${CITATION_PILL_CLASS} ${className ?? ''}`}
-        title={source.filename}
+        title={tooltip}
         aria-label={label}
       >
-        {pillText}
+        {number}
       </span>
     )
   }
@@ -126,11 +115,11 @@ export function CitationLink({ source, label, className }: CitationLinkProps) {
       type="button"
       onClick={() => void handleClick()}
       disabled={opening}
-      className={`${CITATION_PILL_CLASS} hover:bg-[#ececec] disabled:opacity-60 ${className ?? ''}`}
-      title={source.filename}
+      className={`${CITATION_PILL_CLASS} disabled:opacity-60 ${className ?? ''}`}
+      title={tooltip}
       aria-label={label}
     >
-      {pillText}
+      {number}
     </button>
   )
 }
@@ -152,6 +141,10 @@ export default function CitationList({ sources }: CitationListProps) {
   const panelId = useId()
 
   const groups = useMemo(() => groupSourcesByDocument(sources), [sources])
+  // Same numbering `CitationLink` (via `markdownRenderers.tsx`) assigns
+  // inline, computed over this same `sources` array — so the digit next to
+  // a page chip here always matches the pill that cites it in the answer.
+  const numbers = useMemo(() => numberCitations(sources), [sources])
 
   const handleOpen = useCallback(async (source: Source, key: string) => {
     setOpeningKey(key)
@@ -223,7 +216,11 @@ export default function CitationList({ sources }: CitationListProps) {
                         const canOpenPage = Boolean(entry.source.url || entry.source.documentId)
                         const pageKey = `${group.key}-p${entry.page}`
                         const isPageOpening = openingKey === pageKey
-                        const label = `p. ${entry.page}`
+                        // Prefixed with the same number the inline pill for
+                        // this exact citation shows, so a reader can map
+                        // one to the other.
+                        const number = numbers.get(citationNumberKey(entry.source))
+                        const label = number != null ? `${number} · p. ${entry.page}` : `p. ${entry.page}`
 
                         if (!canOpenPage) {
                           return (

@@ -1,4 +1,7 @@
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { act, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import React from 'react'
 import ChatMessageItem from './ChatMessage'
 import type { ChatMessage, Source } from '../types'
@@ -64,6 +67,28 @@ describe('AnswerContent Markdown rendering', () => {
 
     const link = screen.getByRole('button', { name: /Report\.pdf/ })
     expect(link.closest('p')).not.toBeNull()
+  })
+
+  it('numbers a repeated inline citation pill the same each time, and matches the page chip number in Related documents', async () => {
+    const user = userEvent.setup()
+    const sourceA: Source = { index: 1, filename: 'A.pdf', docRef: '[Doc1]', documentId: 'doc-a', page: 2 }
+    const sourceB: Source = { index: 2, filename: 'B.pdf', docRef: '[Doc2]', documentId: 'doc-b', page: 5 }
+    const content = 'First point [Doc1]. Second point [Doc2]. Repeats the first [Doc1] again.'
+    render(
+      <ChatMessageItem message={assistantMessage({ content, sources: [sourceA, sourceB] })} />,
+    )
+
+    const repeatedPills = screen.getAllByTitle('A.pdf · p. 2')
+    expect(repeatedPills).toHaveLength(2)
+    expect(repeatedPills[0]).toHaveTextContent('1')
+    expect(repeatedPills[1]).toHaveTextContent('1')
+
+    const otherPill = screen.getByTitle('B.pdf · p. 5')
+    expect(otherPill).toHaveTextContent('2')
+
+    await user.click(screen.getByRole('button', { name: /Related documents/ }))
+    expect(screen.getByText('1 · p. 2')).toBeInTheDocument()
+    expect(screen.getByText('2 · p. 5')).toBeInTheDocument()
   })
 
   it('renders inline code, bold text, and demotes an h1 heading to a styled paragraph', () => {
@@ -416,6 +441,14 @@ describe('chat pane never scrolls horizontally', () => {
     expect(cell.className).toContain('break-words')
   })
 
+  it('renders the table inside the .docu-answer container that scopes its unlayered CSS', () => {
+    const content = '| A | B |\n| --- | --- |\n| 1 | 2 |'
+    render(<ChatMessageItem message={assistantMessage({ content, status: 'complete' })} />)
+
+    const table = screen.getByRole('table')
+    expect(table.closest('.docu-answer')).not.toBeNull()
+  })
+
   it('lets a long unbroken user message wrap instead of forcing the bubble wider', () => {
     const longWord = 'x'.repeat(3000)
     render(
@@ -426,5 +459,34 @@ describe('chat pane never scrolls horizontally', () => {
 
     const bubble = screen.getByText(new RegExp(longWord)).closest('div')
     expect(bubble?.className).toContain('break-words')
+  })
+})
+
+describe('.docu-answer table/list CSS contract', () => {
+  it('declares full-width + collapsed borders for tables, padding + bold/background for th, and padding for td', () => {
+    const css = readFileSync(path.resolve(__dirname, '../index.css'), 'utf-8')
+
+    const table = css.match(/\.docu-answer table\s*\{([^}]*)\}/)
+    expect(table).not.toBeNull()
+    expect(table![1]).toMatch(/width\s*:\s*100%/)
+    expect(table![1]).toMatch(/border-collapse\s*:\s*collapse/)
+
+    const th = css.match(/\.docu-answer th\s*\{([^}]*)\}/)
+    expect(th).not.toBeNull()
+    expect(th![1]).toMatch(/padding\s*:\s*0\.4em\s+0\.6em/)
+    expect(th![1]).toMatch(/font-weight\s*:/)
+    expect(th![1]).toMatch(/background\s*:/)
+
+    const td = css.match(/\.docu-answer td\s*\{([^}]*)\}/)
+    expect(td).not.toBeNull()
+    expect(td![1]).toMatch(/padding\s*:\s*0\.4em\s+0\.6em/)
+  })
+
+  it('gives .docu-answer ul/ol a bottom margin the unlayered antd reset cannot silently win over', () => {
+    const css = readFileSync(path.resolve(__dirname, '../index.css'), 'utf-8')
+
+    const list = css.match(/\.docu-answer ul,\s*\.docu-answer ol\s*\{([^}]*)\}/)
+    expect(list).not.toBeNull()
+    expect(list![1]).toMatch(/margin-bottom\s*:/)
   })
 })

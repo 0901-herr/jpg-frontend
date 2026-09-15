@@ -166,7 +166,11 @@ function AnswerContent({ message }: { message: ChatMessage }) {
 
   return (
     <div
-      className={`${type.body} ${typeColor.body} leading-relaxed min-w-0 break-words [overflow-wrap:anywhere]`}
+      // `docu-answer` scopes the unlayered table/list rules in
+      // src/index.css (`.docu-answer table`, `.docu-answer th`, …) to just
+      // the rendered answer, so they can never leak into the sidebar or
+      // any other plain table/list elsewhere in the app.
+      className={`docu-answer ${type.body} ${typeColor.body} leading-relaxed min-w-0 break-words [overflow-wrap:anywhere]`}
     >
       <MarkdownAnswer
         content={message.content}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { splitAnswerByDocRefs } from './citations'
+import { numberCitations, splitAnswerByDocRefs } from './citations'
 import type { Source } from '../types'
 
 function source(overrides: Partial<Source> & { index: number; docRef: string }): Source {
@@ -9,6 +9,75 @@ function source(overrides: Partial<Source> & { index: number; docRef: string }):
     ...overrides,
   }
 }
+
+function plainSource(overrides: Partial<Source> & { index: number; filename: string }): Source {
+  return {
+    documentId: undefined,
+    page: undefined,
+    docRef: undefined,
+    ...overrides,
+  }
+}
+
+describe('numberCitations', () => {
+  it('numbers distinct (document_id, page) pairs 1, 2, 3… in order of first appearance', () => {
+    const sources: Source[] = [
+      plainSource({ index: 1, filename: 'A.pdf', documentId: 'doc-a', page: 2 }),
+      plainSource({ index: 2, filename: 'B.pdf', documentId: 'doc-b', page: 1 }),
+      plainSource({ index: 3, filename: 'C.pdf', documentId: 'doc-c', page: 4 }),
+    ]
+
+    const numbers = numberCitations(sources)
+
+    expect(numbers.get('doc-a:2')).toBe(1)
+    expect(numbers.get('doc-b:1')).toBe(2)
+    expect(numbers.get('doc-c:4')).toBe(3)
+  })
+
+  it('reuses the same number for a repeated (document_id, page) citation', () => {
+    const sources: Source[] = [
+      plainSource({ index: 1, filename: 'A.pdf', documentId: 'doc-a', page: 2 }),
+      plainSource({ index: 2, filename: 'B.pdf', documentId: 'doc-b', page: 1 }),
+      plainSource({ index: 3, filename: 'A.pdf', documentId: 'doc-a', page: 2 }),
+    ]
+
+    const numbers = numberCitations(sources)
+
+    expect(numbers.size).toBe(2)
+    expect(numbers.get('doc-a:2')).toBe(1)
+    expect(numbers.get('doc-b:1')).toBe(2)
+  })
+
+  it('treats the same document on two different pages as two distinct citations', () => {
+    const sources: Source[] = [
+      plainSource({ index: 1, filename: 'A.pdf', documentId: 'doc-a', page: 2 }),
+      plainSource({ index: 2, filename: 'A.pdf', documentId: 'doc-a', page: 5 }),
+    ]
+
+    const numbers = numberCitations(sources)
+
+    expect(numbers.get('doc-a:2')).toBe(1)
+    expect(numbers.get('doc-a:5')).toBe(2)
+  })
+
+  it('falls back to filename as the identity when documentId is absent', () => {
+    const sources: Source[] = [
+      plainSource({ index: 1, filename: 'A.pdf', page: 1 }),
+      plainSource({ index: 2, filename: 'A.pdf', page: 1 }),
+      plainSource({ index: 3, filename: 'B.pdf', page: 1 }),
+    ]
+
+    const numbers = numberCitations(sources)
+
+    expect(numbers.size).toBe(2)
+    expect(numbers.get('A.pdf:1')).toBe(1)
+    expect(numbers.get('B.pdf:1')).toBe(2)
+  })
+
+  it('returns an empty map for an empty source list', () => {
+    expect(numberCitations([]).size).toBe(0)
+  })
+})
 
 describe('splitAnswerByDocRefs — raw multi-document markers', () => {
   it('expands a comma-separated bracket list into one ref segment per entry that has a matching source', () => {

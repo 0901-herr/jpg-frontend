@@ -10,7 +10,7 @@ import {
 import type { Components } from 'react-markdown'
 import type { Element, ElementContent, Root } from 'hast'
 import type { Plugin } from 'unified'
-import { citationDisplayLabel, splitAnswerByDocRefs } from './citations'
+import { citationDisplayLabel, citationNumberKey, numberCitations, splitAnswerByDocRefs } from './citations'
 import { CitationLink } from '../components/CitationList'
 import type { Source } from '../types'
 
@@ -27,8 +27,22 @@ import type { Source } from '../types'
  * still an unrendered element descriptor (its own component override
  * hasn't run yet), so `cloneElement`-ing it with linkified children is safe
  * — the substitution is in place before React ever mounts it.
+ *
+ * `numbers` is this message's `numberCitations(sources)` map (computed
+ * once in `createAnswerMarkdownComponents`, below) — each `CitationLink`
+ * gets the stable per-message number for its own `(document_id, page)`
+ * rather than renumbering locally per call site, so two pills citing the
+ * same page anywhere in the answer always show the same digit. The
+ * fallback to `segment.source.index` only guards against a `sources` array
+ * that somehow doesn't contain the segment's own source — `numbers` is
+ * always built from this same array, so in practice every lookup hits.
  */
-function linkifyNode(node: ReactNode, sources: Source[], keyPrefix: string): ReactNode {
+function linkifyNode(
+  node: ReactNode,
+  sources: Source[],
+  numbers: Map<string, number>,
+  keyPrefix: string,
+): ReactNode {
   if (typeof node === 'string') {
     if (!node) return node
     const segments = splitAnswerByDocRefs(node, sources)
@@ -39,6 +53,7 @@ function linkifyNode(node: ReactNode, sources: Source[], keyPrefix: string): Rea
           key={`${keyPrefix}-ref-${i}`}
           source={segment.source}
           label={citationDisplayLabel(segment.source)}
+          number={numbers.get(citationNumberKey(segment.source)) ?? segment.source.index}
         />
       ) : (
         <Fragment key={`${keyPrefix}-text-${i}`}>{segment.value}</Fragment>
@@ -48,7 +63,9 @@ function linkifyNode(node: ReactNode, sources: Source[], keyPrefix: string): Rea
 
   if (Array.isArray(node)) {
     return node.map((child, i) => (
-      <Fragment key={`${keyPrefix}-${i}`}>{linkifyNode(child, sources, `${keyPrefix}-${i}`)}</Fragment>
+      <Fragment key={`${keyPrefix}-${i}`}>
+        {linkifyNode(child, sources, numbers, `${keyPrefix}-${i}`)}
+      </Fragment>
     ))
   }
 
@@ -56,7 +73,7 @@ function linkifyNode(node: ReactNode, sources: Source[], keyPrefix: string): Rea
     const element = node as ReactElement<{ children?: ReactNode }>
     if (element.props.children == null) return element
     return cloneElement(element, {
-      children: linkifyNode(element.props.children, sources, keyPrefix),
+      children: linkifyNode(element.props.children, sources, numbers, keyPrefix),
     })
   }
 
@@ -67,10 +84,11 @@ function citationAwareBlock<Tag extends keyof JSX.IntrinsicElements>(
   tag: Tag,
   className: string,
   sources: Source[],
+  numbers: Map<string, number>,
   keyPrefix: string,
 ) {
   return function CitationAwareBlock({ children }: { children?: ReactNode }) {
-    return createElement(tag, { className }, linkifyNode(children, sources, keyPrefix))
+    return createElement(tag, { className }, linkifyNode(children, sources, numbers, keyPrefix))
   }
 }
 
@@ -91,52 +109,66 @@ function plainBlock<Tag extends keyof JSX.IntrinsicElements>(tag: Tag, className
 
 const PARAGRAPH_SPACING = 'mb-[0.75em] last:mb-0'
 const HEADING_CLASS = `font-medium ${PARAGRAPH_SPACING}`
-const LIST_CLASS = `${PARAGRAPH_SPACING} pl-5 space-y-1`
+// Bottom margin is NOT included here (unlike PARAGRAPH_SPACING above) — it
+// would be dead weight: antd's reset.css sets an unlayered
+// `ol, ul, dl { margin-bottom: 1em }`, which always beats this layered
+// Tailwind utility regardless of specificity. That spacing lives instead
+// in the unlayered `.docu-answer ul`/`.docu-answer ol` rule in
+// src/index.css.
+const LIST_CLASS = 'pl-5 space-y-1'
 // `break-words` + `overflow-wrap: anywhere` so a long unbroken value (an
 // MQA metadata field, say) wraps inside its cell instead of forcing the
-// whole table — and with it the chat pane — wider.
-const CELL_CLASS = 'border border-[#ececec] px-2 py-1 text-left align-top break-words [overflow-wrap:anywhere]'
+// whole table — and with it the chat pane — wider. Width, border-collapse,
+// padding, and `th`'s bold/background live in the unlayered `.docu-answer
+// table` / `.docu-answer th` rules in `src/index.css` instead (see the
+// comment there) — this class only carries the per-cell border, alignment,
+// and wrapping, none of which any unlayered rule contests.
+const CELL_CLASS = 'border border-[#ececec] text-left align-top break-words [overflow-wrap:anywhere]'
 const INLINE_CODE_CLASS = 'rounded bg-black/[0.05] px-1 py-0.5 font-mono text-[0.9em]'
 
 /** Builds the react-markdown `components` map for one answer render —
  * `sources` closes over the citations available for this specific message,
- * since `[DocN]` markers only resolve against that message's own sources. */
+ * since `[DocN]` markers only resolve against that message's own sources.
+ * `numbers` is computed once here (`numberCitations(sources)`) and threaded
+ * through every citation-aware block so every inline pill in this answer,
+ * however deeply nested, numbers consistently — see `linkifyNode`. */
 export function createAnswerMarkdownComponents(sources: Source[]): Components {
+  const numbers = numberCitations(sources)
   return {
-    p: citationAwareBlock('p', PARAGRAPH_SPACING, sources, 'p'),
+    p: citationAwareBlock('p', PARAGRAPH_SPACING, sources, numbers, 'p'),
     // Headings demoted to bold text — an LLM answer has no document
     // structure of its own to justify a heading's visual weight inside a
     // chat bubble.
-    h1: citationAwareBlock('p', HEADING_CLASS, sources, 'h1'),
-    h2: citationAwareBlock('p', HEADING_CLASS, sources, 'h2'),
-    h3: citationAwareBlock('p', HEADING_CLASS, sources, 'h3'),
-    h4: citationAwareBlock('p', HEADING_CLASS, sources, 'h4'),
-    h5: citationAwareBlock('p', HEADING_CLASS, sources, 'h5'),
-    h6: citationAwareBlock('p', HEADING_CLASS, sources, 'h6'),
+    h1: citationAwareBlock('p', HEADING_CLASS, sources, numbers, 'h1'),
+    h2: citationAwareBlock('p', HEADING_CLASS, sources, numbers, 'h2'),
+    h3: citationAwareBlock('p', HEADING_CLASS, sources, numbers, 'h3'),
+    h4: citationAwareBlock('p', HEADING_CLASS, sources, numbers, 'h4'),
+    h5: citationAwareBlock('p', HEADING_CLASS, sources, numbers, 'h5'),
+    h6: citationAwareBlock('p', HEADING_CLASS, sources, numbers, 'h6'),
     ul: plainBlock('ul', `list-disc ${LIST_CLASS}`),
     ol: plainBlock('ol', `list-decimal ${LIST_CLASS}`),
-    li: citationAwareBlock('li', 'leading-relaxed', sources, 'li'),
+    li: citationAwareBlock('li', 'leading-relaxed', sources, numbers, 'li'),
     blockquote: citationAwareBlock(
       'blockquote',
       `border-l-2 border-[#ececec] pl-3 text-[#676767] ${PARAGRAPH_SPACING}`,
       sources,
+      numbers,
       'bq',
     ),
     // A wide table (the MQA metadata table, especially) must scroll inside
     // its own box, never the whole chat pane — the wrapper carries the
-    // overflow, the `<table>` itself keeps its existing sizing.
+    // overflow; the `<table>` itself picks up width/border-collapse from
+    // the unlayered `.docu-answer table` rule (src/index.css).
     table: ({ children }) => (
       <div className={`max-w-full overflow-x-auto ${PARAGRAPH_SPACING}`}>
-        <table className="border-collapse border border-[#ececec] w-full text-sm">
-          {children}
-        </table>
+        <table className="text-sm">{children}</table>
       </div>
     ),
     thead: plainBlock('thead', ''),
     tbody: plainBlock('tbody', ''),
     tr: plainBlock('tr', ''),
-    th: citationAwareBlock('th', `${CELL_CLASS} font-medium`, sources, 'th'),
-    td: citationAwareBlock('td', CELL_CLASS, sources, 'td'),
+    th: citationAwareBlock('th', CELL_CLASS, sources, numbers, 'th'),
+    td: citationAwareBlock('td', CELL_CLASS, sources, numbers, 'td'),
     // `className` is honored when supplied (by the `pre` override below,
     // via `cloneElement`) and otherwise defaults to the inline-code chip
     // style — a component element isn't executed until React actually
@@ -176,7 +208,7 @@ export function createAnswerMarkdownComponents(sources: Source[]): Components {
         rel="noopener noreferrer"
         className="underline decoration-[#c8c8c8] underline-offset-2 hover:decoration-[#676767]"
       >
-        {linkifyNode(children, sources, 'a')}
+        {linkifyNode(children, sources, numbers, 'a')}
       </a>
     ),
   }

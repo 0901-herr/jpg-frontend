@@ -377,22 +377,79 @@ input.ant-input:focus-visible {
   padding: 0 0.25rem;
 }
 
-/* Inline citation pill (CitationList.tsx) — size/spacing/colour live here,
-   in a plain unlayered class, rather than as Tailwind utilities on the
-   element, because `src/main.tsx` loads antd's unlayered reset.css, whose
-   `button { margin; color; font-size; line-height }` rule always beats
-   Tailwind's utilities (Tailwind v4 puts them in `@layer utilities`, and
-   unlayered CSS overrides layered CSS regardless of specificity). This
-   class selector (0,1,0) outranks the reset's element selector (0,0,1)
-   among unlayered rules, so it wins on both the `<button>` and `<span>`
-   pill shapes. See the doc comment on `CITATION_PILL_CLASS` for why each
-   value was chosen. */
+/* Inline citation pill (CitationList.tsx) — a small round numbered chip
+   ("1", "2", …), not a filename chip: font-size, sizing, padding, margin,
+   colour and background all live here, in a plain unlayered class, rather
+   than as Tailwind utilities on the element, because `src/main.tsx` loads
+   antd's unlayered reset.css, whose
+   `button { margin; color; font-size; font-family; line-height }` rule
+   always beats Tailwind's utilities (Tailwind v4 puts them in
+   `@layer utilities`, and unlayered CSS overrides layered CSS regardless
+   of specificity). This class selector (0,1,0) outranks the reset's
+   element selector (0,0,1) among unlayered rules, so it wins on both the
+   `<button>` and `<span>` pill shapes. Padding/background aren't actually
+   contested by the reset, but stay here anyway for one source of truth —
+   splitting a circular chip's box model across two files (some in
+   Tailwind, some here) is exactly how it stops being circular. See the
+   doc comment on `CITATION_PILL_CLASS` in CitationList.tsx for the fuller
+   rationale. */
 .docu-citation-pill {
-  font-size: 0.625em;
-  line-height: 1.4;
-  margin: 0 0.45em 0 0.15em;
-  color: #666;
+  font-size: 0.65em;
+  line-height: 1.5em;
+  min-width: 1.5em;
+  height: 1.5em;
+  padding: 0 0.35em;
+  margin: 0 0.2em;
+  border-radius: 999px;
+  color: #525252;
+  background: #ececec;
   font-family: inherit;
+}
+
+button.docu-citation-pill:hover {
+  background: #dedede;
+}
+
+/* Answer Markdown — tables and lists (ChatMessage.tsx / markdownRenderers.tsx).
+   Scoped to `.docu-answer` (the assistant-answer container) so it can
+   never leak into the sidebar or any other plain table/list in the app.
+   `<table>` itself already gets `border-collapse: collapse` for free from
+   antd's unlayered reset (`table { border-collapse: collapse }`), so this
+   rule restates it for documentation/single-source-of-truth rather than to
+   win a cascade fight; width, `th`'s bold weight/background, and cell
+   padding have no such reset rule to contend with — they're unlayered
+   purely to keep every table-styling value in one place next to it. */
+.docu-answer table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.docu-answer th {
+  padding: 0.4em 0.6em;
+  font-weight: 700;
+  background: #f6f6f6;
+}
+
+.docu-answer td {
+  padding: 0.4em 0.6em;
+}
+
+/* List spacing has to live here too, for the same reason as the citation
+   pill above rather than the table rules just above: antd's reset.css sets
+   `ol, ul, dl { margin-top: 0; margin-bottom: 1em }`, an unlayered
+   element-selector rule, which beats the layered Tailwind spacing utility
+   on `<ul>`/`<ol>` (`mb-[0.75em] last:mb-0` in markdownRenderers.tsx's
+   `LIST_CLASS`) regardless of specificity — so every list in an answer
+   always carried a full 1em gap after it, even the last element in the
+   message. */
+.docu-answer ul,
+.docu-answer ol {
+  margin-bottom: 0.75em;
+}
+
+.docu-answer ul:last-child,
+.docu-answer ol:last-child {
+  margin-bottom: 0;
 }
 
 .docu-chat-composer {

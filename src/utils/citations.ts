@@ -100,6 +100,35 @@ export function citationsToSources(citations: Citation[]): Source[] {
   return citations.map((citation, i) => mapCitationToSource(citation, i + 1))
 }
 
+/** Groups a `Source` by the same `(document_id, page)` identity used for
+ * citation numbering — falls back to `filename` when `documentId` is
+ * absent, matching `groupSourcesByDocument`'s document-identity fallback,
+ * so a source with no `documentId` still numbers consistently across the
+ * inline pill and the "Related documents" page chip that both cite it. */
+export function citationNumberKey(source: Source): string {
+  return `${source.documentId ?? source.filename}:${source.page ?? ''}`
+}
+
+/** Assigns a stable, 1-based number to each distinct `(document_id, page)`
+ * pair in `sources`, in order of first appearance — a citation that repeats
+ * later in the same message (the same page cited more than once) reuses
+ * its earlier number rather than taking a new one. Both the inline pill
+ * (`CitationLink`, via `markdownRenderers.tsx`) and the "Related documents"
+ * page chips (`CitationList`) call this over the same message's `sources`
+ * array so a reader can map a pill's digit straight to its list entry. */
+export function numberCitations(sources: Source[]): Map<string, number> {
+  const numbers = new Map<string, number>()
+  let next = 1
+  for (const source of sources) {
+    const key = citationNumberKey(source)
+    if (!numbers.has(key)) {
+      numbers.set(key, next)
+      next += 1
+    }
+  }
+  return numbers
+}
+
 /** Friendly inline citation label, e.g. "(Report.pdf, Page 22)" — replaces
  * the raw [DocN] marker, which means nothing to a user reading the answer. */
 export function citationDisplayLabel(source: Source): string {

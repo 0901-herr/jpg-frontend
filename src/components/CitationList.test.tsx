@@ -58,9 +58,27 @@ describe('CitationList grouping', () => {
     render(<CitationList sources={sources} />)
     await user.click(screen.getByRole('button', { name: /Related documents/ }))
 
-    expect(screen.getByText('p. 2')).toBeInTheDocument()
-    expect(screen.getByText('p. 5')).toBeInTheDocument()
-    expect(screen.getByText('p. 7')).toBeInTheDocument()
+    expect(screen.getByText('1 · p. 2')).toBeInTheDocument()
+    expect(screen.getByText('2 · p. 5')).toBeInTheDocument()
+    expect(screen.getByText('3 · p. 7')).toBeInTheDocument()
+  })
+
+  it('prefixes each page chip with the same number an inline pill for that citation would show', async () => {
+    const user = userEvent.setup()
+    const sources: Source[] = [
+      source({ index: 1, filename: 'A.pdf', documentId: 'doc-a', page: 2 }),
+      source({ index: 2, filename: 'B.pdf', documentId: 'doc-b', page: 1 }),
+      source({ index: 3, filename: 'A.pdf', documentId: 'doc-a', page: 5 }),
+    ]
+
+    render(<CitationList sources={sources} />)
+    await user.click(screen.getByRole('button', { name: /Related documents/ }))
+
+    // First appearance order across the whole sources array: doc-a p2 → 1,
+    // doc-b p1 → 2, doc-a p5 → 3 — independent of how they group by document.
+    expect(screen.getByText('1 · p. 2')).toBeInTheDocument()
+    expect(screen.getByText('2 · p. 1')).toBeInTheDocument()
+    expect(screen.getByText('3 · p. 5')).toBeInTheDocument()
   })
 
   it('opens the first page when the filename area is clicked', async () => {
@@ -107,7 +125,7 @@ describe('openSourceInLogicalDoc', () => {
 })
 
 describe('CitationLink pill', () => {
-  it('renders the filename without its extension plus a "· p. N" page suffix, with the full name as the title', () => {
+  it('renders only the citation number as the pill text', () => {
     const src: Source = source({
       index: 1,
       filename: 'Meeting_Minutes_July_2026.pdf',
@@ -115,39 +133,36 @@ describe('CitationLink pill', () => {
       page: 2,
     })
 
-    render(<CitationLink source={src} label={citationDisplayLabel(src)} />)
+    render(<CitationLink source={src} label={citationDisplayLabel(src)} number={3} />)
 
     const pill = screen.getByRole('button')
-    expect(pill).toHaveTextContent('Meeting_Minutes_July_2026 · p. 2')
-    expect(pill).toHaveAttribute('title', 'Meeting_Minutes_July_2026.pdf')
+    expect(pill).toHaveTextContent('3')
   })
 
-  it('truncates a long filename to 28 characters with an ellipsis, still keeping the full name in the title', () => {
+  it('shows the full filename and page as the tooltip title, regardless of filename length', () => {
     const src: Source = source({
       index: 1,
       filename: 'An_Extremely_Long_Document_Filename_That_Should_Be_Truncated.pdf',
       documentId: 'doc-1',
+      page: 5,
     })
 
-    render(<CitationLink source={src} label={citationDisplayLabel(src)} />)
+    render(<CitationLink source={src} label={citationDisplayLabel(src)} number={1} />)
 
     const pill = screen.getByRole('button')
-    const text = pill.textContent ?? ''
-    expect(text.length).toBeLessThanOrEqual(28)
-    expect(text.endsWith('…')).toBe(true)
+    expect(pill).toHaveTextContent('1')
     expect(pill).toHaveAttribute(
       'title',
-      'An_Extremely_Long_Document_Filename_That_Should_Be_Truncated.pdf',
+      'An_Extremely_Long_Document_Filename_That_Should_Be_Truncated.pdf · p. 5',
     )
   })
 
-  it('omits the page suffix when no page is known', () => {
+  it('omits the page suffix from the title when no page is known', () => {
     const src: Source = source({ index: 1, filename: 'Report.pdf', documentId: 'doc-1' })
 
-    render(<CitationLink source={src} label={citationDisplayLabel(src)} />)
+    render(<CitationLink source={src} label={citationDisplayLabel(src)} number={2} />)
 
-    expect(screen.getByRole('button')).toHaveTextContent('Report')
-    expect(screen.queryByText(/p\.\s*\d/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button')).toHaveAttribute('title', 'Report.pdf')
   })
 
   it('keeps the full "(File.pdf, Page N)" text as the accessible name for screen readers', () => {
@@ -159,7 +174,7 @@ describe('CitationLink pill', () => {
       reference: 'Page 3',
     })
 
-    render(<CitationLink source={src} label={citationDisplayLabel(src)} />)
+    render(<CitationLink source={src} label={citationDisplayLabel(src)} number={1} />)
 
     expect(screen.getByRole('button', { name: '(Report.pdf, Page 3)' })).toBeInTheDocument()
   })
@@ -167,7 +182,7 @@ describe('CitationLink pill', () => {
   it('puts the docu-citation-pill class on the openable button shape', () => {
     const src: Source = source({ index: 1, filename: 'Report.pdf', documentId: 'doc-1' })
 
-    render(<CitationLink source={src} label={citationDisplayLabel(src)} />)
+    render(<CitationLink source={src} label={citationDisplayLabel(src)} number={1} />)
 
     expect(screen.getByRole('button')).toHaveClass('docu-citation-pill')
   })
@@ -175,23 +190,28 @@ describe('CitationLink pill', () => {
   it('puts the docu-citation-pill class on the non-openable span shape', () => {
     const src: Source = source({ index: 1, filename: 'Report.pdf' })
 
-    render(<CitationLink source={src} label={citationDisplayLabel(src)} />)
+    render(<CitationLink source={src} label={citationDisplayLabel(src)} number={4} />)
 
-    expect(screen.getByText('Report')).toHaveClass('docu-citation-pill')
+    expect(screen.getByText('4')).toHaveClass('docu-citation-pill')
   })
 })
 
 describe('docu-citation-pill CSS contract', () => {
-  it('declares font-size, line-height, margin and color, since antd resets these on <button> and jsdom cannot compute the cascade to catch a regression here', () => {
+  it('declares font-size, min-width, height, line-height, padding, border-radius, margin, color and background, since antd resets several of these on <button> and jsdom cannot compute the cascade to catch a regression here', () => {
     const css = readFileSync(path.resolve(__dirname, '../index.css'), 'utf-8')
     const match = css.match(/\.docu-citation-pill\s*\{([^}]*)\}/)
 
     expect(match).not.toBeNull()
     const body = match![1]
     expect(body).toMatch(/font-size\s*:/)
+    expect(body).toMatch(/min-width\s*:/)
+    expect(body).toMatch(/height\s*:/)
     expect(body).toMatch(/line-height\s*:/)
+    expect(body).toMatch(/padding\s*:/)
+    expect(body).toMatch(/border-radius\s*:/)
     expect(body).toMatch(/margin\s*:/)
     expect(body).toMatch(/color\s*:/)
+    expect(body).toMatch(/background\s*:/)
   })
 
   it('is not nested inside an @layer block, since antd\'s reset.css is unlayered and anything inside @layer (including @layer utilities, where Tailwind puts its own classes) loses to it regardless of specificity', () => {
