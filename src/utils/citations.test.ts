@@ -127,6 +127,62 @@ describe('citationContextByAnswerOrder', () => {
     expect(text.length).toBeLessThanOrEqual(140)
     expect(text).not.toMatch(/…|\.\.\.$/)
   })
+
+  describe('strips inline Markdown so the clause reads as plain prose (Item A)', () => {
+    it.each<[string, string, Source[], string]>([
+      [
+        'bold wrapper around a list-item clause (the live bug report)',
+        '- **15 June 2026**: 5 attendees [Doc1]',
+        [docSource(1)],
+        '15 June 2026: 5 attendees',
+      ],
+      [
+        'table row: pipes become spaces, cells join with a single space',
+        '| 6 July 2026 | 5 | Programme review [Doc2] |',
+        [docSource(2)],
+        '6 July 2026 5 Programme review',
+      ],
+      [
+        'list item: leading marker and bold wrapper both stripped',
+        '- **Curriculum Design** [Doc3]',
+        [docSource(3)],
+        'Curriculum Design',
+      ],
+      [
+        'plain prose with no Markdown syntax is unchanged',
+        'The policy applies to all staff [Doc1].',
+        [docSource(1)],
+        'The policy applies to all staff.',
+      ],
+      [
+        'italic and underscore-italic wrappers',
+        'The *deadline* is set by the _board_ [Doc1].',
+        [docSource(1)],
+        'The deadline is set by the board.',
+      ],
+      [
+        'inline code backticks',
+        'Run the `deploy` command [Doc1].',
+        [docSource(1)],
+        'Run the deploy command.',
+      ],
+      [
+        'Markdown link syntax collapses to its display text',
+        'See the [staff handbook](https://example.com/handbook) for detail [Doc1].',
+        [docSource(1)],
+        'See the staff handbook for detail.',
+      ],
+      [
+        'a leading heading marker is stripped',
+        '## Attendance [Doc1]',
+        [docSource(1)],
+        'Attendance',
+      ],
+    ])('%s', (_label, content, sources, expected) => {
+      const contexts = citationContextByAnswerOrder(content, sources)
+      expect(contexts.get(citationNumberKey(sources[0]))).toBe(expected)
+    })
+  })
 })
 
 describe('significantQuestionWords', () => {

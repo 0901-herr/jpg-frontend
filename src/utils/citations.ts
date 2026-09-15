@@ -431,15 +431,38 @@ function splitIntoAnswerClauses(content: string): string[] {
     .filter(Boolean)
 }
 
-/** Strips a leading list-marker (`- `, `* `, `1. `) and collapses the
- * whitespace `splitAnswerByDocRefs` leaves behind once its `ref` segments
- * are removed (e.g. a trailing space before a period from "point [Doc1]."
- * becoming "point .") into normal prose spacing, then truncates to 140
- * chars — no trailing ellipsis (client feedback: no "..." anywhere in the
- * UI), so a truncated clause just ends where it's cut off. */
+/** Strips inline Markdown markup so a "Cited for" clause reads as plain
+ * prose instead of carrying the answer's raw formatting (client feedback:
+ * the answer was a Markdown list/table and the cited clause showed its
+ * inline markup verbatim, e.g. `Cited for: "**15 June 2026**: 5
+ * attendees"`) — a leading heading `#`, a whole `|---|`-style table
+ * separator row, link syntax `[text](url)` → `text`, bold/italic wrappers
+ * (`**`/`__`/`*`/`_`), backticks, and table pipe characters (which become
+ * a plain space so table cells still read as separate words). Only has to
+ * handle what an LLM answer actually produces, not arbitrary Markdown, so
+ * a simple non-greedy match per marker is enough. */
+function stripInlineMarkdown(text: string): string {
+  return text
+    .replace(/^\s*#{1,6}\s+/, '')
+    .replace(/^\s*\|?[\s:-]+\|[\s:|-]*$/, '')
+    .replace(/\[([^\]]*)\]\(([^)]*)\)/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/_([^_]+)_/g, '$1')
+    .replace(/`+/g, '')
+    .replace(/\|/g, ' ')
+}
+
+/** Strips a leading list-marker (`- `, `* `, `1. `), strips inline Markdown
+ * markup (see `stripInlineMarkdown`), and collapses the whitespace
+ * `splitAnswerByDocRefs` leaves behind once its `ref` segments are removed
+ * (e.g. a trailing space before a period from "point [Doc1]." becoming
+ * "point .") into normal prose spacing, then truncates to 140 chars — no
+ * trailing ellipsis (client feedback: no "..." anywhere in the UI), so a
+ * truncated clause just ends where it's cut off. */
 function cleanClauseText(text: string): string {
-  const cleaned = text
-    .replace(/^\s*(?:[-*]|\d+\.)\s+/, '')
+  const cleaned = stripInlineMarkdown(text.replace(/^\s*(?:[-*]|\d+\.)\s+/, ''))
     .replace(/\s+([.,!?;:])/g, '$1')
     .replace(/\s+/g, ' ')
     .trim()
