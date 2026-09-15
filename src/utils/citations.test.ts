@@ -116,7 +116,7 @@ describe('citationContextByAnswerOrder', () => {
     expect(contexts.has(citationNumberKey(uncited))).toBe(false)
   })
 
-  it('truncates a long citing sentence to ~140 chars with an ellipsis', () => {
+  it('truncates a long citing sentence to 140 chars, with no ellipsis', () => {
     const sourceA = docSource(1)
     const longSentence = 'a'.repeat(200)
     const content = `${longSentence} [Doc1].`
@@ -125,7 +125,7 @@ describe('citationContextByAnswerOrder', () => {
     const text = contexts.get(citationNumberKey(sourceA))!
 
     expect(text.length).toBeLessThanOrEqual(140)
-    expect(text.endsWith('…')).toBe(true)
+    expect(text).not.toMatch(/…|\.\.\.$/)
   })
 })
 

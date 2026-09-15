@@ -30,6 +30,17 @@ export interface ChatMessage {
    * component that renders the label decide when to append an elapsed-time
    * ticker without re-parsing the formatted sentence. */
   progressStage?: string
+  /** Display names of the documents in scope for this query, resolved once
+   * at query start (`AppLayout.tsx`'s `handleSend`) — the file list the
+   * progress ticker cycles through as "Searching <file>" while in flight,
+   * and the fallback file list for "Reading <file>" during `generating`
+   * before any citation has arrived. */
+  progressScopeFiles?: string[]
+  /** Folder names covering `progressScopeFiles`, resolved the same way and
+   * at the same time — best-effort: a folder whose metadata hasn't been
+   * loaded into the browse tree yet is simply left out, so this can be a
+   * subset of (or absent from) the true set of folders in scope. */
+  progressScopeFolders?: string[]
   /** Epoch ms when this assistant placeholder was created — the basis for
    * the elapsed-time ticker shown during the silent generation phase. */
   startedAt?: number

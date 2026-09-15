@@ -286,7 +286,7 @@ describe('AppLayout — Extract metadata', () => {
 
     expect(screen.getByText('Extract MQA metadata from doc-1.pdf')).toBeInTheDocument()
     expect(
-      screen.getByText('Extracting metadata… this can take up to a minute.'),
+      screen.getByText('Extracting metadata. This can take up to a minute.'),
     ).toBeInTheDocument()
 
     await act(async () => {
@@ -312,7 +312,7 @@ describe('AppLayout — Extract metadata', () => {
     expect(screen.getByText('Meeting Minutes')).toBeInTheDocument()
     expect(screen.getByText('Saved to LogicalDOC as extended properties.')).toBeInTheDocument()
     expect(
-      screen.queryByText('Extracting metadata… this can take up to a minute.'),
+      screen.queryByText('Extracting metadata. This can take up to a minute.'),
     ).not.toBeInTheDocument()
   })
 
@@ -330,7 +330,7 @@ describe('AppLayout — Extract metadata', () => {
 
     await user.click(screen.getByRole('button', { name: 'Extract MQA metadata' }))
     expect(
-      await screen.findByText('Extracting metadata… this can take up to a minute.'),
+      await screen.findByText('Extracting metadata. This can take up to a minute.'),
     ).toBeInTheDocument()
 
     await act(async () => {
@@ -347,7 +347,7 @@ describe('AppLayout — Extract metadata', () => {
     // The thinking placeholder is gone, no answer was appended, and the
     // user's request line is left in place.
     expect(
-      screen.queryByText('Extracting metadata… this can take up to a minute.'),
+      screen.queryByText('Extracting metadata. This can take up to a minute.'),
     ).not.toBeInTheDocument()
     expect(screen.getByText('Extract MQA metadata from doc-1.pdf')).toBeInTheDocument()
     expect(screen.queryByText(/MQA metadata —/)).not.toBeInTheDocument()
@@ -364,7 +364,7 @@ describe('AppLayout — Extract metadata', () => {
 
     await user.click(screen.getByRole('button', { name: 'Extract MQA metadata' }))
     expect(
-      await screen.findByText('Extracting metadata… this can take up to a minute.'),
+      await screen.findByText('Extracting metadata. This can take up to a minute.'),
     ).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'New chat' }))

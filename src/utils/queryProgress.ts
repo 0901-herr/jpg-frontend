@@ -1,16 +1,18 @@
+import { displayFilename } from './citations'
+
 const STAGE_LABELS: Record<string, string> = {
-  classifying: 'Understanding your question…',
-  embedding: 'Understanding your question…',
-  rewriting: 'Refining your question…',
-  retrieving: 'Searching your documents…',
-  reranking: 'Finding the best matches…',
-  generating: 'Writing your answer…',
-  assembly: 'Almost done. Putting your answer together…',
-  assembling: 'Almost done. Putting your answer together…',
-  synthesizing: 'Almost done. Putting your answer together…',
-  composing: 'Almost done. Putting your answer together…',
-  formatting: 'Almost done. Finishing up…',
-  finalizing: 'Almost done. Finishing up…',
+  classifying: 'Understanding your question',
+  embedding: 'Understanding your question',
+  rewriting: 'Refining your question',
+  retrieving: 'Searching your documents',
+  reranking: 'Finding the best matches',
+  generating: 'Writing your answer',
+  assembly: 'Almost done. Putting your answer together',
+  assembling: 'Almost done. Putting your answer together',
+  synthesizing: 'Almost done. Putting your answer together',
+  composing: 'Almost done. Putting your answer together',
+  formatting: 'Almost done. Finishing up',
+  finalizing: 'Almost done. Finishing up',
 }
 
 function humanizeStage(stage: string): string {
@@ -58,19 +60,19 @@ function legacyFallback(stage: string): string {
   if (STAGE_LABELS[key]) return STAGE_LABELS[key]
 
   if (key.includes('generat') || key.includes('assembl') || key.includes('synth')) {
-    return 'Almost done. Putting your answer together…'
+    return 'Almost done. Putting your answer together'
   }
   if (key.includes('retriev') || key.includes('search')) {
-    return 'Searching your documents…'
+    return 'Searching your documents'
   }
   if (key.includes('rank') || key.includes('rerank')) {
-    return 'Finding the best matches…'
+    return 'Finding the best matches'
   }
   if (key.includes('classif') || key.includes('embed')) {
-    return 'Understanding your question…'
+    return 'Understanding your question'
   }
 
-  return `Still working on ${humanizeStage(stage)}…`
+  return `Still working on ${humanizeStage(stage)}`
 }
 
 /** Turns one `progress` SSE stage into a specific, human-readable label.
@@ -94,63 +96,63 @@ export function formatProgressStage(
     case 'classifying':
     case 'embedding':
     case 'decontextualizing':
-      return 'Understanding your question…'
+      return 'Understanding your question'
 
     case 'rewriting': {
       const variants = readNumber(p, 'variants')
       const suffix = variants != null && variants >= 2 ? ` (${variants} variants)` : ''
-      return `Refining your question…${suffix}`
+      return `Refining your question${suffix}`
     }
 
     case 'retrieving':
       return filenames.length > 0
-        ? `Searching ${listNames(filenames)}…`
-        : 'Searching your documents…'
+        ? `Searching ${listNames(filenames)}`
+        : 'Searching your documents'
 
     case 'retrieved': {
       const candidates = readNumber(p, 'candidates') ?? 0
       const distinctItems = readNumber(p, 'distinct_items') ?? 0
-      if (candidates === 0) return 'No matching passages yet…'
-      return `Found ${candidates} ${plural(candidates, 'passage')} across ${distinctItems} ${plural(distinctItems, 'document')}…`
+      if (candidates === 0) return 'No matching passages yet'
+      return `Found ${candidates} ${plural(candidates, 'passage')} across ${distinctItems} ${plural(distinctItems, 'document')}`
     }
 
     case 'reranking': {
       const total = readNumber(p, 'total')
       return total != null
-        ? `Ranking ${total} ${plural(total, 'passage')} by relevance…`
-        : 'Finding the best matches…'
+        ? `Ranking ${total} ${plural(total, 'passage')} by relevance`
+        : 'Finding the best matches'
     }
 
     case 'reranked': {
       const selected = readNumber(p, 'selected') ?? 0
-      return `Picked the ${selected} most relevant ${plural(selected, 'passage')}…`
+      return `Picked the ${selected} most relevant ${plural(selected, 'passage')}`
     }
 
     case 'postprocessing': {
       const kept = readNumber(p, 'kept') ?? 0
-      return `Checking ${kept} ${plural(kept, 'passage')}…`
+      return `Checking ${kept} ${plural(kept, 'passage')}`
     }
 
     case 'assembling': {
       const chunks = readNumber(p, 'chunks') ?? 0
-      return `Reading ${chunks} ${plural(chunks, 'passage')}…`
+      return `Reading ${chunks} ${plural(chunks, 'passage')}`
     }
 
     case 'generating':
       // Deliberately never names files here (client feedback: the
-      // "Writing your answer from X, Y…" subtitle read as if the model had
+      // "Writing your answer from X, Y" subtitle read as if the model had
       // already decided its sources before it had written anything) — the
       // earlier retrieving/retrieved stages above still name what was
       // searched, this one just says what's happening now.
-      return 'Writing your answer…'
+      return 'Writing your answer'
 
     case 'planning': {
       const iteration = readNumber(p, 'iteration')
-      return iteration != null ? `Planning the answer (step ${iteration})…` : 'Planning the answer…'
+      return iteration != null ? `Planning the answer (step ${iteration})` : 'Planning the answer'
     }
 
     case 'verifying':
-      return 'Double-checking the answer…'
+      return 'Double-checking the answer'
 
     default:
       return legacyFallback(stage)
@@ -160,13 +162,12 @@ export function formatProgressStage(
 export function formatRouteLabel(strategy: string | undefined): string | undefined {
   if (!strategy) return undefined
   const labels: Record<string, string> = {
-    simple: 'Quick lookup…',
-    simple_lookup: 'Quick lookup…',
-    aggregation: 'Summarizing across documents…',
-    agent: 'Working through your question…',
+    simple: 'Quick lookup',
+    simple_lookup: 'Quick lookup',
+    aggregation: 'Summarizing across documents',
+    agent: 'Working through your question',
   }
-  const label = labels[strategy] ?? humanizeStage(strategy.replace(/_/g, ' '))
-  return label.endsWith('…') ? label : `${label}…`
+  return labels[strategy] ?? humanizeStage(strategy.replace(/_/g, ' '))
 }
 
 export function isLateQueryStage(stage: string | undefined): boolean {
@@ -180,4 +181,107 @@ export function isLateQueryStage(stage: string | undefined): boolean {
     key.includes('format') ||
     key.includes('final')
   )
+}
+
+/** Context the progress ticker cycles through while a query is in flight —
+ * the real stage label (`formatProgressStage`'s output) plus the names it
+ * alternates with. `files`/`folders` are already resolved by the caller to
+ * whichever set is right for `stage` (the documents/folders in query scope
+ * for every stage except `generating`, which — once it has one — prefers
+ * the files actually cited so far; see `ChatMessage.tsx`). */
+export interface ProgressTickerContext {
+  stageLabel: string | undefined
+  stage?: string
+  files: string[]
+  folders: string[]
+}
+
+/** Pure step function for the "searching/reading the files" ticker (client
+ * feedback: "a status that says something like 'searching through files
+ * XX, files XXX, or maybe folder XX' ... alternating the 'writing your
+ * answer' so that the UI appears to be more interactive"). `tick` advances
+ * roughly every 2.5s while a query is in flight (driven by
+ * `useProgressTicker`, a plain interval — this function itself is a pure
+ * lookup so it's cheap to unit test).
+ *
+ * Even ticks always show the real stage label. Odd ticks show a scope
+ * line that cycles through the known names, one per odd tick: "Searching
+ * <file>" / "Searching folder <folder>" for every stage except
+ * `generating`, which shows "Reading <file>" instead (and never names a
+ * folder — client feedback: it should read like the model working through
+ * specific sources, not searching a location). With nothing to name, the
+ * scope line has nothing to show, so every tick just returns the stage
+ * label unchanged. */
+export function progressTickerLabel(
+  tick: number,
+  { stageLabel, stage, files, folders }: ProgressTickerContext,
+): string | undefined {
+  const isGenerating = (stage ?? '').toLowerCase() === 'generating'
+  const uniqueFiles = [...new Set(files.filter(Boolean))]
+  const uniqueFolders = [...new Set(folders.filter(Boolean))]
+
+  const scopeLines = isGenerating
+    ? uniqueFiles.map((name) => `Reading ${name}`)
+    : [
+        ...uniqueFiles.map((name) => `Searching ${name}`),
+        ...uniqueFolders.map((name) => `Searching folder ${name}`),
+      ]
+
+  if (scopeLines.length === 0) return stageLabel
+  if (tick % 2 === 0) return stageLabel
+
+  const index = Math.floor(tick / 2) % scopeLines.length
+  return scopeLines[index]
+}
+
+/** Minimal shape `resolveProgressScope` needs from a selected document —
+ * matches `BrowseDocumentItem`, kept narrow here so this file doesn't need
+ * to import the browse API types just to describe two fields. */
+export interface ProgressScopeDocument {
+  filename?: string
+  folder_id?: number
+}
+
+export interface ProgressScope {
+  files: string[]
+  folders: string[]
+}
+
+/** Resolves the file/folder names `progressTickerLabel` cycles through for
+ * one query, from the documents actually in scope (`documentIds`, already
+ * trimmed to what `validateQueryScope` returned as accessible) plus the
+ * metadata available for them (`documentMeta`, e.g.
+ * `useDocumentSelection`'s map — keyed by document id) and a folder-name
+ * lookup (e.g. `useBrowseTree`'s `getFolderNode`, keyed by `folder_id`).
+ *
+ * `BrowseDocumentItem` only carries a `folder_id`, not a folder name, so
+ * this always goes through the lookup rather than reading a name field
+ * directly off the document — best-effort: a folder whose contents
+ * haven't been fetched into that cache yet simply contributes no name,
+ * same as a document with no filename on record contributes no file
+ * name. Called once, at query start (`AppLayout.tsx`'s `handleSend`), so
+ * the ticker has something to show even before the first backend
+ * `progress` event arrives. */
+export function resolveProgressScope(
+  documentIds: string[],
+  documentMeta: Map<string, ProgressScopeDocument>,
+  getFolderNode: (folderId: number) => { name: string } | undefined,
+): ProgressScope {
+  const files = documentIds
+    .map((id) => documentMeta.get(id)?.filename)
+    .filter((name): name is string => Boolean(name))
+    .map(displayFilename)
+
+  const folderIds = [
+    ...new Set(
+      documentIds
+        .map((id) => documentMeta.get(id)?.folder_id)
+        .filter((id): id is number => typeof id === 'number'),
+    ),
+  ]
+  const folders = folderIds
+    .map((folderId) => getFolderNode(folderId)?.name)
+    .filter((name): name is string => Boolean(name))
+
+  return { files, folders }
 }

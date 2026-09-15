@@ -6,6 +6,8 @@ import { type, typeColor } from '../styles/typography'
 import { radius } from '../styles/theme'
 import { createAnswerMarkdownComponents, createStreamingTailPlugin } from '../utils/markdownRenderers'
 import { useElapsedSeconds } from '../hooks/useElapsedSeconds'
+import { useProgressTicker } from '../hooks/useProgressTicker'
+import { progressTickerLabel } from '../utils/queryProgress'
 import { ChatBubbleIcon, ChatInfoIcon } from '../icons/chat'
 import type { ChatMessage, CoverageInfo, Source } from '../types'
 import CitationList from './CitationList'
@@ -22,6 +24,41 @@ function shouldTickLabel(stage: string | undefined, elapsedSeconds: number): boo
   return stage === 'generating' || elapsedSeconds >= 4
 }
 
+/** The files the "reading" scope line should name during the `generating`
+ * stage: whatever's been cited so far (streamed in via `message.sources`),
+ * or — before any citation has arrived — the documents the query was
+ * scoped to. Every other stage just uses the scoped files directly. */
+function progressFilesFor(message: ChatMessage): string[] {
+  const scoped = message.progressScopeFiles ?? []
+  if (message.progressStage !== 'generating') return scoped
+
+  const cited = [...new Set((message.sources ?? []).map((s) => s.filename).filter(Boolean))]
+  return cited.length > 0 ? cited : scoped
+}
+
+function progressFoldersFor(message: ChatMessage): string[] {
+  // `generating` never names a folder (`progressTickerLabel` already drops
+  // folders for that stage) — no point resolving them here either.
+  return message.progressStage === 'generating' ? [] : message.progressScopeFolders ?? []
+}
+
+/** Drives one message's progress headline: ticks (via `useProgressTicker`)
+ * only while `active`, alternating the real stage label with a scope line
+ * naming the files/folders in play. While inactive, returns the raw stage
+ * label unchanged — no stale scope line left showing once ticking has
+ * stopped (on completion, error, or abort). */
+function useProgressHeadline(message: ChatMessage, active: boolean): string | undefined {
+  const tick = useProgressTicker(active)
+  if (!active) return message.progressLabel
+
+  return progressTickerLabel(tick, {
+    stageLabel: message.progressLabel,
+    stage: message.progressStage,
+    files: progressFilesFor(message),
+    folders: progressFoldersFor(message),
+  })
+}
+
 function ThinkingIndicator({ message }: { message: ChatMessage }) {
   // `message.startedAt` is set by AppLayout when the placeholder assistant
   // message is created; a flow that doesn't set it (e.g. Extract metadata)
@@ -30,17 +67,19 @@ function ThinkingIndicator({ message }: { message: ChatMessage }) {
   const fallbackStartedAtRef = useRef(Date.now())
   const startedAt = message.startedAt ?? fallbackStartedAtRef.current
   const elapsed = useElapsedSeconds(startedAt, true)
+  const label = useProgressHeadline(message, true)
 
-  const label = message.progressLabel
   const headline = label
     ? shouldTickLabel(message.progressStage, elapsed)
       ? `${label} · ${elapsed}s`
       : label
-    : 'Getting started…'
+    : 'Getting started'
 
   return (
     <div className="space-y-1" aria-live="polite">
-      <span className={`${type.body} ${typeColor.muted} docu-thinking-shimmer block`}>
+      <span
+        className={`${type.body} ${typeColor.muted} docu-thinking-shimmer block truncate`}
+      >
         {headline}
       </span>
     </div>
@@ -55,13 +94,13 @@ function ThinkingIndicator({ message }: { message: ChatMessage }) {
 function StreamingProgressLabel({ message }: { message: ChatMessage }) {
   const active = message.status === 'streaming' && !message.content
   const elapsed = useElapsedSeconds(message.startedAt, active)
-  const label = message.progressLabel
+  const label = useProgressHeadline(message, active)
   if (!label) return null
 
   const text =
     active && shouldTickLabel(message.progressStage, elapsed) ? `${label} · ${elapsed}s` : label
 
-  return <p className={`${type.caption} ${typeColor.muted}`}>{text}</p>
+  return <p className={`${type.caption} ${typeColor.muted} truncate`}>{text}</p>
 }
 
 /** A quiet inline callout — thin border, muted background, small icon —
@@ -86,9 +125,7 @@ function ErrorMessage({
       </p>
       <p className="leading-relaxed">{content}</p>
       {progressHint && (
-        <p className={`${type.caption} mt-2 ${typeColor.secondary}`}>
-          Last step: {progressHint.replace(/…$/, '')}
-        </p>
+        <p className={`${type.caption} mt-2 ${typeColor.secondary}`}>Last step: {progressHint}</p>
       )}
     </div>
   )

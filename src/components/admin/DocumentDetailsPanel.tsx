@@ -89,7 +89,7 @@ export default function DocumentDetailsPanel({ docId, open, onClose }: DocumentD
             </div>
             {isFetching && !isLoading && (
               <Text type="secondary" className={`block mt-1 ${ADMIN_TEXT_MUTED}`}>
-                Refreshing…
+                Refreshing
               </Text>
             )}
           </div>

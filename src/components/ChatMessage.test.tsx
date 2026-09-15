@@ -340,19 +340,19 @@ describe('progress label elapsed-time ticker', () => {
       <ChatMessageItem
         message={assistantMessage({
           status: 'thinking',
-          progressLabel: 'Writing your answer…',
+          progressLabel: 'Writing your answer',
           progressStage: 'generating',
           startedAt,
         })}
       />,
     )
 
-    expect(screen.getByText('Writing your answer… · 0s')).toBeInTheDocument()
+    expect(screen.getByText('Writing your answer · 0s')).toBeInTheDocument()
 
     act(() => {
       vi.advanceTimersByTime(2000)
     })
-    expect(screen.getByText('Writing your answer… · 2s')).toBeInTheDocument()
+    expect(screen.getByText('Writing your answer · 2s')).toBeInTheDocument()
   })
 
   it('shows the elapsed count exactly once — no separate standalone "{n}s" caption alongside the ticked headline', () => {
@@ -361,7 +361,7 @@ describe('progress label elapsed-time ticker', () => {
       <ChatMessageItem
         message={assistantMessage({
           status: 'thinking',
-          progressLabel: 'Writing your answer…',
+          progressLabel: 'Writing your answer',
           progressStage: 'generating',
           startedAt,
         })}
@@ -375,7 +375,7 @@ describe('progress label elapsed-time ticker', () => {
     // Only the compound headline carries the elapsed count — no standalone
     // "2s" caption below it duplicating the same number in a different
     // format (the MAJOR-2 regression: both used to render at once).
-    expect(screen.getByText('Writing your answer… · 2s')).toBeInTheDocument()
+    expect(screen.getByText('Writing your answer · 2s')).toBeInTheDocument()
     expect(screen.queryByText('2s')).not.toBeInTheDocument()
     expect(screen.getAllByText(/2s/)).toHaveLength(1)
   })
@@ -386,20 +386,20 @@ describe('progress label elapsed-time ticker', () => {
       <ChatMessageItem
         message={assistantMessage({
           status: 'thinking',
-          progressLabel: 'Understanding your question…',
+          progressLabel: 'Understanding your question',
           progressStage: 'classifying',
           startedAt,
         })}
       />,
     )
 
-    expect(screen.getByText('Understanding your question…')).toBeInTheDocument()
-    expect(screen.queryByText(/Understanding your question… ·/)).not.toBeInTheDocument()
+    expect(screen.getByText('Understanding your question')).toBeInTheDocument()
+    expect(screen.queryByText(/Understanding your question ·/)).not.toBeInTheDocument()
 
     act(() => {
       vi.advanceTimersByTime(4000)
     })
-    expect(screen.getByText('Understanding your question… · 4s')).toBeInTheDocument()
+    expect(screen.getByText('Understanding your question · 4s')).toBeInTheDocument()
   })
 
   it('ticks the streaming progress label the same way while no content has arrived yet', () => {
@@ -409,19 +409,19 @@ describe('progress label elapsed-time ticker', () => {
         message={assistantMessage({
           status: 'streaming',
           content: '',
-          progressLabel: 'Writing your answer…',
+          progressLabel: 'Writing your answer',
           progressStage: 'generating',
           startedAt,
         })}
       />,
     )
 
-    expect(screen.getByText('Writing your answer… · 0s')).toBeInTheDocument()
+    expect(screen.getByText('Writing your answer · 0s')).toBeInTheDocument()
 
     act(() => {
       vi.advanceTimersByTime(3000)
     })
-    expect(screen.getByText('Writing your answer… · 3s')).toBeInTheDocument()
+    expect(screen.getByText('Writing your answer · 3s')).toBeInTheDocument()
   })
 
   it('does not append the ticker suffix to the streaming label once content has arrived', () => {
@@ -430,7 +430,7 @@ describe('progress label elapsed-time ticker', () => {
         message={assistantMessage({
           status: 'streaming',
           content: 'Partial answer',
-          progressLabel: 'Writing your answer…',
+          progressLabel: 'Writing your answer',
           progressStage: 'generating',
           startedAt: Date.now(),
         })}
@@ -440,8 +440,216 @@ describe('progress label elapsed-time ticker', () => {
     // The label itself may still be shown (cleared separately once a delta
     // arrives, in AppLayout), but the elapsed-time ticker only applies to
     // the silent, content-free phase.
-    expect(screen.getByText('Writing your answer…')).toBeInTheDocument()
-    expect(screen.queryByText(/Writing your answer… ·/)).not.toBeInTheDocument()
+    expect(screen.getByText('Writing your answer')).toBeInTheDocument()
+    expect(screen.queryByText(/Writing your answer ·/)).not.toBeInTheDocument()
+  })
+})
+
+describe('progress ticker names the files/folders being searched', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('alternates the stage label with "Searching <file>" every ~2.5s while thinking', () => {
+    const startedAt = Date.now()
+    render(
+      <ChatMessageItem
+        message={assistantMessage({
+          status: 'thinking',
+          progressLabel: 'Understanding your question',
+          progressStage: 'classifying',
+          progressScopeFiles: ['A.pdf', 'B.pdf'],
+          startedAt,
+        })}
+      />,
+    )
+
+    // The elapsed-seconds suffix (`shouldTickLabel`) keeps applying on top
+    // of whichever line is showing, so these assertions anchor on the start
+    // of the text rather than pin down the exact "· {n}s" tail.
+    expect(screen.getByText(/^Understanding your question/)).toBeInTheDocument()
+
+    act(() => {
+      vi.advanceTimersByTime(2500)
+    })
+    expect(screen.getByText(/^Searching A\.pdf/)).toBeInTheDocument()
+
+    act(() => {
+      vi.advanceTimersByTime(2500)
+    })
+    expect(screen.getByText(/^Understanding your question/)).toBeInTheDocument()
+
+    act(() => {
+      vi.advanceTimersByTime(2500)
+    })
+    expect(screen.getByText(/^Searching B\.pdf/)).toBeInTheDocument()
+  })
+
+  it('names a folder as "Searching folder <name>" when folder names are known', () => {
+    const startedAt = Date.now()
+    render(
+      <ChatMessageItem
+        message={assistantMessage({
+          status: 'thinking',
+          progressLabel: 'Searching your documents',
+          progressStage: 'retrieving',
+          progressScopeFiles: [],
+          progressScopeFolders: ['Reports'],
+          startedAt,
+        })}
+      />,
+    )
+
+    act(() => {
+      vi.advanceTimersByTime(2500)
+    })
+    expect(screen.getByText(/^Searching folder Reports/)).toBeInTheDocument()
+  })
+
+  it('alternates "Writing your answer" with "Reading <file>" during generating, using cited files once available', () => {
+    const startedAt = Date.now()
+    const { rerender } = render(
+      <ChatMessageItem
+        message={assistantMessage({
+          status: 'thinking',
+          progressLabel: 'Writing your answer',
+          progressStage: 'generating',
+          progressScopeFiles: ['A.pdf'],
+          startedAt,
+        })}
+      />,
+    )
+
+    // Before any citation has arrived: falls back to the scoped files.
+    act(() => {
+      vi.advanceTimersByTime(2500)
+    })
+    expect(screen.getByText(/^Reading A\.pdf/)).toBeInTheDocument()
+
+    // A citation for a different document arrives — the ticker now cites it
+    // by name instead of the scoped fallback.
+    rerender(
+      <ChatMessageItem
+        message={assistantMessage({
+          status: 'thinking',
+          progressLabel: 'Writing your answer',
+          progressStage: 'generating',
+          progressScopeFiles: ['A.pdf'],
+          sources: [{ index: 1, filename: 'Cited.pdf' }],
+          startedAt,
+        })}
+      />,
+    )
+
+    // Two more ticks (the component never unmounted, so the ticker's own
+    // count keeps running) lands back on an odd tick — the next scope line.
+    act(() => {
+      vi.advanceTimersByTime(5000)
+    })
+    expect(screen.getByText(/^Reading Cited\.pdf/)).toBeInTheDocument()
+  })
+
+  it('never names a folder during generating, even when one is in scope', () => {
+    const startedAt = Date.now()
+    render(
+      <ChatMessageItem
+        message={assistantMessage({
+          status: 'thinking',
+          progressLabel: 'Writing your answer',
+          progressStage: 'generating',
+          progressScopeFiles: [],
+          progressScopeFolders: ['Reports'],
+          startedAt,
+        })}
+      />,
+    )
+
+    act(() => {
+      vi.advanceTimersByTime(10000)
+    })
+    expect(screen.queryByText(/folder/)).not.toBeInTheDocument()
+    expect(screen.getAllByText(/^Writing your answer/).length).toBeGreaterThan(0)
+  })
+
+  it('stops ticking scope names once the answer completes (no stray "Searching" text left behind)', () => {
+    const startedAt = Date.now()
+    const { rerender } = render(
+      <ChatMessageItem
+        message={assistantMessage({
+          status: 'streaming',
+          content: '',
+          progressLabel: 'Writing your answer',
+          progressStage: 'generating',
+          progressScopeFiles: ['A.pdf'],
+          startedAt,
+        })}
+      />,
+    )
+
+    act(() => {
+      vi.advanceTimersByTime(2500)
+    })
+    expect(screen.getByText(/^Reading A\.pdf/)).toBeInTheDocument()
+
+    rerender(
+      <ChatMessageItem
+        message={assistantMessage({
+          status: 'complete',
+          content: 'The final answer.',
+          progressLabel: undefined,
+          progressScopeFiles: ['A.pdf'],
+          startedAt,
+        })}
+      />,
+    )
+
+    expect(screen.queryByText(/Reading A\.pdf/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Searching/)).not.toBeInTheDocument()
+  })
+
+  it('leaks no timers on unmount mid-query', () => {
+    const startedAt = Date.now()
+    const { unmount } = render(
+      <ChatMessageItem
+        message={assistantMessage({
+          status: 'thinking',
+          progressLabel: 'Writing your answer',
+          progressStage: 'generating',
+          progressScopeFiles: ['A.pdf'],
+          startedAt,
+        })}
+      />,
+    )
+
+    unmount()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('truncates a long file name on one line instead of wrapping', () => {
+    const startedAt = Date.now()
+    render(
+      <ChatMessageItem
+        message={assistantMessage({
+          status: 'thinking',
+          progressLabel: 'Understanding your question',
+          progressStage: 'classifying',
+          progressScopeFiles: ['A Very Long Document Name That Should Not Wrap Onto A Second Line.pdf'],
+          startedAt,
+        })}
+      />,
+    )
+
+    act(() => {
+      vi.advanceTimersByTime(2500)
+    })
+    const label = screen.getByText(
+      'Searching A Very Long Document Name That Should Not Wrap Onto A Second Line.pdf',
+    )
+    expect(label.className).toContain('truncate')
   })
 })
 

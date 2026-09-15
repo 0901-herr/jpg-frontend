@@ -300,8 +300,9 @@ function splitIntoAnswerClauses(content: string): string[] {
 /** Strips a leading list-marker (`- `, `* `, `1. `) and collapses the
  * whitespace `splitAnswerByDocRefs` leaves behind once its `ref` segments
  * are removed (e.g. a trailing space before a period from "point [Doc1]."
- * becoming "point .") into normal prose spacing, then truncates to ~140
- * chars on a word boundary with an ellipsis. */
+ * becoming "point .") into normal prose spacing, then truncates to 140
+ * chars — no trailing ellipsis (client feedback: no "..." anywhere in the
+ * UI), so a truncated clause just ends where it's cut off. */
 function cleanClauseText(text: string): string {
   const cleaned = text
     .replace(/^\s*(?:[-*]|\d+\.)\s+/, '')
@@ -309,13 +310,13 @@ function cleanClauseText(text: string): string {
     .replace(/\s+/g, ' ')
     .trim()
   if (cleaned.length <= 140) return cleaned
-  return `${cleaned.slice(0, 139).trimEnd()}…`
+  return cleaned.slice(0, 140).trimEnd()
 }
 
 /** Maps each cited `(document_id, page)` key to the answer sentence / list
  * item that first cites it — the text `CitationList` shows as `Cited for:
- * "…"` under that entry, so a reader can see *why* a document made the
- * list instead of only that it did. Walks the same clauses
+ * "<clause>"` under that entry, so a reader can see *why* a document made
+ * the list instead of only that it did. Walks the same clauses
  * `numberCitationsByAnswerOrder` would number, in order, and keeps only
  * the first clause seen for each key (matching that function's
  * first-appearance numbering). */

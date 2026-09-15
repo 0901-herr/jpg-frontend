@@ -18,9 +18,9 @@ import { useDocumentSelection } from '../hooks/useDocumentSelection'
 import { useResizableWidth } from '../hooks/useResizableWidth'
 import { useMediaQuery } from '../hooks/useMediaQuery'
 import { type, typeColor } from '../styles/typography'
-import { citationsToSources, displayFilename, mergeCitations } from '../utils/citations'
+import { citationsToSources, mergeCitations } from '../utils/citations'
 import { appendStreamDelta } from '../utils/appendStreamDelta'
-import { formatProgressStage, formatRouteLabel } from '../utils/queryProgress'
+import { formatProgressStage, formatRouteLabel, resolveProgressScope } from '../utils/queryProgress'
 import { loadChatHistory, persistChatHistory } from '../utils/chatPersistence'
 import { getSummarizeDisabledReason, isSummaryReady } from '../utils/summaryGate'
 import { getExtractMetadataDisabledReason, isMqaMetadataReady } from '../utils/mqaMetadataGate'
@@ -463,8 +463,16 @@ export default function AppLayout() {
       let scopeDocuments = selectedDocs
       // Display names of the documents actually in scope for this query —
       // resolved once scope validation succeeds, used to personalize the
-      // "retrieving" progress label ("Searching A.pdf and B.pdf…").
+      // "retrieving" progress label ("Searching A.pdf and B.pdf") and,
+      // together with `scopeFolders` below, to seed the progress ticker
+      // (`ChatMessage.tsx`'s `progressTickerLabel`) that cycles through
+      // them while the query is in flight.
       let scopeFilenames: string[] = []
+      // Folder names covering the documents above, resolved the same way
+      // (see `resolveProgressScope` in `queryProgress.ts` for how — it
+      // goes through the browse tree's folder cache since
+      // `BrowseDocumentItem` only carries a `folder_id`, not a name).
+      let scopeFolders: string[] = []
 
       try {
         const scope = await validateQueryScope(selectedDocs, controller.signal)
@@ -479,10 +487,13 @@ export default function AppLayout() {
         }
 
         scopeDocuments = scope.accessible_document_ids
-        scopeFilenames = scopeDocuments
-          .map((id) => selection.documentMeta.get(id)?.filename)
-          .filter((name): name is string => Boolean(name))
-          .map(displayFilename)
+        const resolvedScope = resolveProgressScope(
+          scopeDocuments,
+          selection.documentMeta,
+          browse.getFolderNode,
+        )
+        scopeFilenames = resolvedScope.files
+        scopeFolders = resolvedScope.folders
 
         if (scopeDocuments.length === 0) {
           const reason =
@@ -539,6 +550,8 @@ export default function AppLayout() {
         status: 'thinking',
         startedAt,
         question,
+        progressScopeFiles: scopeFilenames,
+        progressScopeFolders: scopeFolders,
       }
 
       shouldStickToBottomRef.current = true
@@ -732,7 +745,7 @@ export default function AppLayout() {
         }
       }
     },
-    [activeChatId, queryTier, selection, sendQuery, updateAssistantMessage, scrollToBottom],
+    [activeChatId, queryTier, selection, browse, sendQuery, updateAssistantMessage, scrollToBottom],
   )
 
   const selectedDocument = useMemo(() => {
@@ -889,7 +902,7 @@ export default function AppLayout() {
       role: 'assistant',
       content: '',
       status: 'thinking',
-      progressLabel: 'Extracting metadata… this can take up to a minute.',
+      progressLabel: 'Extracting metadata. This can take up to a minute.',
     }
 
     shouldStickToBottomRef.current = true
