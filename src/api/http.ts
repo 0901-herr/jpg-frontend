@@ -5,12 +5,18 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
 export class ApiError extends Error {
   status: number
   detail?: string
+  /** Machine-readable `error` field from a `{error, message}` body (e.g.
+   * `leaf_folder`, `feature_disabled`) — distinct from `detail`, which is
+   * the human-readable text a caller can show as-is (from `detail` or
+   * `message`, falling back to `error` only when neither is present). */
+  code?: string
 
-  constructor(message: string, status: number, detail?: string) {
+  constructor(message: string, status: number, detail?: string, code?: string) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.detail = detail
+    this.code = code
   }
 }
 
@@ -35,14 +41,29 @@ function resolveCredentials(auth: boolean): RequestCredentials | undefined {
   return 'include'
 }
 
-async function parseErrorDetail(response: Response): Promise<string | undefined> {
+interface ParsedErrorBody {
+  detail?: string
+  code?: string
+}
+
+/** Parses a JSON error body into a human-readable `detail` (preferring
+ * `detail`, then `message` — the adapter's `{error, message}` shape — and
+ * finally falling back to the machine-readable `error` code itself when
+ * neither is present) plus that `error` code as `code`, kept distinct so a
+ * caller can branch on the code without showing it verbatim as text. */
+async function parseErrorBody(response: Response): Promise<ParsedErrorBody> {
   try {
-    const errorBody = (await response.json()) as { detail?: string; error?: string }
-    if (typeof errorBody.detail === 'string') return errorBody.detail
-    if (typeof errorBody.error === 'string') return errorBody.error
-    return undefined
+    const errorBody = (await response.json()) as {
+      detail?: string
+      error?: string
+      message?: string
+    }
+    const code = typeof errorBody.error === 'string' ? errorBody.error : undefined
+    if (typeof errorBody.detail === 'string') return { detail: errorBody.detail, code }
+    if (typeof errorBody.message === 'string') return { detail: errorBody.message, code }
+    return { detail: code, code }
   } catch {
-    return undefined
+    return {}
   }
 }
 
@@ -72,8 +93,8 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   }
 
   if (!response.ok) {
-    const detail = await parseErrorDetail(response)
-    throw new ApiError(detail ?? response.statusText, response.status, detail)
+    const { detail, code } = await parseErrorBody(response)
+    throw new ApiError(detail ?? response.statusText, response.status, detail, code)
   }
 
   if (response.status === 204) {
@@ -93,8 +114,8 @@ export async function apiFetchBlob(path: string, auth = true): Promise<Blob> {
   }
 
   if (!response.ok) {
-    const detail = await parseErrorDetail(response)
-    throw new ApiError(detail ?? response.statusText, response.status, detail)
+    const { detail, code } = await parseErrorBody(response)
+    throw new ApiError(detail ?? response.statusText, response.status, detail, code)
   }
 
   return response.blob()
@@ -149,8 +170,8 @@ export async function apiPostStream(
   }
 
   if (!response.ok) {
-    const detail = await parseErrorDetail(response)
-    throw new ApiError(detail ?? response.statusText, response.status, detail)
+    const { detail, code } = await parseErrorBody(response)
+    throw new ApiError(detail ?? response.statusText, response.status, detail, code)
   }
 
   const parseHeaderInt = (name: string) => {

@@ -3,7 +3,11 @@ import userEvent from '@testing-library/user-event'
 import React, { useState } from 'react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../api/http'
-import type { MqaMetadataResponse, QueryScopeResponse } from '../api/types/browse'
+import type {
+  DocumentCategorizeResponse,
+  MqaMetadataResponse,
+  QueryScopeResponse,
+} from '../api/types/browse'
 import type { SendMessageRequest, SendMessageResponse } from '../api/types/query'
 
 const validateQueryScope = vi.fn<
@@ -12,11 +16,15 @@ const validateQueryScope = vi.fn<
 const extractMqaMetadata = vi.fn<
   (documentId: string, signal?: AbortSignal) => Promise<MqaMetadataResponse>
 >()
+const categorizeDocument = vi.fn<
+  (documentId: string, signal?: AbortSignal) => Promise<DocumentCategorizeResponse>
+>()
 
 vi.mock('../api/browse', () => ({
   validateQueryScope: (...args: [string[], AbortSignal?]) => validateQueryScope(...args),
   fetchDocumentSummary: vi.fn(),
   extractMqaMetadata: (...args: [string, AbortSignal?]) => extractMqaMetadata(...args),
+  categorizeDocument: (...args: [string, AbortSignal?]) => categorizeDocument(...args),
 }))
 
 vi.mock('../context/AuthContext', () => ({
@@ -27,7 +35,11 @@ vi.mock('../context/AuthContext', () => ({
 }))
 
 vi.mock('../hooks/useBrowseTree', () => ({
-  useBrowseTree: () => ({ sessionExpired: false, username: 'tester' }),
+  useBrowseTree: () => ({
+    sessionExpired: false,
+    username: 'tester',
+    getFolderNode: () => undefined,
+  }),
 }))
 
 function defaultDocumentMeta() {
@@ -360,6 +372,108 @@ describe('AppLayout — Extract metadata', () => {
 
     expect(await screen.findByText('Answer interrupted.')).toBeInTheDocument()
     expect(screen.getByText('Extract MQA metadata from doc-1.pdf')).toBeInTheDocument()
+  })
+})
+
+describe('AppLayout — Categorize', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    currentSignal = null
+    initialSelectedIds = new Set(['doc-1'])
+    initialDocumentMeta = defaultDocumentMeta()
+    validateQueryScope.mockResolvedValue({
+      total_files: 1,
+      ready_files: 1,
+      indexing_files: 0,
+      failed_files: 0,
+      missing_files: 0,
+      accessible_document_ids: ['doc-1'],
+    })
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  function matchedResponse(
+    overrides: Partial<DocumentCategorizeResponse> = {},
+  ): DocumentCategorizeResponse {
+    return {
+      document_id: 'doc-1',
+      filename: 'doc-1.pdf',
+      folder_id: 4,
+      folder_name: 'Minutes',
+      category: 'Approved',
+      abstained: false,
+      target_folder_id: 9,
+      confidence: 0.9,
+      reasoning: 'Signed and dated approval record.',
+      candidates: [
+        { folder_id: 9, name: 'Approved' },
+        { folder_id: 10, name: 'Draft' },
+      ],
+      latency_ms: 800,
+      ...overrides,
+    }
+  }
+
+  it('appends the user request and the suggested-folder answer on success', async () => {
+    const user = userEvent.setup()
+    categorizeDocument.mockResolvedValueOnce(matchedResponse())
+
+    render(<AppLayout />)
+
+    await user.click(screen.getByRole('button', { name: 'Categorize selected document' }))
+
+    expect(await screen.findByText('Categorize "doc-1.pdf"')).toBeInTheDocument()
+    expect(
+      await screen.findByText((_, element) => element?.textContent === 'Suggested folder: Approved'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Confidence: 90%')).toBeInTheDocument()
+    expect(categorizeDocument).toHaveBeenCalledWith('doc-1')
+  })
+
+  it('appends a single assistant message with the server text on a 409 leaf-folder error, never a fatal screen', async () => {
+    const user = userEvent.setup()
+    categorizeDocument.mockRejectedValueOnce(
+      new ApiError(
+        'This folder has no subfolders to categorize into.',
+        409,
+        'This folder has no subfolders to categorize into.',
+        'leaf_folder',
+      ),
+    )
+
+    render(<AppLayout />)
+
+    await user.click(screen.getByRole('button', { name: 'Categorize selected document' }))
+
+    expect(
+      await screen.findByText('This folder has no subfolders to categorize into.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/Suggested folder:/)).not.toBeInTheDocument()
+
+    // The composer is idle again — the button is enabled once more, and
+    // nothing crashed the page.
+    expect(
+      await screen.findByRole('button', { name: 'Categorize selected document' }),
+    ).toBeEnabled()
+  })
+
+  it('falls back to a fixed message on a 404 with no server message, still never a fatal screen', async () => {
+    const user = userEvent.setup()
+    categorizeDocument.mockRejectedValueOnce(new ApiError('feature_disabled', 404, undefined, 'feature_disabled'))
+
+    render(<AppLayout />)
+
+    await user.click(screen.getByRole('button', { name: 'Categorize selected document' }))
+
+    expect(await screen.findByText('Categorize "doc-1.pdf"')).toBeInTheDocument()
+    // The raw error code is never shown verbatim as the message text.
+    expect(screen.queryByText('feature_disabled')).not.toBeInTheDocument()
+    expect(
+      await screen.findByRole('button', { name: 'Categorize selected document' }),
+    ).toBeEnabled()
   })
 })
 

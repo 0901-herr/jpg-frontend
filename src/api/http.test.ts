@@ -64,6 +64,42 @@ describe('apiGet error parsing', () => {
     expect((error as ApiError).message).toBe('Forbidden')
   })
 
+  it('reads the code and message from a {error, message} body, keeping both distinct', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ error: 'leaf_folder', message: 'This folder has no subfolders.' }),
+            { status: 409 },
+          ),
+      ),
+    )
+
+    const error = await apiGet('/thing').catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(ApiError)
+    expect((error as ApiError).status).toBe(409)
+    expect((error as ApiError).code).toBe('leaf_folder')
+    expect((error as ApiError).detail).toBe('This folder has no subfolders.')
+    expect((error as ApiError).message).toBe('This folder has no subfolders.')
+  })
+
+  it('still exposes the {error} code alongside detail when no message is present', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () => new Response(JSON.stringify({ error: 'feature_disabled' }), { status: 404 }),
+      ),
+    )
+
+    const error = await apiGet('/thing').catch((e: unknown) => e)
+
+    expect((error as ApiError).status).toBe(404)
+    expect((error as ApiError).code).toBe('feature_disabled')
+    expect((error as ApiError).detail).toBe('feature_disabled')
+  })
+
   it('falls back to the response status text for a non-JSON body', async () => {
     vi.stubGlobal(
       'fetch',

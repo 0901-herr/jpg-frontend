@@ -10,6 +10,7 @@ function renderChatInput(props: Partial<React.ComponentProps<typeof ChatInput>> 
       onClearSelection={() => {}}
       onSend={() => {}}
       onSummarize={() => {}}
+      onCategorize={() => {}}
       onExtractMetadata={() => {}}
       onStop={() => {}}
       queryTier="standard"
@@ -70,5 +71,75 @@ describe('ChatInput', () => {
     await user.click(screen.getByRole('button', { name: 'Extract MQA metadata' }))
 
     expect(onExtractMetadata).toHaveBeenCalledTimes(1)
+  })
+
+  it('places Categorize between Summarize and Extract metadata', () => {
+    renderChatInput({ selectedCount: 1 })
+
+    const buttons = screen.getAllByRole('button').map((b) => b.textContent)
+    const summarizeIdx = buttons.indexOf('Summarize')
+    const categorizeIdx = buttons.indexOf('Categorize')
+    const extractIdx = buttons.findIndex((b) => b === 'Extract metadata')
+
+    expect(summarizeIdx).toBeGreaterThanOrEqual(0)
+    expect(categorizeIdx).toBeGreaterThan(summarizeIdx)
+    expect(extractIdx).toBeGreaterThan(categorizeIdx)
+  })
+
+  it('has the expected aria-label and class for the Categorize button', () => {
+    renderChatInput({ selectedCount: 1, categorizeDisabledReason: null })
+
+    const button = screen.getByRole('button', { name: 'Categorize selected document' })
+    expect(button).toHaveClass('docu-chat-composer-categorize')
+  })
+
+  it('disables Categorize and shows the reason when no file is selected', async () => {
+    const user = userEvent.setup()
+    renderChatInput({
+      selectedCount: 0,
+      categorizeDisabledReason: 'Select one file to categorize',
+    })
+
+    const button = screen.getByRole('button', { name: 'Categorize selected document' })
+    expect(button).toBeDisabled()
+
+    await user.hover(button.parentElement ?? button)
+    expect(await screen.findByText('Select one file to categorize')).toBeInTheDocument()
+  })
+
+  it('disables Categorize and shows the reason when two files are selected', async () => {
+    const user = userEvent.setup()
+    renderChatInput({
+      selectedCount: 2,
+      categorizeDisabledReason: 'Select only one file to categorize',
+    })
+
+    const button = screen.getByRole('button', { name: 'Categorize selected document' })
+    expect(button).toBeDisabled()
+
+    await user.hover(button.parentElement ?? button)
+    expect(await screen.findByText('Select only one file to categorize')).toBeInTheDocument()
+  })
+
+  it('enables Categorize for exactly one ready file', () => {
+    renderChatInput({ selectedCount: 1, categorizeDisabledReason: null })
+
+    expect(
+      screen.getByRole('button', { name: 'Categorize selected document' }),
+    ).toBeEnabled()
+  })
+
+  it('calls onCategorize when clicked while enabled', async () => {
+    const user = userEvent.setup()
+    const onCategorize = vi.fn()
+    renderChatInput({
+      selectedCount: 1,
+      categorizeDisabledReason: null,
+      onCategorize,
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Categorize selected document' }))
+
+    expect(onCategorize).toHaveBeenCalledTimes(1)
   })
 })

@@ -13,12 +13,14 @@ interface ChatInputProps {
   onClearSelection: () => void
   onSend: (message: string) => void
   onSummarize: () => void
+  onCategorize: () => void
   onExtractMetadata: () => void
   onStop: () => void
   isResponding?: boolean
   disabled?: boolean
   disabledReason?: string
   summarizeDisabledReason?: string | null
+  categorizeDisabledReason?: string | null
   extractMetadataDisabledReason?: string | null
   queryTier: QueryTier
   onQueryTierChange: (tier: QueryTier) => void
@@ -43,12 +45,14 @@ export default function ChatInput({
   onClearSelection,
   onSend,
   onSummarize,
+  onCategorize,
   onExtractMetadata,
   onStop,
   isResponding = false,
   disabled = false,
   disabledReason,
   summarizeDisabledReason = null,
+  categorizeDisabledReason = null,
   extractMetadataDisabledReason = null,
   queryTier,
   onQueryTierChange,
@@ -57,6 +61,7 @@ export default function ChatInput({
 
   const canSend = !isResponding && !disabled && value.trim().length > 0 && selectedCount > 0
   const canSummarize = summarizeDisabledReason == null
+  const canCategorize = categorizeDisabledReason == null
   const canExtractMetadata = extractMetadataDisabledReason == null
   const sendDisabledReason = getSendDisabledReason({
     selectedCount,
@@ -151,6 +156,23 @@ export default function ChatInput({
                   aria-label="Summarize selected document"
                 >
                   Summarize
+                </button>
+              </span>
+            </Tooltip>
+            <Tooltip
+              title={categorizeDisabledReason ?? undefined}
+              placement="top"
+              mouseEnterDelay={0.2}
+            >
+              <span className="inline-flex">
+                <button
+                  type="button"
+                  onClick={onCategorize}
+                  disabled={!canCategorize}
+                  className="docu-chat-composer-categorize"
+                  aria-label="Categorize selected document"
+                >
+                  Categorize
                 </button>
               </span>
             </Tooltip>

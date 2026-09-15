@@ -1,7 +1,12 @@
 import { Layout, message } from 'antd'
 import { ChatBubbleIconLg } from '../icons/chat'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { extractMqaMetadata, fetchDocumentSummary, validateQueryScope } from '../api/browse'
+import {
+  categorizeDocument,
+  extractMqaMetadata,
+  fetchDocumentSummary,
+  validateQueryScope,
+} from '../api/browse'
 import { ApiError } from '../api/http'
 import type { Citation } from '../api/types/query'
 import { AUTH_BYPASS, DEV_USER } from '../config/auth'
@@ -18,8 +23,10 @@ import { formatProgressStage, formatRouteLabel } from '../utils/queryProgress'
 import { loadChatHistory, persistChatHistory } from '../utils/chatPersistence'
 import { getSummarizeDisabledReason, isSummaryReady } from '../utils/summaryGate'
 import { getExtractMetadataDisabledReason, isMqaMetadataReady } from '../utils/mqaMetadataGate'
+import { getCategorizeDisabledReason } from '../utils/categorizeGate'
 import { buildSummaryMessages } from '../utils/summaryMessages'
 import { buildMqaMetadataAnswer } from '../utils/mqaMetadataMessage'
+import { buildCategorizeMessages } from '../utils/categorizeMessages'
 import { DEFAULT_QUERY_TIER } from '../utils/queryTier'
 import { toUserFacingMqaMetadataError, toUserFacingQueryError } from '../utils/userFacingErrors'
 import type { QueryTier } from '../api/types/query'
@@ -46,6 +53,31 @@ function pairMessages(messages: ChatMessage[]): { user: ChatMessage; assistant?:
     }
   }
   return pairs
+}
+
+/** Fixed copy for a categorize failure when the server sent no usable
+ * message of its own — keyed by the adapter's `error` code. `feature_disabled`
+ * has no `message` field at all per the contract; the others are a
+ * defensive backstop in case a future response omits `message`. */
+const CATEGORIZE_ERROR_FALLBACKS: Record<string, string> = {
+  feature_disabled: 'Categorization is not enabled for this deployment.',
+  leaf_folder: 'This folder has no subfolders — there is nothing to categorize into.',
+  document_not_ready: 'This file is not ready to categorize yet. Please try again shortly.',
+  categorize_unavailable: 'Categorization is temporarily unavailable. Please try again.',
+}
+
+/** Never a fatal screen: every categorize failure — a mapped adapter error,
+ * an unmapped status, or a plain network/JS error — resolves to a message
+ * safe to show in chat instead of propagating. Prefers the server's own
+ * `message` text (surfaced as `ApiError.detail`); falls back to fixed copy
+ * keyed by `ApiError.code` when the server sent no usable message. */
+function categorizeErrorMessage(err: unknown): string {
+  if (err instanceof ApiError) {
+    const hasServerMessage = err.detail != null && err.detail.length > 0 && err.detail !== err.code
+    if (hasServerMessage) return err.detail as string
+    if (err.code && CATEGORIZE_ERROR_FALLBACKS[err.code]) return CATEGORIZE_ERROR_FALLBACKS[err.code]
+  }
+  return 'Could not categorize this file. Please try again.'
 }
 
 function createEmptySession(): ChatSession {
@@ -650,17 +682,25 @@ export default function AppLayout() {
   const summarizingRef = useRef(false)
   const [isExtracting, setIsExtracting] = useState(false)
   const extractingRef = useRef(false)
+  const [isCategorizing, setIsCategorizing] = useState(false)
+  const categorizingRef = useRef(false)
+
+  const selectedDocumentFolder = useMemo(
+    () => (selectedDocument ? browse.getFolderNode(selectedDocument.folder_id) : undefined),
+    [browse.getFolderNode, selectedDocument],
+  )
 
   const summarizeDisabledReason = useMemo(
     () =>
       getSummarizeDisabledReason({
         selectedCount: selection.selectedCount,
         document: selectedDocument,
-        isResponding: sendQuery.isPending || isSummarizing || isExtracting,
+        isResponding: sendQuery.isPending || isSummarizing || isExtracting || isCategorizing,
         disabled: browse.sessionExpired,
       }),
     [
       browse.sessionExpired,
+      isCategorizing,
       isExtracting,
       isSummarizing,
       selectedDocument,
@@ -674,14 +714,36 @@ export default function AppLayout() {
       getExtractMetadataDisabledReason({
         selectedCount: selection.selectedCount,
         document: selectedDocument,
-        isResponding: sendQuery.isPending || isSummarizing || isExtracting,
+        isResponding: sendQuery.isPending || isSummarizing || isExtracting || isCategorizing,
         disabled: browse.sessionExpired,
       }),
     [
       browse.sessionExpired,
+      isCategorizing,
       isExtracting,
       isSummarizing,
       selectedDocument,
+      selection.selectedCount,
+      sendQuery.isPending,
+    ],
+  )
+
+  const categorizeDisabledReason = useMemo(
+    () =>
+      getCategorizeDisabledReason({
+        selectedCount: selection.selectedCount,
+        document: selectedDocument,
+        folder: selectedDocumentFolder,
+        isResponding: sendQuery.isPending || isSummarizing || isExtracting || isCategorizing,
+        disabled: browse.sessionExpired,
+      }),
+    [
+      browse.sessionExpired,
+      isCategorizing,
+      isExtracting,
+      isSummarizing,
+      selectedDocument,
+      selectedDocumentFolder,
       selection.selectedCount,
       sendQuery.isPending,
     ],
@@ -829,6 +891,59 @@ export default function AppLayout() {
     })()
   }, [activeChatId, extractMetadataDisabledReason, scrollToBottom, selectedDocument])
 
+  const handleCategorize = useCallback(() => {
+    if (categorizeDisabledReason) {
+      message.warning(categorizeDisabledReason)
+      return
+    }
+    if (!selectedDocument) return
+    if (categorizingRef.current) return
+
+    const documentId = selectedDocument.document_id
+    const filename = selectedDocument.filename
+    categorizingRef.current = true
+    setIsCategorizing(true)
+
+    void (async () => {
+      let userMsg: ChatMessage
+      let assistantMsg: ChatMessage
+
+      try {
+        const response = await categorizeDocument(documentId)
+        ;({ userMessage: userMsg, assistantMessage: assistantMsg } = buildCategorizeMessages(
+          filename,
+          response,
+        ))
+      } catch (err) {
+        // Never a fatal screen: every failure — a mapped adapter error or
+        // anything unexpected — still appends a chat message instead of
+        // throwing or leaving the composer stuck.
+        userMsg = {
+          id: crypto.randomUUID(),
+          role: 'user',
+          content: `Categorize "${filename}"`,
+        }
+        assistantMsg = {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: categorizeErrorMessage(err),
+          status: 'complete',
+        }
+      }
+
+      shouldStickToBottomRef.current = true
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === activeChatId ? { ...s, messages: [...s.messages, userMsg, assistantMsg] } : s,
+        ),
+      )
+      requestAnimationFrame(() => scrollToBottom('auto'))
+
+      categorizingRef.current = false
+      setIsCategorizing(false)
+    })()
+  }, [activeChatId, categorizeDisabledReason, scrollToBottom, selectedDocument])
+
   return (
     <Layout className="h-screen">
       <div
@@ -904,12 +1019,14 @@ export default function AppLayout() {
             onClearSelection={selection.clearSelection}
             onSend={handleSend}
             onSummarize={handleSummarize}
+            onCategorize={handleCategorize}
             onExtractMetadata={handleExtractMetadata}
             onStop={handleStop}
             isResponding={sendQuery.isPending}
             disabled={browse.sessionExpired}
             disabledReason={inputBlockedReason}
             summarizeDisabledReason={summarizeDisabledReason}
+            categorizeDisabledReason={categorizeDisabledReason}
             extractMetadataDisabledReason={extractMetadataDisabledReason}
             queryTier={queryTier}
             onQueryTierChange={setQueryTier}

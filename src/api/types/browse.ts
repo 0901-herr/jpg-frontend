@@ -124,3 +124,29 @@ export interface MqaMetadataResponse {
   pushed: boolean
   push_error: string | null
 }
+
+/** One of the folder's current subfolders, offered to the model as a
+ * possible destination for the categorize call. */
+export interface CategorizeCandidate {
+  folder_id: number
+  name: string
+}
+
+/** Response from `POST /browse/documents/{document_id}/categorize` — the
+ * model picks one of the current folder's subfolders (`category`) or
+ * abstains (`category: null`, `abstained: true`). `abstained: false` with
+ * `category: null` means the model's answer could not be matched to any
+ * candidate folder name. */
+export interface DocumentCategorizeResponse {
+  document_id: string
+  filename: string
+  folder_id: number
+  folder_name: string
+  category: string | null
+  abstained: boolean
+  target_folder_id: number | null
+  confidence: number
+  reasoning: string
+  candidates: CategorizeCandidate[]
+  latency_ms: number
+}

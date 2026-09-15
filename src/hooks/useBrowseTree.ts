@@ -5,6 +5,7 @@ import { fetchBrowseRoot, fetchBrowseStatus, fetchFolderContents } from '../api/
 import type {
   BrowseDocumentItem,
   BrowseFolderContentsResponse,
+  BrowseFolderNode,
   BrowseStatusItem,
 } from '../api/types/browse'
 import { BROWSE_IDLE_REFRESH_SECONDS, BROWSE_REFRESH_SECONDS } from '../config/browse'
@@ -361,6 +362,27 @@ export function useBrowseTree(onDocumentsLoaded?: (event: DocumentsLoadedEvent) 
     return folderMeta.get(activeFolderId)?.name ?? null
   }, [activeFolderId, folderMeta])
 
+  /**
+   * Looks up a folder node (name + has_children) by id in the folder
+   * cache built up from every folder the tree has already rendered — for
+   * example the Categorize gate's "does this folder have subfolders"
+   * check. Returns undefined for a folder that hasn't been loaded yet
+   * (a caller should treat that as unknown, not "no subfolders").
+   */
+  const getFolderNode = useCallback(
+    (folderId: number): BrowseFolderNode | undefined => {
+      const meta = folderMeta.get(folderId)
+      if (!meta) return undefined
+      return {
+        folder_id: folderId,
+        name: meta.name,
+        parent_id: meta.parent_id,
+        has_children: meta.has_children,
+      }
+    },
+    [folderMeta],
+  )
+
   const handleSelectFolder = useCallback(
     async (folderId: number) => {
       if (cache.has(folderId)) {
@@ -610,6 +632,7 @@ export function useBrowseTree(onDocumentsLoaded?: (event: DocumentsLoadedEvent) 
     activeFolderId,
     activeFolderName,
     activeFolderContents,
+    getFolderNode,
     isInitializing,
     initError,
     sessionExpired,

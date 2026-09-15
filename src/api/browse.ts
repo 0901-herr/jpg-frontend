@@ -7,6 +7,7 @@ import type {
   BrowseStatusRequest,
   BrowseStatusResponse,
   BrowseSubtreeDocumentsResponse,
+  DocumentCategorizeResponse,
   DocumentSummaryResponse,
   MqaMetadataResponse,
   QueryScopeRequest,
@@ -131,6 +132,22 @@ export async function extractMqaMetadata(
 ): Promise<MqaMetadataResponse> {
   return apiPost<MqaMetadataResponse>(
     `/browse/documents/${documentId}/mqa-metadata`,
+    {},
+    true,
+    signal,
+  )
+}
+
+/** Runs Arche AI categorization for a document: the model picks one of the
+ * current folder's subfolders as a destination, or abstains. Empty body
+ * per the contract, same shape as `extractMqaMetadata`. The user still
+ * moves the file by hand in LogicalDOC — this only suggests where. */
+export async function categorizeDocument(
+  documentId: string,
+  signal?: AbortSignal,
+): Promise<DocumentCategorizeResponse> {
+  return apiPost<DocumentCategorizeResponse>(
+    `/browse/documents/${documentId}/categorize`,
     {},
     true,
     signal,

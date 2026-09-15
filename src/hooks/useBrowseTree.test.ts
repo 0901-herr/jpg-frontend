@@ -504,3 +504,42 @@ describe('useBrowseTree — switching to a folder that no longer exists', () => 
     expect(result.current.activeFolderId).toBe(1)
   })
 })
+
+describe('useBrowseTree — getFolderNode', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    fetchBrowseRoot.mockResolvedValue(root)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.doUnmock('../config/browse')
+  })
+
+  it('resolves both the active folder and a subfolder seen in its listing', async () => {
+    fetchFolderContents.mockResolvedValueOnce(rootContents('READY'))
+    const result = await initHook()
+
+    expect(result.current.getFolderNode(1)).toEqual({
+      folder_id: 1,
+      name: 'Root',
+      parent_id: null,
+      has_children: true,
+    })
+    expect(result.current.getFolderNode(2)).toEqual({
+      folder_id: 2,
+      name: 'Sub',
+      parent_id: 1,
+      has_children: false,
+    })
+  })
+
+  it('returns undefined for a folder that has not been loaded yet', async () => {
+    fetchFolderContents.mockResolvedValueOnce(rootContents('READY'))
+    const result = await initHook()
+
+    expect(result.current.getFolderNode(999)).toBeUndefined()
+  })
+})
