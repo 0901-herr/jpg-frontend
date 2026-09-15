@@ -35,16 +35,40 @@ interface CitationLinkProps {
 /** Base pill styling shared by the openable (`<button>`) and non-openable
  * (`<span>`) shapes — a compact filename chip inline with the answer text,
  * replacing the old underlined "(File.pdf, Page 2)" text run. Deliberately
- * smaller than the body text (owner feedback: "something like <sub>") —
- * `text-[0.68em]` + `leading-[1.5]` keeps the pill's own content height at
- * roughly 1em of the surrounding text, and `py-0` (all vertical space
- * comes from line-height, not padding) keeps its total height, border
- * included, within the paragraph's line box so a cited line never grows
- * taller than an uncited one. `relative top-[0.12em]` (rather than the
- * `sub` keyword, whose exact drop varies by browser/font) nudges it down
- * from the baseline by a small, fixed amount for a subscript-like sit. */
+ * subscript-like, clearly smaller than the body text (owner feedback, twice:
+ * "something like <sub>", then "still the same size as the normal text").
+ *
+ * The size/line-height/margin/colour utilities that used to sit here
+ * (`text-[…em]`, `leading-[…]`, `ml-[…]`, `mr-[…]`, `text-[#666]`) never
+ * actually applied on the `<button>` shape: `src/main.tsx` loads
+ * `antd/dist/reset.css`, which is unlayered and sets
+ * `button { margin; color; font-size; font-family; line-height }`, and
+ * Tailwind v4 puts every utility in `@layer utilities` — unlayered CSS
+ * always wins over layered CSS, regardless of specificity or source order.
+ * Those five properties now live in the plain, unlayered `.docu-citation-pill`
+ * class in `src/index.css` instead, whose class selector outranks the
+ * reset's element selector among unlayered rules. The remaining utilities
+ * below (layout, border, background, the baseline nudge) are untouched by
+ * the reset, so they stay as Tailwind classes.
+ *
+ * `0.625em` (10px at a 16px body) is the floor at which a mixed-case
+ * filename with digits and underscores stays legible; `leading-[1.4]`
+ * keeps the chip's box at ~0.875em of the surrounding text so it no longer
+ * fills the line like a word does, and `py-0` (all vertical space comes
+ * from line-height, not padding) keeps its total height, border included,
+ * within the paragraph's line box so a cited line never grows taller than
+ * an uncited one. `relative top-[0.2em]` (rather than the `sub` keyword,
+ * whose exact drop varies by browser/font) nudges it below the baseline by
+ * a small, fixed amount. Spacing is asymmetric on purpose: a `0.45em`
+ * right margin (in the chip's own em, ~4px) separates a chip from the text
+ * or chip that follows it, so two citations in a row read as two chips,
+ * while the lead-in is only `0.15em` because an inline margin is not
+ * collapsed at a wrap point — a bigger left margin would indent a chip
+ * that lands at the start of a line. Callers passing `className` must not
+ * add their own margin utilities (Tailwind class precedence is not
+ * append-order-safe). */
 const CITATION_PILL_CLASS =
-  'relative top-[0.12em] inline-flex items-center gap-[0.25em] rounded-full border border-[#e5e5e5] bg-[#f6f6f6] px-[0.45em] py-0 text-[0.68em] leading-[1.5] align-baseline text-[#555]'
+  'docu-citation-pill relative top-[0.2em] inline-flex items-center gap-[0.25em] rounded-full border border-[#e5e5e5] bg-[#f6f6f6] px-[0.6em] py-0 align-baseline'
 
 const CITATION_PILL_NAME_MAX_LENGTH = 28
 

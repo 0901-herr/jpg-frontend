@@ -377,6 +377,24 @@ input.ant-input:focus-visible {
   padding: 0 0.25rem;
 }
 
+/* Inline citation pill (CitationList.tsx) — size/spacing/colour live here,
+   in a plain unlayered class, rather than as Tailwind utilities on the
+   element, because `src/main.tsx` loads antd's unlayered reset.css, whose
+   `button { margin; color; font-size; line-height }` rule always beats
+   Tailwind's utilities (Tailwind v4 puts them in `@layer utilities`, and
+   unlayered CSS overrides layered CSS regardless of specificity). This
+   class selector (0,1,0) outranks the reset's element selector (0,0,1)
+   among unlayered rules, so it wins on both the `<button>` and `<span>`
+   pill shapes. See the doc comment on `CITATION_PILL_CLASS` for why each
+   value was chosen. */
+.docu-citation-pill {
+  font-size: 0.625em;
+  line-height: 1.4;
+  margin: 0 0.45em 0 0.15em;
+  color: #666;
+  font-family: inherit;
+}
+
 .docu-chat-composer {
   border: 1px solid var(--docu-border);
   border-radius: 9999px;

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
@@ -160,5 +162,60 @@ describe('CitationLink pill', () => {
     render(<CitationLink source={src} label={citationDisplayLabel(src)} />)
 
     expect(screen.getByRole('button', { name: '(Report.pdf, Page 3)' })).toBeInTheDocument()
+  })
+
+  it('puts the docu-citation-pill class on the openable button shape', () => {
+    const src: Source = source({ index: 1, filename: 'Report.pdf', documentId: 'doc-1' })
+
+    render(<CitationLink source={src} label={citationDisplayLabel(src)} />)
+
+    expect(screen.getByRole('button')).toHaveClass('docu-citation-pill')
+  })
+
+  it('puts the docu-citation-pill class on the non-openable span shape', () => {
+    const src: Source = source({ index: 1, filename: 'Report.pdf' })
+
+    render(<CitationLink source={src} label={citationDisplayLabel(src)} />)
+
+    expect(screen.getByText('Report')).toHaveClass('docu-citation-pill')
+  })
+})
+
+describe('docu-citation-pill CSS contract', () => {
+  it('declares font-size, line-height, margin and color, since antd resets these on <button> and jsdom cannot compute the cascade to catch a regression here', () => {
+    const css = readFileSync(path.resolve(__dirname, '../index.css'), 'utf-8')
+    const match = css.match(/\.docu-citation-pill\s*\{([^}]*)\}/)
+
+    expect(match).not.toBeNull()
+    const body = match![1]
+    expect(body).toMatch(/font-size\s*:/)
+    expect(body).toMatch(/line-height\s*:/)
+    expect(body).toMatch(/margin\s*:/)
+    expect(body).toMatch(/color\s*:/)
+  })
+
+  it('is not nested inside an @layer block, since antd\'s reset.css is unlayered and anything inside @layer (including @layer utilities, where Tailwind puts its own classes) loses to it regardless of specificity', () => {
+    // Strip block comments first — the doc comment right above this rule
+    // itself contains a balanced `{ ... }` (quoting the reset's `button`
+    // rule), which would cancel out in the brace count below and make
+    // depth 0 true by coincidence rather than by the rule actually being
+    // unlayered.
+    const css = readFileSync(path.resolve(__dirname, '../index.css'), 'utf-8').replace(
+      /\/\*[\s\S]*?\*\//g,
+      '',
+    )
+    const selectorIndex = css.indexOf('.docu-citation-pill')
+    expect(selectorIndex).toBeGreaterThan(-1)
+
+    // Walk the comment-stripped file up to the selector, counting brace
+    // depth. A rule written at the top level of the stylesheet (depth 0 at
+    // its selector) is unlayered; one written inside `@layer name { ... }`
+    // would be at depth 1+ here.
+    let depth = 0
+    for (let i = 0; i < selectorIndex; i++) {
+      if (css[i] === '{') depth++
+      else if (css[i] === '}') depth--
+    }
+    expect(depth).toBe(0)
   })
 })
