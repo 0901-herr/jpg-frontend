@@ -53,7 +53,7 @@ input.ant-input:focus-visible {
   box-shadow: none !important;
 }
 
-/* ChatGPT-inspired tokens */
+/* Mainstream AI-chat-inspired tokens */
 :root {
   --docu-bg-app: #fefdfc;
   --docu-bg-page: var(--docu-bg-app);
@@ -61,21 +61,34 @@ input.ant-input:focus-visible {
   --docu-bg-surface: var(--docu-bg-app);
   --docu-bg-muted: #ececec;
   --docu-bg-hover: #ececec;
-  --docu-bg-active: #ececec;
+  /* Distinct from --docu-bg-hover: an active/selected row (the current
+     chat, the "N files" chip) needs to read as a step darker than a
+     row the pointer is merely resting over, or the two states are
+     visually indistinguishable (client feedback: UI polish pass). */
+  --docu-bg-active: #e2e2e2;
 
   --docu-border: #ececec;
   --docu-border-subtle: #f0f0f0;
 
-  --docu-text-primary: #0d0d0d;
-  --docu-text-secondary: #676767;
+  /* Neutral ink — not pure black, mainstream AI-chat layouts use a soft
+     near-black for body text and a mid-grey for secondary text. */
+  --docu-text-primary: #1f1f1f;
+  --docu-text-secondary: #6b6b6b;
   --docu-text-muted: #8e8e8e;
 
   --docu-accent: #0084ff;
   --docu-accent-hover: #0077e6;
+  /* The one accent colour's own focus-ring tint (see focus-visible rules
+     below) — kept as a token so every ring uses the exact same colour. */
+  --docu-accent-ring: rgba(0, 132, 255, 0.35);
 
+  /* Radii scale — 8/12/16px only (client feedback: UI polish pass). Both
+     of the larger steps were dead tokens before this pass (nothing read
+     them); they're wired into the composer container and quiet callouts
+     below instead of leaving them unused. */
   --docu-radius-sm: 0.5rem;
-  --docu-radius-md: 0.625rem;
-  --docu-radius-lg: 1.25rem;
+  --docu-radius-md: 0.75rem;
+  --docu-radius-lg: 1rem;
 
   --docu-sidebar-text: 0.875rem;
   --docu-body-text: 1rem;
@@ -120,13 +133,17 @@ input.ant-input:focus-visible {
   gap: 2px;
 }
 
+/* Consistent 24px row height (client feedback: UI polish pass) — every
+   part of a row (switcher, checkbox, node content) shares this same
+   height so the chevron/checkbox grid lines up across every depth of the
+   tree, not just within one row. */
 .docu-file-tree .ant-tree-treenode {
   display: flex !important;
   align-items: center !important;
   padding: 0 !important;
   margin: 0 !important;
   background: transparent !important;
-  min-height: 32px !important;
+  min-height: 24px !important;
   width: 100% !important;
 }
 
@@ -138,7 +155,7 @@ input.ant-input:focus-visible {
   justify-content: center !important;
   width: 20px !important;
   min-width: 20px !important;
-  height: 32px !important;
+  height: 24px !important;
   margin: 0 !important;
   padding: 0 !important;
   background: transparent !important;
@@ -198,11 +215,11 @@ input.ant-input:focus-visible {
   min-width: 0 !important;
   display: flex !important;
   align-items: center !important;
-  min-height: 32px !important;
-  padding: 6px 10px 6px 4px !important;
+  min-height: 24px !important;
+  padding: 3px 10px 3px 4px !important;
   margin: 0 !important;
   border-radius: 0 !important;
-  line-height: 1.4 !important;
+  line-height: 1.3 !important;
   font-size: var(--docu-sidebar-text) !important;
   font-weight: 400 !important;
   color: var(--docu-text-secondary) !important;
@@ -212,7 +229,7 @@ input.ant-input:focus-visible {
 
 .docu-file-tree .ant-tree-title {
   min-width: 0;
-  line-height: 1.4 !important;
+  line-height: 1.3 !important;
   font-weight: 400 !important;
   color: inherit !important;
 }
@@ -452,18 +469,23 @@ button.docu-citation-pill:hover {
   margin-bottom: 0;
 }
 
+/* Mainstream AI-chat layouts use a rounded rectangle for the composer, not
+   a full stadium pill — `--docu-radius-lg` (16px) rather than 9999px. The
+   soft shadow gives it a touch of elevation off the page background at
+   rest; on focus-within the border and a matching ring pick up the one
+   accent colour, per the "focus rings" rule. */
 .docu-chat-composer {
   border: 1px solid var(--docu-border);
-  border-radius: 9999px;
+  border-radius: var(--docu-radius-lg);
   background: var(--docu-bg-surface);
-  padding: 0.625rem;
-  transition: border-color 0.15s ease;
-  box-shadow: none;
+  padding: 0.625rem 0.75rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
 .docu-chat-composer:focus-within {
-  border-color: #d9d9d9;
-  box-shadow: none;
+  border-color: var(--docu-accent);
+  box-shadow: 0 0 0 3px var(--docu-accent-ring);
 }
 
 .docu-chat-composer-lead {
@@ -494,17 +516,21 @@ button.docu-citation-pill:hover {
   transition: color 0.15s ease, background-color 0.15s ease;
 }
 
+/* A chip at rest, not just on hover — mainstream composers show the
+   attachment/selection count as a small filled pill even when idle, so it
+   reads as "N files" chip rather than a plain link. */
 .docu-chat-composer-files {
   display: inline-block;
   padding: 0.375rem 0.625rem;
   border-radius: 9999px;
-  color: #0084ff;
+  color: var(--docu-text-secondary);
   font-weight: 500;
-  background: transparent;
+  background: var(--docu-bg-muted);
 }
 
 .docu-chat-composer-files-wrap:hover .docu-chat-composer-files {
-  background: var(--docu-bg-hover);
+  background: var(--docu-bg-active);
+  color: var(--docu-text-primary);
 }
 
 .docu-chat-composer-files-clear {
@@ -543,20 +569,22 @@ button.docu-citation-pill:hover {
   color: #404040;
 }
 
+/* Light pill buttons, not filled blue — the accent colour is reserved for
+   the primary send action and focus rings (client feedback: "one accent
+   colour only"). Icons (ChatInput.tsx) sit inline via `gap`, at every
+   width now, not only the <480px icon+short-label variant. */
 .docu-chat-composer-summarize,
 .docu-chat-composer-categorize,
 .docu-chat-composer-extract {
   height: 2.25rem;
-  padding: 0 0.75rem;
+  padding: 0 0.875rem;
   border-radius: 9999px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  /* Only matters for the icon+short-label variant below 480px — a lone
-     text child is unaffected. */
-  gap: 0.3125rem;
-  color: #fff;
-  background: #0084ff;
+  gap: 0.375rem;
+  color: var(--docu-text-secondary);
+  background: var(--docu-bg-muted);
   font-weight: 500;
   line-height: 1;
 }
@@ -564,28 +592,35 @@ button.docu-citation-pill:hover {
 .docu-chat-composer-summarize:hover:not(:disabled),
 .docu-chat-composer-categorize:hover:not(:disabled),
 .docu-chat-composer-extract:hover:not(:disabled) {
-  background: #0077e6;
+  background: var(--docu-bg-active);
+  color: var(--docu-text-primary);
 }
 
 .docu-chat-composer-summarize:disabled,
 .docu-chat-composer-categorize:disabled,
 .docu-chat-composer-extract:disabled {
-  background: #ececec;
-  color: #8e8e8e;
-  opacity: 1;
+  background: var(--docu-bg-muted);
+  color: var(--docu-text-muted);
+  opacity: 0.6;
   cursor: not-allowed;
 }
 
 .docu-chat-composer-files-clear:focus,
-.docu-chat-composer-files-clear:focus-visible,
 .docu-chat-composer-summarize:focus,
-.docu-chat-composer-summarize:focus-visible,
 .docu-chat-composer-categorize:focus,
+.docu-chat-composer-extract:focus {
+  outline: none !important;
+}
+
+/* A visible focus-visible ring (keyboard focus only, not a mouse click) in
+   the one accent colour — every interactive control needs a focus state,
+   and the reset above was previously suppressing it outright. */
+.docu-chat-composer-files-clear:focus-visible,
+.docu-chat-composer-summarize:focus-visible,
 .docu-chat-composer-categorize:focus-visible,
-.docu-chat-composer-extract:focus,
 .docu-chat-composer-extract:focus-visible {
   outline: none !important;
-  box-shadow: none !important;
+  box-shadow: 0 0 0 2px var(--docu-accent-ring) !important;
 }
 
 .docu-chat-input textarea.ant-input {
@@ -639,7 +674,9 @@ button.docu-citation-pill:hover {
 @media (max-width: 767.98px) {
   .docu-chat-composer {
     flex-wrap: wrap;
-    border-radius: 20px;
+    /* border-radius comes from the base `.docu-chat-composer` rule
+       (--docu-radius-lg) — no narrower-width override needed now that it
+       isn't a 9999px stadium pill any more. */
   }
 
   .docu-chat-composer-textarea-wrap {
@@ -707,6 +744,11 @@ button.docu-citation-pill:hover {
   background: var(--docu-bg-hover);
 }
 
+.docu-mobile-topbar-menu:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--docu-accent-ring);
+}
+
 /* Drawer close button (AppLayout.tsx, `classNames={{ close: '...' }}` on
    the antd Drawer) — a `<button>`, same reasoning as
    `.docu-mobile-topbar-menu` just above: font-size/color/margin live in an
@@ -717,6 +759,12 @@ button.docu-citation-pill:hover {
   font-size: 1.125rem;
   color: var(--docu-text-primary);
   margin: 0;
+}
+
+.docu-mobile-drawer-close:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--docu-accent-ring);
+  border-radius: 9999px;
 }
 
 .docu-selected-files-tooltip .ant-tooltip-inner {
@@ -961,10 +1009,14 @@ button.docu-citation-pill:hover {
   opacity: 0.6;
 }
 
-.docu-query-tier-dropdown:focus,
+.docu-query-tier-dropdown:focus {
+  outline: none !important;
+}
+
 .docu-query-tier-dropdown:focus-visible {
   outline: none !important;
-  box-shadow: none !important;
+  box-shadow: 0 0 0 2px var(--docu-accent-ring) !important;
+  border-radius: 6px;
 }
 
 .docu-query-tier-dropdown-chevron {
