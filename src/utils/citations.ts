@@ -15,6 +15,21 @@ function readNumber(obj: Record<string, unknown>, key: string): number | undefin
   return typeof v === 'number' ? v : undefined
 }
 
+/** Trims a citation snippet and drops exactly one trailing ellipsis (either
+ * the ASCII "..." or the single-character "…"), matched only after
+ * trimming and only at the very end — a dot elsewhere in the snippet (an
+ * abbreviation, a decimal) is left untouched. The engine truncates each
+ * `snippet` to a char limit and appends this itself (being fixed at the
+ * source in rag-engine), but a session already persisted in localStorage
+ * keeps the old value, so this runs at the parse boundary rather than
+ * relying on the engine fix alone. A snippet that's nothing but the
+ * ellipsis normalises to an empty string, which `CitationList` already
+ * treats as "no excerpt" via its `group.snippet` truthiness guard. */
+function normalizeSnippet(raw: string | undefined): string | undefined {
+  if (raw === undefined) return undefined
+  return raw.trim().replace(/(?:\.\.\.|…)$/, '')
+}
+
 export function displayFilename(raw: string): string {
   const stripped = raw.replace(/^[0-9a-f]{8}_(?:\d+_v\d+_)?/i, '')
   return stripped || raw
@@ -31,7 +46,7 @@ export function parseCitationObject(data: unknown): Citation | null {
     doc_ref: docRef,
     page,
     page_number: page,
-    snippet: readString(obj, 'snippet'),
+    snippet: normalizeSnippet(readString(obj, 'snippet')),
     score: readNumber(obj, 'score'),
     document_id: readString(obj, 'document_id'),
     filename: readString(obj, 'filename'),

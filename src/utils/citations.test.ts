@@ -5,6 +5,7 @@ import {
   citationNumberKey,
   highlightSignificantWords,
   numberCitationsByAnswerOrder,
+  parseCitationObject,
   significantQuestionWords,
   splitAnswerByDocRefs,
 } from './citations'
@@ -559,5 +560,33 @@ describe('answerHasInlineCitation', () => {
   it('is false when the marker present has no matching source', () => {
     const sources = [source({ index: 1, docRef: '[Doc1]' })]
     expect(answerHasInlineCitation('as noted [Doc9]', sources)).toBe(false)
+  })
+})
+
+describe('parseCitationObject — snippet normalisation (Item B)', () => {
+  // The engine truncates each citation snippet and appends a trailing
+  // "..." (being fixed at the source); sessions already persisted in
+  // localStorage still hold such snippets, so the parse boundary itself
+  // trims and drops exactly one trailing ellipsis rather than relying on
+  // every caller to re-clean the value.
+  it.each<[string, string, string]>([
+    ['plain "..." suffix', 'text intro...', 'text intro'],
+    ['unicode ellipsis character suffix', 'text…', 'text'],
+    ['dots elsewhere in the text are left alone — only the trailing run is dropped', 'e.g. 3.5...', 'e.g. 3.5'],
+    ['a single trailing period is not an ellipsis and is left unchanged', 'no change.', 'no change.'],
+    ['a snippet that is only the ellipsis becomes empty', '...', ''],
+  ])('%s', (_label, rawSnippet, expected) => {
+    const citation = parseCitationObject({ doc_ref: '[Doc1]', snippet: rawSnippet })
+    expect(citation?.snippet).toBe(expected)
+  })
+
+  it('trims surrounding whitespace before checking for a trailing ellipsis', () => {
+    const citation = parseCitationObject({ doc_ref: '[Doc1]', snippet: '  text intro...  ' })
+    expect(citation?.snippet).toBe('text intro')
+  })
+
+  it('leaves snippet undefined when the source object has none', () => {
+    const citation = parseCitationObject({ doc_ref: '[Doc1]' })
+    expect(citation?.snippet).toBeUndefined()
   })
 })
