@@ -1,5 +1,5 @@
 import { Drawer, Layout, message } from 'antd'
-import { ChatBubbleIconLg, ChatMenuIcon } from '../icons/chat'
+import { ChatBubbleIconLg, ChatCloseIcon, ChatMenuIcon } from '../icons/chat'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   categorizeDocument,
@@ -1129,7 +1129,21 @@ export default function AppLayout() {
           open={drawerOpen}
           onClose={() => setDrawerOpen(false)}
           size="min(88vw, 360px)"
-          closable={false}
+          // A visible close affordance beyond the mask/Escape — top-right
+          // ("end") to match the hamburger's opposite corner. `closeIcon`
+          // reuses `ChatCloseIcon` (the same MUI icon already used for the
+          // composer's "Clear selection" button) rather than antd's own
+          // `CloseOutlined`, for the same reason the top bar's hamburger
+          // uses an MUI icon: `@ant-design/icons` is only antd's own
+          // transitive dependency, never imported directly anywhere in
+          // `src/`, and every other icon in this app goes through MUI +
+          // `appIcon`. `classNames.close` puts the button's own size/colour
+          // in the unlayered `.docu-mobile-drawer-close` rule (src/index.css)
+          // rather than fighting antd's `button { color; font-size; ...}`
+          // reset with layered Tailwind.
+          closable={{ placement: 'end', 'aria-label': 'Close menu' }}
+          closeIcon={<ChatCloseIcon />}
+          classNames={{ close: 'docu-mobile-drawer-close' }}
           styles={{ body: { padding: 0 } }}
         >
           <Sidebar

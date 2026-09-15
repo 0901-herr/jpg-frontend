@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -759,6 +759,25 @@ describe('AppLayout — responsive layout', () => {
     expect(screen.getByRole('button', { name: 'New chat' })).toBeInTheDocument()
   })
 
+  it('shows a visible close button in the drawer, and closes it on click — not just the mask/Escape', async () => {
+    matchMediaSpy = vi.spyOn(window, 'matchMedia').mockReturnValue(mockMediaQueryList(true))
+    const user = userEvent.setup()
+
+    render(<AppLayout />)
+
+    await user.click(screen.getByLabelText('Open menu'))
+    await screen.findByRole('dialog')
+
+    const closeButton = await screen.findByRole('button', { name: 'Close menu' })
+    expect(closeButton).toBeInTheDocument()
+
+    await user.click(closeButton)
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+  })
+
   it('shows the sidebar and resize handle directly, with no top bar, at desktop widths', async () => {
     matchMediaSpy = vi.spyOn(window, 'matchMedia').mockReturnValue(mockMediaQueryList(false))
 
@@ -789,6 +808,35 @@ describe('.docu-mobile-topbar-menu CSS contract', () => {
       '',
     )
     const selectorIndex = css.indexOf('.docu-mobile-topbar-menu')
+    expect(selectorIndex).toBeGreaterThan(-1)
+
+    let depth = 0
+    for (let i = 0; i < selectorIndex; i++) {
+      if (css[i] === '{') depth++
+      else if (css[i] === '}') depth--
+    }
+    expect(depth).toBe(0)
+  })
+})
+
+describe('.docu-mobile-drawer-close CSS contract', () => {
+  it('declares font-size, color and margin, since antd resets these on <button> and jsdom cannot compute the cascade to catch a regression here', () => {
+    const css = readFileSync(path.resolve(__dirname, '../index.css'), 'utf-8')
+    const match = css.match(/\.docu-mobile-drawer-close\s*\{([^}]*)\}/)
+
+    expect(match).not.toBeNull()
+    const body = match![1]
+    expect(body).toMatch(/font-size\s*:/)
+    expect(body).toMatch(/color\s*:/)
+    expect(body).toMatch(/margin\s*:/)
+  })
+
+  it('is not nested inside an @layer block, since antd\'s reset.css is unlayered and anything inside @layer loses to it regardless of specificity', () => {
+    const css = readFileSync(path.resolve(__dirname, '../index.css'), 'utf-8').replace(
+      /\/\*[\s\S]*?\*\//g,
+      '',
+    )
+    const selectorIndex = css.indexOf('.docu-mobile-drawer-close')
     expect(selectorIndex).toBeGreaterThan(-1)
 
     let depth = 0

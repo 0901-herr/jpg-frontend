@@ -1,5 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import React from 'react'
 import ChatInput from './ChatInput'
 
@@ -222,5 +224,52 @@ describe('ChatInput — narrow phone widths (<480px)', () => {
     expect(screen.getByRole('button', { name: 'Extract MQA metadata' })).toHaveTextContent(
       'Extract metadata',
     )
+  })
+})
+
+describe('composer action button <480px CSS contract', () => {
+  it('declares a smaller font-size for Summarize/Categorize/Extract metadata inside the <480px media block, since antd resets font-size on <button> and jsdom cannot compute the cascade to catch a regression here', () => {
+    const css = readFileSync(path.resolve(__dirname, '../index.css'), 'utf-8')
+    const media = css.match(/@media \(max-width: 479\.98px\)\s*\{([\s\S]*?)\n\}\n/)
+
+    expect(media).not.toBeNull()
+    const block = media![1]
+    expect(block).toMatch(/\.docu-chat-composer-summarize/)
+    expect(block).toMatch(/\.docu-chat-composer-categorize/)
+    expect(block).toMatch(/\.docu-chat-composer-extract/)
+    expect(block).toMatch(/font-size\s*:/)
+  })
+
+  it('the <480px media block is not nested inside an @layer block, since antd\'s reset.css is unlayered and anything inside @layer loses to it regardless of specificity', () => {
+    const css = readFileSync(path.resolve(__dirname, '../index.css'), 'utf-8').replace(
+      /\/\*[\s\S]*?\*\//g,
+      '',
+    )
+    const selectorIndex = css.indexOf('@media (max-width: 479.98px)')
+    expect(selectorIndex).toBeGreaterThan(-1)
+
+    let depth = 0
+    for (let i = 0; i < selectorIndex; i++) {
+      if (css[i] === '{') depth++
+      else if (css[i] === '}') depth--
+    }
+    expect(depth).toBe(0)
+  })
+})
+
+describe('docu-chat-composer-categorize CSS parity with summarize/extract', () => {
+  it('appears in the same base box-model, hover, disabled, and focus selector groups as summarize/extract, pinning the Task 5 styling fix', () => {
+    const css = readFileSync(path.resolve(__dirname, '../index.css'), 'utf-8')
+
+    // Base box model (height/padding/border-radius/gap/color/background) —
+    // the three classes must be grouped together in one selector list, not
+    // three separate rules that could drift apart.
+    expect(css).toMatch(
+      /\.docu-chat-composer-summarize,\s*\n\.docu-chat-composer-categorize,\s*\n\.docu-chat-composer-extract\s*\{/,
+    )
+    expect(css).toMatch(/\.docu-chat-composer-categorize:hover:not\(:disabled\)/)
+    expect(css).toMatch(/\.docu-chat-composer-categorize:disabled/)
+    expect(css).toMatch(/\.docu-chat-composer-categorize:focus,/)
+    expect(css).toMatch(/\.docu-chat-composer-categorize:focus-visible,/)
   })
 })

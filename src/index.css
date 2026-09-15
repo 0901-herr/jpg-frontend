@@ -707,6 +707,18 @@ button.docu-citation-pill:hover {
   background: var(--docu-bg-hover);
 }
 
+/* Drawer close button (AppLayout.tsx, `classNames={{ close: '...' }}` on
+   the antd Drawer) — a `<button>`, same reasoning as
+   `.docu-mobile-topbar-menu` just above: font-size/color/margin live in an
+   unlayered rule so antd's reset.css `inherit` can't silently win. Matches
+   the hamburger's own size for visual symmetry between the two corners of
+   the top bar / drawer. */
+.docu-mobile-drawer-close {
+  font-size: 1.125rem;
+  color: var(--docu-text-primary);
+  margin: 0;
+}
+
 .docu-selected-files-tooltip .ant-tooltip-inner {
   max-width: 320px;
   padding: 10px 12px;
