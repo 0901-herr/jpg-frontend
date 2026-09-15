@@ -74,7 +74,7 @@ input.ant-input:focus-visible {
      near-black for body text and a mid-grey for secondary text. */
   --docu-text-primary: #1f1f1f;
   --docu-text-secondary: #6b6b6b;
-  --docu-text-muted: #8e8e8e;
+  --docu-text-muted: #767676;
 
   --docu-accent: #0084ff;
   --docu-accent-hover: #0077e6;

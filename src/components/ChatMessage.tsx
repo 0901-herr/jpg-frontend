@@ -85,7 +85,7 @@ function ErrorMessage({
       </p>
       <p className="leading-relaxed">{content}</p>
       {progressHint && (
-        <p className={`${type.caption} mt-2 ${typeColor.muted}`}>
+        <p className={`${type.caption} mt-2 ${typeColor.secondary}`}>
           Last step: {progressHint.replace(/…$/, '')}
         </p>
       )}
