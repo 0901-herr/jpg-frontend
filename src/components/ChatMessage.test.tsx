@@ -460,6 +460,18 @@ describe('chat pane never scrolls horizontally', () => {
     const bubble = screen.getByText(new RegExp(longWord)).closest('div')
     expect(bubble?.className).toContain('break-words')
   })
+
+  // Task 5 (responsive layout): the user bubble's max-width already caps
+  // at `min(36rem, 100%)` — the `100%` alone means it was never possible
+  // for the bubble to force itself wider than its own container even on a
+  // 390px phone, with no breakpoint-specific override needed. This is a
+  // regression guard for that existing behaviour, not new styling.
+  it('caps the user bubble width at 100% of its container, never wider, on any screen size', () => {
+    render(<ChatMessageItem message={{ id: 'u1', role: 'user', content: 'Short question' }} />)
+
+    const bubble = screen.getByText('Short question').closest('div')
+    expect(bubble?.className).toMatch(/max-w-\[min\(36rem,100%\)\]/)
+  })
 })
 
 describe('.docu-answer table/list CSS contract', () => {

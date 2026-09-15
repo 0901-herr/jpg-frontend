@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import React from 'react'
 import { vi } from 'vitest'
@@ -78,5 +79,69 @@ describe('Sidebar branding', () => {
 
     expect(screen.getByText('ARCHE AI')).toBeInTheDocument()
     expect(screen.queryByText('Docu Arch AI')).not.toBeInTheDocument()
+  })
+})
+
+describe('Sidebar — onNavigate (mobile Drawer close)', () => {
+  function renderSidebar(onNavigate?: () => void) {
+    return render(
+      <MemoryRouter>
+        <Sidebar
+          width="100%"
+          sessions={[{ id: 'chat-1', title: 'Session 15 Sep 2026 (1)', messages: [] }]}
+          activeChatId="chat-1"
+          browse={browseFixture()}
+          selection={selectionFixture()}
+          onSelectChat={vi.fn()}
+          onRenameChat={vi.fn()}
+          onDeleteChat={vi.fn()}
+          onNewChat={vi.fn()}
+          onNavigate={onNavigate}
+        />
+      </MemoryRouter>,
+    )
+  }
+
+  it('calls onNavigate after selecting a chat', async () => {
+    const user = userEvent.setup()
+    const onNavigate = vi.fn()
+    renderSidebar(onNavigate)
+
+    await user.click(screen.getByText('Session 15 Sep 2026 (1)'))
+
+    expect(onNavigate).toHaveBeenCalledTimes(1)
+  })
+
+  it('calls onNavigate after New chat', async () => {
+    const user = userEvent.setup()
+    const onNavigate = vi.fn()
+    renderSidebar(onNavigate)
+
+    await user.click(screen.getByRole('button', { name: 'New chat' }))
+
+    expect(onNavigate).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not require onNavigate — desktop usage is unaffected', async () => {
+    const user = userEvent.setup()
+    const onSelectChat = vi.fn()
+    render(
+      <MemoryRouter>
+        <Sidebar
+          width={280}
+          sessions={[{ id: 'chat-1', title: 'Session 15 Sep 2026 (1)', messages: [] }]}
+          activeChatId="chat-1"
+          browse={browseFixture()}
+          selection={selectionFixture()}
+          onSelectChat={onSelectChat}
+          onRenameChat={vi.fn()}
+          onDeleteChat={vi.fn()}
+          onNewChat={vi.fn()}
+        />
+      </MemoryRouter>,
+    )
+
+    await user.click(screen.getByText('Session 15 Sep 2026 (1)'))
+    expect(onSelectChat).toHaveBeenCalledWith('chat-1')
   })
 })

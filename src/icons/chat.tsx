@@ -1,10 +1,12 @@
 import AddIcon from '@mui/icons-material/Add'
+import AssignmentOutlinedIcon from '@mui/icons-material/AssignmentOutlined'
 import AttachFileOutlinedIcon from '@mui/icons-material/AttachFileOutlined'
 import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined'
 import AutorenewOutlinedIcon from '@mui/icons-material/AutorenewOutlined'
 import AppsIcon from '@mui/icons-material/Apps'
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward'
 import CallMadeIcon from '@mui/icons-material/CallMade'
+import CategoryOutlinedIcon from '@mui/icons-material/CategoryOutlined'
 import ChatIcon from '@mui/icons-material/Chat'
 import CheckCircleOutlinedIcon from '@mui/icons-material/CheckCircleOutlined'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
@@ -19,6 +21,7 @@ import IncompleteCircleOutlinedIcon from '@mui/icons-material/IncompleteCircleOu
 import InsertDriveFileOutlinedIcon from '@mui/icons-material/InsertDriveFileOutlined'
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined'
 import LogoutIcon from '@mui/icons-material/Logout'
+import MenuIcon from '@mui/icons-material/Menu'
 import MoreHorizIcon from '@mui/icons-material/MoreHoriz'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import RefreshOutlinedIcon from '@mui/icons-material/RefreshOutlined'
@@ -34,6 +37,14 @@ export const ChatMessageIcon = appIcon(ChatIcon, 14)
 export const ChatFileIcon = appIcon(InsertDriveFileOutlinedIcon, 14)
 export const ChatAttachIcon = appIcon(AttachFileOutlinedIcon, 18)
 export const ChatSummarizeIcon = appIcon(AutoAwesomeOutlinedIcon, 18)
+// Composer action icons for the icon+short-label variant shown at <480px
+// (ChatInput.tsx) — the full word is still the button's aria-label and its
+// tooltip; these are purely decorative (aria-hidden).
+export const ChatCategorizeIcon = appIcon(CategoryOutlinedIcon, 16)
+export const ChatMetadataIcon = appIcon(AssignmentOutlinedIcon, 16)
+// Mobile top bar hamburger (AppLayout.tsx) — opens the sidebar Drawer below
+// 768px.
+export const ChatMenuIcon = appIcon(MenuIcon, 20)
 export const ChatCloseIcon = appIcon(CloseIcon, 12)
 export const ChatSendIcon = appIcon(ArrowUpwardIcon, 16)
 export const ChatExpandIcon = appIcon(ExpandMoreIcon, 12)

@@ -483,6 +483,7 @@ button.docu-citation-pill:hover {
 
 .docu-chat-composer-files,
 .docu-chat-composer-summarize,
+.docu-chat-composer-categorize,
 .docu-chat-composer-extract {
   border: none;
   cursor: pointer;
@@ -543,6 +544,7 @@ button.docu-citation-pill:hover {
 }
 
 .docu-chat-composer-summarize,
+.docu-chat-composer-categorize,
 .docu-chat-composer-extract {
   height: 2.25rem;
   padding: 0 0.75rem;
@@ -550,6 +552,9 @@ button.docu-citation-pill:hover {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  /* Only matters for the icon+short-label variant below 480px — a lone
+     text child is unaffected. */
+  gap: 0.3125rem;
   color: #fff;
   background: #0084ff;
   font-weight: 500;
@@ -557,11 +562,13 @@ button.docu-citation-pill:hover {
 }
 
 .docu-chat-composer-summarize:hover:not(:disabled),
+.docu-chat-composer-categorize:hover:not(:disabled),
 .docu-chat-composer-extract:hover:not(:disabled) {
   background: #0077e6;
 }
 
 .docu-chat-composer-summarize:disabled,
+.docu-chat-composer-categorize:disabled,
 .docu-chat-composer-extract:disabled {
   background: #ececec;
   color: #8e8e8e;
@@ -573,6 +580,8 @@ button.docu-citation-pill:hover {
 .docu-chat-composer-files-clear:focus-visible,
 .docu-chat-composer-summarize:focus,
 .docu-chat-composer-summarize:focus-visible,
+.docu-chat-composer-categorize:focus,
+.docu-chat-composer-categorize:focus-visible,
 .docu-chat-composer-extract:focus,
 .docu-chat-composer-extract:focus-visible {
   outline: none !important;
@@ -614,6 +623,90 @@ button.docu-citation-pill:hover {
   box-shadow: none !important;
 }
 
+/* Phone/tablet composer (Task 5, client feedback: "everything just cramps
+   together weirdly" below desktop): the textarea keeps full width on its
+   own row, and the file-count badge + action buttons wrap onto a second
+   row instead of squeezing onto one. `order`/`flex-basis`/`flex-wrap` are
+   layout-only — none of them are among the properties antd's unlayered
+   reset fixes on `<button>`/`<textarea>` (margin, color, font-size,
+   font-family, line-height — see `.docu-citation-pill` above), so this
+   could in principle be plain Tailwind, but stays here next to the rest of
+   `.docu-chat-composer*` for one source of truth on this component's
+   layout, matching the file's existing convention. `.docu-chat-composer`
+   is `flex items-center gap-2` (ChatInput.tsx, Tailwind) with three direct
+   children in DOM order: `-lead` (file badge), `-textarea-wrap`, `-actions`
+   — reordered below without touching that markup. */
+@media (max-width: 767.98px) {
+  .docu-chat-composer {
+    flex-wrap: wrap;
+    border-radius: 20px;
+  }
+
+  .docu-chat-composer-textarea-wrap {
+    order: 1;
+    flex-basis: 100%;
+    width: 100%;
+  }
+
+  .docu-chat-composer-lead {
+    order: 2;
+  }
+
+  .docu-chat-composer-actions {
+    order: 3;
+    flex-basis: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    padding-top: 0.375rem;
+  }
+}
+
+/* <480px only: the composer action buttons drop their full word for an
+   icon + short label (ChatInput.tsx renders the short text; the icon's own
+   size lives on the MUI `SvgIcon`, not here) — this block only has to
+   shrink the buttons' own box model to fit four of them plus the tier
+   dropdown on one wrapped row without truncating. */
+@media (max-width: 479.98px) {
+  .docu-chat-composer-summarize,
+  .docu-chat-composer-categorize,
+  .docu-chat-composer-extract {
+    height: 2rem;
+    padding: 0 0.5rem;
+    font-size: 0.75rem;
+  }
+}
+
+/* Slim top bar hamburger, shown below 768px in place of the desktop
+   sidebar (AppLayout.tsx) — a `<button>`, so its font-size/color/margin
+   live here in an unlayered rule for the same reason as
+   `.docu-citation-pill` above: antd's reset.css sets these `inherit` on
+   every `<button>`, unlayered, which always beats a layered Tailwind
+   utility regardless of specificity. Layout-only properties (padding,
+   border-radius, display) aren't contested and could be Tailwind, but stay
+   here too — this button has no other classes, and splitting its box
+   model across two files for a handful of declarations isn't worth it.
+   The top bar's own container/brand/title are plain `<span>`/`<div>`s,
+   none of them reset-contested, so those stay ordinary Tailwind utilities
+   in AppLayout.tsx instead of duplicating this pattern where it isn't
+   needed. */
+.docu-mobile-topbar-menu {
+  font-size: 1.125rem;
+  color: var(--docu-text-primary);
+  margin: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0.375rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+}
+
+.docu-mobile-topbar-menu:hover {
+  background: var(--docu-bg-hover);
+}
+
 .docu-selected-files-tooltip .ant-tooltip-inner {
   max-width: 320px;
   padding: 10px 12px;
@@ -635,6 +728,18 @@ button.docu-citation-pill:hover {
   height: 100vh;
   background: var(--docu-bg-app) !important;
   border-inline-end: none !important;
+}
+
+/* The Drawer-rendered instance (Sidebar's `inDrawer` prop, AppLayout's
+   narrow-layout branch) must fill the Drawer body's own height instead of
+   re-claiming a fresh 100vh on top of it — nesting a hard 100vh box inside
+   an already-sized container would clip the sidebar's bottom content
+   (New chat / profile row) by whatever chrome the Drawer itself adds.
+   Higher specificity than `.docu-sidebar.ant-layout-sider` above (three
+   classes vs. two) wins the normal cascade between these two unlayered
+   rules — no `!important` needed. */
+.docu-sidebar.docu-sidebar--drawer.ant-layout-sider {
+  height: 100%;
 }
 
 .docu-sidebar-resizing .ant-layout-sider,

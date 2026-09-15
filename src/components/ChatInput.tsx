@@ -1,11 +1,38 @@
 import { Input, Tooltip } from 'antd'
 import { useState } from 'react'
-import { ChatCloseIcon, ChatSendIcon } from '../icons/chat'
+import {
+  ChatCategorizeIcon,
+  ChatCloseIcon,
+  ChatMetadataIcon,
+  ChatSendIcon,
+  ChatSummarizeIcon,
+} from '../icons/chat'
 import type { QueryTier } from '../api/types/query'
 import { getSendDisabledReason } from '../utils/chatComposerGate'
 import { type, typeColor } from '../styles/typography'
 import { radius } from '../styles/theme'
+import { useMediaQuery } from '../hooks/useMediaQuery'
 import QueryTierDropdown from './QueryTierDropdown'
+
+// Below this width the composer's action buttons drop their full word for
+// an icon + short label (tooltip carries the full word instead) — see the
+// ambiguity resolutions in the Task 5 brief for the exact short forms.
+const PHONE_QUERY = '(max-width: 479.98px)'
+
+/** The tooltip for a composer action button: at phone width the visible
+ * label is abbreviated, so the tooltip always carries the full word (and,
+ * when the action is disabled, the reason too, joined with an em dash). At
+ * wider widths the full word is already on the button, so the tooltip only
+ * ever needs to explain *why* it's disabled — unchanged from before this
+ * task. */
+function composerTooltipTitle(
+  fullLabel: string,
+  disabledReason: string | null | undefined,
+  isPhone: boolean,
+): string | undefined {
+  if (!isPhone) return disabledReason ?? undefined
+  return disabledReason ? `${fullLabel} — ${disabledReason}` : fullLabel
+}
 
 interface ChatInputProps {
   selectedCount: number
@@ -58,6 +85,7 @@ export default function ChatInput({
   onQueryTierChange,
 }: ChatInputProps) {
   const [value, setValue] = useState('')
+  const isPhone = useMediaQuery(PHONE_QUERY)
 
   const canSend = !isResponding && !disabled && value.trim().length > 0 && selectedCount > 0
   const canSummarize = summarizeDisabledReason == null
@@ -121,20 +149,22 @@ export default function ChatInput({
             )}
           </div>
 
-          <Input.TextArea
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={
-              selectedCount > 0
-                ? 'Ask a question about the selected documents…'
-                : 'Select documents first…'
-            }
-            disabled={disabled || selectedCount === 0}
-            autoSize={{ minRows: 1, maxRows: 4 }}
-            variant="borderless"
-            className={`flex-1 !px-0 !py-0 ${type.body} !shadow-none resize-none !leading-6`}
-          />
+          <div className="docu-chat-composer-textarea-wrap flex-1 min-w-0">
+            <Input.TextArea
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={
+                selectedCount > 0
+                  ? 'Ask a question about the selected documents…'
+                  : 'Select documents first…'
+              }
+              disabled={disabled || selectedCount === 0}
+              autoSize={{ minRows: 1, maxRows: 4 }}
+              variant="borderless"
+              className={`w-full !px-0 !py-0 ${type.body} !shadow-none resize-none !leading-6`}
+            />
+          </div>
 
           <div className="docu-chat-composer-actions flex items-center shrink-0">
             <QueryTierDropdown
@@ -143,7 +173,7 @@ export default function ChatInput({
               disabled={disabled || isResponding}
             />
             <Tooltip
-              title={summarizeDisabledReason ?? undefined}
+              title={composerTooltipTitle('Summarize', summarizeDisabledReason, isPhone)}
               placement="top"
               mouseEnterDelay={0.2}
             >
@@ -155,12 +185,19 @@ export default function ChatInput({
                   className="docu-chat-composer-summarize"
                   aria-label="Summarize selected document"
                 >
-                  Summarize
+                  {isPhone ? (
+                    <>
+                      <ChatSummarizeIcon aria-hidden />
+                      <span>Sum.</span>
+                    </>
+                  ) : (
+                    'Summarize'
+                  )}
                 </button>
               </span>
             </Tooltip>
             <Tooltip
-              title={categorizeDisabledReason ?? undefined}
+              title={composerTooltipTitle('Categorize', categorizeDisabledReason, isPhone)}
               placement="top"
               mouseEnterDelay={0.2}
             >
@@ -172,12 +209,23 @@ export default function ChatInput({
                   className="docu-chat-composer-categorize"
                   aria-label="Categorize selected document"
                 >
-                  Categorize
+                  {isPhone ? (
+                    <>
+                      <ChatCategorizeIcon aria-hidden />
+                      <span>Cat.</span>
+                    </>
+                  ) : (
+                    'Categorize'
+                  )}
                 </button>
               </span>
             </Tooltip>
             <Tooltip
-              title={extractMetadataDisabledReason ?? undefined}
+              title={composerTooltipTitle(
+                'Extract metadata',
+                extractMetadataDisabledReason,
+                isPhone,
+              )}
               placement="top"
               mouseEnterDelay={0.2}
             >
@@ -189,7 +237,14 @@ export default function ChatInput({
                   className="docu-chat-composer-extract"
                   aria-label="Extract MQA metadata"
                 >
-                  Extract metadata
+                  {isPhone ? (
+                    <>
+                      <ChatMetadataIcon aria-hidden />
+                      <span>Meta</span>
+                    </>
+                  ) : (
+                    'Extract metadata'
+                  )}
                 </button>
               </span>
             </Tooltip>

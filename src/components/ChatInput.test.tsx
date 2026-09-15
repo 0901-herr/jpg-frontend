@@ -143,3 +143,84 @@ describe('ChatInput', () => {
     expect(onCategorize).toHaveBeenCalledTimes(1)
   })
 })
+
+function mockMediaQueryList(matches: boolean) {
+  return {
+    matches,
+    media: '',
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  } as unknown as MediaQueryList
+}
+
+describe('ChatInput — narrow phone widths (<480px)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('shows short labels for Summarize, Categorize and Extract metadata, with the full label still the accessible name', () => {
+    vi.spyOn(window, 'matchMedia').mockReturnValue(mockMediaQueryList(true))
+
+    renderChatInput({ selectedCount: 1, categorizeDisabledReason: null, extractMetadataDisabledReason: null })
+
+    const summarize = screen.getByRole('button', { name: 'Summarize selected document' })
+    const categorize = screen.getByRole('button', { name: 'Categorize selected document' })
+    const extract = screen.getByRole('button', { name: 'Extract MQA metadata' })
+
+    expect(summarize).toHaveTextContent('Sum.')
+    expect(summarize).not.toHaveTextContent('Summarize')
+    expect(categorize).toHaveTextContent('Cat.')
+    expect(categorize).not.toHaveTextContent('Categorize')
+    expect(extract).toHaveTextContent('Meta')
+    expect(extract).not.toHaveTextContent('Extract metadata')
+  })
+
+  it('carries the full label in the tooltip when enabled', async () => {
+    vi.spyOn(window, 'matchMedia').mockReturnValue(mockMediaQueryList(true))
+    const user = userEvent.setup()
+
+    renderChatInput({ selectedCount: 1, categorizeDisabledReason: null })
+
+    const summarize = screen.getByRole('button', { name: 'Summarize selected document' })
+    await user.hover(summarize.parentElement ?? summarize)
+
+    expect(await screen.findByText('Summarize')).toBeInTheDocument()
+  })
+
+  it('combines the full label and the disabled reason in the tooltip when disabled', async () => {
+    vi.spyOn(window, 'matchMedia').mockReturnValue(mockMediaQueryList(true))
+    const user = userEvent.setup()
+
+    renderChatInput({
+      selectedCount: 0,
+      categorizeDisabledReason: 'Select one file to categorize',
+    })
+
+    const categorize = screen.getByRole('button', { name: 'Categorize selected document' })
+    await user.hover(categorize.parentElement ?? categorize)
+
+    expect(
+      await screen.findByText('Categorize — Select one file to categorize'),
+    ).toBeInTheDocument()
+  })
+
+  it('still shows the full-word labels at desktop/tablet widths', () => {
+    vi.spyOn(window, 'matchMedia').mockReturnValue(mockMediaQueryList(false))
+
+    renderChatInput({ selectedCount: 1, categorizeDisabledReason: null, extractMetadataDisabledReason: null })
+
+    expect(screen.getByRole('button', { name: 'Summarize selected document' })).toHaveTextContent(
+      'Summarize',
+    )
+    expect(
+      screen.getByRole('button', { name: 'Categorize selected document' }),
+    ).toHaveTextContent('Categorize')
+    expect(screen.getByRole('button', { name: 'Extract MQA metadata' })).toHaveTextContent(
+      'Extract metadata',
+    )
+  })
+})

@@ -1,5 +1,5 @@
-import { Layout, message } from 'antd'
-import { ChatBubbleIconLg } from '../icons/chat'
+import { Drawer, Layout, message } from 'antd'
+import { ChatBubbleIconLg, ChatMenuIcon } from '../icons/chat'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   categorizeDocument,
@@ -16,6 +16,7 @@ import type { DocumentsLoadedEvent } from '../hooks/useBrowseTree'
 import { useBrowseTree } from '../hooks/useBrowseTree'
 import { useDocumentSelection } from '../hooks/useDocumentSelection'
 import { useResizableWidth } from '../hooks/useResizableWidth'
+import { useMediaQuery } from '../hooks/useMediaQuery'
 import { type, typeColor } from '../styles/typography'
 import { citationsToSources, displayFilename, mergeCitations } from '../utils/citations'
 import { appendStreamDelta } from '../utils/appendStreamDelta'
@@ -132,6 +133,15 @@ function chatPersistenceEnabled(): boolean {
   return !isCitationDemoEnabled() && !isCitationLoadingDemoEnabled()
 }
 
+// Below 768px the resizable desktop sidebar is replaced by a slim top bar
+// (hamburger + "ARCHE AI" + current session title) and the sidebar itself
+// moves into an antd Drawer opened from that hamburger — see the Task 5
+// brief. 767.98px (not 768) so a device reporting exactly 768px CSS pixels
+// lands on the desktop side of the breakpoint, matching a `max-width: 767px`
+// media query's usual `.98px` convention for avoiding 1px gaps against a
+// paired `min-width: 768px` rule.
+const NARROW_LAYOUT_QUERY = '(max-width: 767.98px)'
+
 export default function AppLayout() {
   const { session: authSession, isLoading: authLoading } = useAuth()
   const initialSessionRef = useRef<ChatSession>(createInitialSession())
@@ -141,6 +151,8 @@ export default function AppLayout() {
   const [inputBlockedReason, setInputBlockedReason] = useState<string | undefined>()
   const [queryTier, setQueryTier] = useState<QueryTier>(DEFAULT_QUERY_TIER)
   const { width: sidebarWidth, isResizing, startResize, sidebarRef } = useResizableWidth(280)
+  const isNarrowLayout = useMediaQuery(NARROW_LAYOUT_QUERY)
+  const [drawerOpen, setDrawerOpen] = useState(false)
   const sendQuery = useSendQuery()
   const selection = useDocumentSelection()
 
@@ -169,6 +181,13 @@ export default function AppLayout() {
   // built so it carries the flag through even though that message object
   // is constructed fresh rather than derived from the streaming placeholder.
   const abstainedRef = useRef(false)
+
+  // A widened viewport (orientation change, resizing a browser window) must
+  // never leave the mobile Drawer stuck open behind the now-visible desktop
+  // sidebar.
+  useEffect(() => {
+    if (!isNarrowLayout) setDrawerOpen(false)
+  }, [isNarrowLayout])
 
   const chatUserId = authSession?.userId ?? (AUTH_BYPASS ? DEV_USER.userId : null)
 
@@ -986,17 +1005,135 @@ export default function AppLayout() {
   }, [activeChatId, categorizeDisabledReason, scrollToBottom, selectedDocument])
 
   return (
-    <Layout className="h-screen">
-      <div
-        ref={sidebarRef}
-        className={`flex shrink-0 h-screen docu-sidebar-wrapper ${isResizing ? 'docu-sidebar-resizing' : ''}`}
-      >
+    <div className="h-screen flex flex-col min-h-0">
+      {isNarrowLayout && (
         <div
-          className="docu-sidebar-panel h-full shrink-0 overflow-hidden"
-          style={{ width: sidebarWidth }}
+          className="flex items-center gap-2 h-12 px-3 shrink-0 border-b border-[#ececec] bg-[var(--docu-bg-surface)] pt-[env(safe-area-inset-top,0px)]"
+        >
+          <button
+            type="button"
+            onClick={() => setDrawerOpen(true)}
+            className="docu-mobile-topbar-menu"
+            aria-label="Open menu"
+          >
+            <ChatMenuIcon />
+          </button>
+          <span className={`shrink-0 font-semibold ${typeColor.primary}`}>ARCHE AI</span>
+          <span className={`truncate min-w-0 flex-1 ${type.caption} ${typeColor.muted}`}>
+            {activeSession?.title}
+          </span>
+        </div>
+      )}
+
+      <Layout className="flex-1 min-h-0">
+        {!isNarrowLayout && (
+          <div
+            ref={sidebarRef}
+            className={`flex shrink-0 h-full docu-sidebar-wrapper ${isResizing ? 'docu-sidebar-resizing' : ''}`}
+          >
+            <div
+              className="docu-sidebar-panel h-full shrink-0 overflow-hidden"
+              style={{ width: sidebarWidth }}
+            >
+              <Sidebar
+                width={sidebarWidth}
+                sessions={sessions}
+                activeChatId={activeChatId}
+                browse={browse}
+                selection={selection}
+                onSelectChat={handleSelectChat}
+                onRenameChat={handleRenameChat}
+                onDeleteChat={handleDeleteChat}
+                onNewChat={handleNewChat}
+              />
+            </div>
+            <SidebarResizeHandle onPointerDown={startResize} isResizing={isResizing} />
+          </div>
+        )}
+        <Layout className="!bg-[var(--docu-bg-app)]">
+          <Content className="flex flex-col h-full min-h-0">
+            <div
+              ref={scrollContainerRef}
+              className="docu-chat-scroll flex-1 overflow-y-auto px-6 pt-6 pb-4 min-h-0 scroll-smooth flex flex-col"
+            >
+              <div
+                className={`max-w-4xl mx-auto w-full min-w-0 flex-1 flex flex-col space-y-0 ${
+                  messagePairs.length === 0 ? 'justify-center' : ''
+                }`}
+              >
+                {messagePairs.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center text-center px-4 py-8">
+                    <div className="w-12 h-12 rounded-xl bg-zinc-100 flex items-center justify-center mb-4 text-zinc-400">
+                      <ChatBubbleIconLg />
+                    </div>
+                    <p className={`text-[#0d0d0d] ${type.body} font-semibold mb-1`}>
+                      Start a conversation
+                    </p>
+                    <p className={`${typeColor.muted} ${type.caption}`}>
+                      Select documents in the sidebar, then ask a question
+                    </p>
+                  </div>
+                ) : (
+                  messagePairs.map((pair, idx) => {
+                    const isLastTurn = idx === messagePairs.length - 1
+                    return (
+                      <div
+                        key={pair.user.id}
+                        className={`min-w-0 ${isLastTurn ? 'docu-chat-last-turn min-h-[min(72vh,calc(100dvh-13rem))]' : ''}`}
+                      >
+                        <ChatMessageItem message={pair.user} />
+                        {pair.assistant && (
+                          <ChatMessageItem
+                            message={pair.assistant}
+                            showDivider={!isLastTurn}
+                          />
+                        )}
+                      </div>
+                    )
+                  })
+                )}
+                <div ref={messagesEndRef} className="h-px shrink-0" aria-hidden />
+              </div>
+            </div>
+            <ChatInput
+              selectedCount={selection.selectedCount}
+              selectedFiles={selection.selectedFilenames}
+              onClearSelection={selection.clearSelection}
+              onSend={handleSend}
+              onSummarize={handleSummarize}
+              onCategorize={handleCategorize}
+              onExtractMetadata={handleExtractMetadata}
+              onStop={handleStop}
+              isResponding={sendQuery.isPending}
+              disabled={browse.sessionExpired}
+              disabledReason={inputBlockedReason}
+              summarizeDisabledReason={summarizeDisabledReason}
+              categorizeDisabledReason={categorizeDisabledReason}
+              extractMetadataDisabledReason={extractMetadataDisabledReason}
+              queryTier={queryTier}
+              onQueryTierChange={setQueryTier}
+            />
+          </Content>
+        </Layout>
+      </Layout>
+
+      {/* Rendered as a sibling of the <Layout> tree above, not nested
+          inside it: antd's Sider registers itself with the *nearest*
+          ancestor Layout via context regardless of DOM portal placement, so
+          nesting this Drawer's Sidebar (which renders a Sider) inside the
+          outer Layout would flip it into row-direction layout even though
+          the top bar and chat pane need to stay stacked vertically. */}
+      {isNarrowLayout && (
+        <Drawer
+          placement="left"
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          size="min(88vw, 360px)"
+          closable={false}
+          styles={{ body: { padding: 0 } }}
         >
           <Sidebar
-            width={sidebarWidth}
+            width="100%"
             sessions={sessions}
             activeChatId={activeChatId}
             browse={browse}
@@ -1005,75 +1142,11 @@ export default function AppLayout() {
             onRenameChat={handleRenameChat}
             onDeleteChat={handleDeleteChat}
             onNewChat={handleNewChat}
+            onNavigate={() => setDrawerOpen(false)}
+            inDrawer
           />
-        </div>
-        <SidebarResizeHandle onPointerDown={startResize} isResizing={isResizing} />
-      </div>
-      <Layout className="!bg-[var(--docu-bg-app)]">
-        <Content className="flex flex-col h-full min-h-0">
-          <div
-            ref={scrollContainerRef}
-            className="docu-chat-scroll flex-1 overflow-y-auto px-6 pt-6 pb-4 min-h-0 scroll-smooth flex flex-col"
-          >
-            <div
-              className={`max-w-4xl mx-auto w-full min-w-0 flex-1 flex flex-col space-y-0 ${
-                messagePairs.length === 0 ? 'justify-center' : ''
-              }`}
-            >
-              {messagePairs.length === 0 ? (
-                <div className="flex flex-col items-center justify-center text-center px-4 py-8">
-                  <div className="w-12 h-12 rounded-xl bg-zinc-100 flex items-center justify-center mb-4 text-zinc-400">
-                    <ChatBubbleIconLg />
-                  </div>
-                  <p className={`text-[#0d0d0d] ${type.body} font-semibold mb-1`}>
-                    Start a conversation
-                  </p>
-                  <p className={`${typeColor.muted} ${type.caption}`}>
-                    Select documents in the sidebar, then ask a question
-                  </p>
-                </div>
-              ) : (
-                messagePairs.map((pair, idx) => {
-                  const isLastTurn = idx === messagePairs.length - 1
-                  return (
-                    <div
-                      key={pair.user.id}
-                      className={`min-w-0 ${isLastTurn ? 'docu-chat-last-turn min-h-[min(72vh,calc(100dvh-13rem))]' : ''}`}
-                    >
-                      <ChatMessageItem message={pair.user} />
-                      {pair.assistant && (
-                        <ChatMessageItem
-                          message={pair.assistant}
-                          showDivider={!isLastTurn}
-                        />
-                      )}
-                    </div>
-                  )
-                })
-              )}
-              <div ref={messagesEndRef} className="h-px shrink-0" aria-hidden />
-            </div>
-          </div>
-          <ChatInput
-            selectedCount={selection.selectedCount}
-            selectedFiles={selection.selectedFilenames}
-            onClearSelection={selection.clearSelection}
-            onSend={handleSend}
-            onSummarize={handleSummarize}
-            onCategorize={handleCategorize}
-            onExtractMetadata={handleExtractMetadata}
-            onStop={handleStop}
-            isResponding={sendQuery.isPending}
-            disabled={browse.sessionExpired}
-            disabledReason={inputBlockedReason}
-            summarizeDisabledReason={summarizeDisabledReason}
-            categorizeDisabledReason={categorizeDisabledReason}
-            extractMetadataDisabledReason={extractMetadataDisabledReason}
-            queryTier={queryTier}
-            onQueryTierChange={setQueryTier}
-          />
-        </Content>
-      </Layout>
-    </Layout>
+        </Drawer>
+      )}
+    </div>
   )
 }

@@ -1,5 +1,7 @@
 import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import React, { useState } from 'react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../api/http'
@@ -684,5 +686,116 @@ describe('AppLayout — dated session names', () => {
     // ever overwritten (with the question text) once a reply completed,
     // and dated titles are never overwritten at all now.
     expect(screen.getByRole('button', { name: /^select:/ }).textContent).toBe(initialTitle)
+  })
+})
+
+/** A minimal, controllable `MediaQueryList` stand-in — see
+ * `src/hooks/useMediaQuery.test.ts` for the same shape used to unit-test
+ * the hook directly. Here it drives AppLayout's own narrow/wide branching
+ * end to end through `window.matchMedia`. */
+function mockMediaQueryList(matches: boolean) {
+  return {
+    matches,
+    media: '',
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  } as unknown as MediaQueryList
+}
+
+describe('AppLayout — responsive layout', () => {
+  // Restoring *only* this test's own matchMedia spy (rather than
+  // `vi.restoreAllMocks()`) matters here: the file-level `beforeAll` above
+  // installs a `getComputedStyle` spy for the whole suite (antd popups
+  // measuring a pseudo-element jsdom can't compute), and
+  // `restoreAllMocks()` would tear that down the moment this block's first
+  // test finishes, reviving the real jsdom implementation — which is
+  // exactly what throws "Not implemented" for every test after it.
+  let matchMediaSpy: ReturnType<typeof vi.spyOn> | undefined
+
+  beforeEach(() => {
+    window.localStorage.clear()
+    currentSignal = null
+    initialSelectedIds = new Set(['doc-1'])
+    initialDocumentMeta = defaultDocumentMeta()
+  })
+
+  afterEach(() => {
+    matchMediaSpy?.mockRestore()
+    matchMediaSpy = undefined
+  })
+
+  it('shows a slim top bar and no resize handle below 768px', async () => {
+    matchMediaSpy = vi.spyOn(window, 'matchMedia').mockReturnValue(mockMediaQueryList(true))
+
+    render(<AppLayout />)
+
+    // `findBy` (rather than `getBy`) gives AppLayout's own async effects
+    // (session/selection hydration) a chance to settle within `act` before
+    // asserting — every other test in this file does the same via
+    // `await user.click`/`await screen.findBy...`; this is the first fully
+    // synchronous render in the file, which is exactly what would surface
+    // an un-awaited update as a stray "not wrapped in act" warning.
+    expect(await screen.findByLabelText('Open menu')).toBeInTheDocument()
+    expect(screen.getByText('ARCHE AI')).toBeInTheDocument()
+    expect(screen.queryByRole('separator', { name: 'Resize sidebar' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('opens the drawer from the hamburger button, revealing the sidebar', async () => {
+    matchMediaSpy = vi.spyOn(window, 'matchMedia').mockReturnValue(mockMediaQueryList(true))
+    const user = userEvent.setup()
+
+    render(<AppLayout />)
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    await user.click(screen.getByLabelText('Open menu'))
+
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'New chat' })).toBeInTheDocument()
+  })
+
+  it('shows the sidebar and resize handle directly, with no top bar, at desktop widths', async () => {
+    matchMediaSpy = vi.spyOn(window, 'matchMedia').mockReturnValue(mockMediaQueryList(false))
+
+    render(<AppLayout />)
+
+    expect(await screen.findByRole('separator', { name: 'Resize sidebar' })).toBeInTheDocument()
+    expect(screen.queryByLabelText('Open menu')).not.toBeInTheDocument()
+    expect(screen.queryByText('ARCHE AI')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'New chat' })).toBeInTheDocument()
+  })
+})
+
+describe('.docu-mobile-topbar-menu CSS contract', () => {
+  it('declares font-size, color and margin, since antd resets these on <button> and jsdom cannot compute the cascade to catch a regression here', () => {
+    const css = readFileSync(path.resolve(__dirname, '../index.css'), 'utf-8')
+    const match = css.match(/\.docu-mobile-topbar-menu\s*\{([^}]*)\}/)
+
+    expect(match).not.toBeNull()
+    const body = match![1]
+    expect(body).toMatch(/font-size\s*:/)
+    expect(body).toMatch(/color\s*:/)
+    expect(body).toMatch(/margin\s*:/)
+  })
+
+  it('is not nested inside an @layer block, since antd\'s reset.css is unlayered and anything inside @layer loses to it regardless of specificity', () => {
+    const css = readFileSync(path.resolve(__dirname, '../index.css'), 'utf-8').replace(
+      /\/\*[\s\S]*?\*\//g,
+      '',
+    )
+    const selectorIndex = css.indexOf('.docu-mobile-topbar-menu')
+    expect(selectorIndex).toBeGreaterThan(-1)
+
+    let depth = 0
+    for (let i = 0; i < selectorIndex; i++) {
+      if (css[i] === '{') depth++
+      else if (css[i] === '}') depth--
+    }
+    expect(depth).toBe(0)
   })
 })

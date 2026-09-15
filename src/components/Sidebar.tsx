@@ -15,7 +15,10 @@ import SidebarNavItem from './SidebarNavItem'
 const { Sider } = Layout
 
 interface SidebarProps {
-  width: number
+  /** A plain pixel number for the desktop resizable panel, or a CSS width
+   * string (e.g. `"100%"`) when Sidebar is rendered to fill an antd Drawer
+   * instead — see AppLayout's narrow-layout branch. */
+  width: number | string
   sessions: ChatSession[]
   activeChatId: string
   browse: BrowseTreeState
@@ -24,6 +27,17 @@ interface SidebarProps {
   onRenameChat: (chatId: string, title: string) => void
   onDeleteChat: (chatId: string) => void
   onNewChat: () => void
+  /** Called right after selecting a chat or starting a new one — AppLayout
+   * passes this only when Sidebar is rendered inside the mobile Drawer, to
+   * close it once the navigation it was opened for has happened. Desktop
+   * callers omit it and both handlers below just no-op the extra call. */
+  onNavigate?: () => void
+  /** True only for the Drawer-rendered instance (AppLayout's narrow-layout
+   * branch): the Drawer's own body already constrains height, so the Sider
+   * must fill *that* rather than re-claim a fresh 100vh, which would clip
+   * its bottom content by whatever chrome the Drawer adds. See the
+   * `.docu-sidebar--drawer` override in src/index.css. */
+  inDrawer?: boolean
 }
 
 export default function Sidebar({
@@ -36,6 +50,8 @@ export default function Sidebar({
   onRenameChat,
   onDeleteChat,
   onNewChat,
+  onNavigate,
+  inDrawer = false,
 }: SidebarProps) {
   const { session, logout } = useAuth()
   const navigate = useNavigate()
@@ -62,7 +78,7 @@ export default function Sidebar({
   return (
     <Sider
       width={width}
-      className={`docu-sidebar ${surface.sidebar} !h-screen !overflow-hidden`}
+      className={`docu-sidebar ${inDrawer ? 'docu-sidebar--drawer' : ''} ${surface.sidebar} h-full !overflow-hidden`}
       theme="light"
     >
       <div className={`flex flex-col h-full min-h-0 ${spacing.panelLg}`}>
@@ -94,7 +110,10 @@ export default function Sidebar({
                   key={chat.id}
                   chat={chat}
                   isActive={activeChatId === chat.id}
-                  onSelect={() => onSelectChat(chat.id)}
+                  onSelect={() => {
+                    onSelectChat(chat.id)
+                    onNavigate?.()
+                  }}
                   onRename={onRenameChat}
                   onDelete={onDeleteChat}
                 />
@@ -104,7 +123,14 @@ export default function Sidebar({
         </div>
 
         <div className="shrink-0 pt-2 mt-1">
-          <SidebarNavItem icon={<ChatAddIcon />} onClick={onNewChat} variant="primary">
+          <SidebarNavItem
+            icon={<ChatAddIcon />}
+            onClick={() => {
+              onNewChat()
+              onNavigate?.()
+            }}
+            variant="primary"
+          >
             New chat
           </SidebarNavItem>
 
