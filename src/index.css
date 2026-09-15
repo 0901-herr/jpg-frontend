@@ -86,9 +86,8 @@ input.ant-input:focus-visible {
     'Courier New', monospace;
 }
 
-/* Sidebar folder select */
-.docu-sidebar .docu-sidebar-select .ant-select-selector,
-.docu-sidebar .ant-tree-select .ant-select-selector {
+/* Sidebar category select */
+.docu-sidebar .docu-sidebar-select .ant-select-selector {
   border-radius: 10px !important;
   border-color: transparent !important;
   background: transparent !important;
@@ -99,51 +98,41 @@ input.ant-input:focus-visible {
   box-shadow: none !important;
 }
 
-.docu-sidebar .docu-sidebar-select:hover .ant-select-selector,
-.docu-sidebar .ant-tree-select:hover .ant-select-selector {
+.docu-sidebar .docu-sidebar-select:hover .ant-select-selector {
   background: var(--docu-bg-hover) !important;
 }
 
-.docu-sidebar .ant-select-focused .ant-select-selector,
-.docu-sidebar .ant-tree-select.ant-select-focused .ant-select-selector {
+.docu-sidebar .ant-select-focused .ant-select-selector {
   border-color: transparent !important;
   background: var(--docu-bg-hover) !important;
   box-shadow: none !important;
 }
 
-/* Folder tree dropdown — VS Code-style flat tree */
-.docu-folder-tree-popup.ant-select-dropdown {
-  padding: 8px 6px !important;
-  border-radius: 8px !important;
-  border: 1px solid var(--docu-border) !important;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1) !important;
-}
-
-.docu-folder-tree-popup .ant-select-tree {
-  padding: 2px 0 !important;
+/* Unified folder + file tree (FolderSidebar) — VS Code-style flat tree with
+   checkboxes, inline rather than a popup (see .docu-folder-tree-popup's old
+   ant-select-tree rules this was ported from, back when folders lived in a
+   TreeSelect dropdown and files were a separate flat list). */
+.docu-file-tree.ant-tree {
   background: transparent !important;
 }
 
-.docu-folder-tree-popup .ant-select-tree-list-holder-inner {
+.docu-file-tree .ant-tree-list-holder-inner {
   gap: 2px;
 }
 
-.docu-folder-tree-popup .ant-select-tree-treenode {
+.docu-file-tree .ant-tree-treenode {
   display: flex !important;
   align-items: center !important;
   padding: 0 !important;
   margin: 0 !important;
   background: transparent !important;
   min-height: 32px !important;
+  width: 100% !important;
 }
 
-.docu-folder-tree-popup .ant-select-tree-treenode-selected {
-  background: transparent !important;
-}
-
-.docu-folder-tree-popup .ant-select-tree-switcher,
-.docu-folder-tree-popup .ant-select-tree-switcher-icon,
-.docu-folder-tree-popup .ant-select-tree-switcher-noop {
+.docu-file-tree .ant-tree-switcher,
+.docu-file-tree .ant-tree-switcher-icon,
+.docu-file-tree .ant-tree-switcher-noop {
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -160,35 +149,23 @@ input.ant-input:focus-visible {
   box-shadow: none !important;
 }
 
-.docu-folder-tree-popup .ant-select-tree-switcher:hover,
-.docu-folder-tree-popup .ant-select-tree-switcher:active,
-.docu-folder-tree-popup .ant-select-tree-switcher:focus,
-.docu-folder-tree-popup .ant-select-tree-switcher:focus-visible,
-.docu-folder-tree-popup .ant-select-tree-switcher-icon:hover,
-.docu-folder-tree-popup .ant-select-tree-switcher-icon:active,
-.docu-folder-tree-popup .ant-select-tree-switcher-icon:focus {
+.docu-file-tree .ant-tree-switcher:hover,
+.docu-file-tree .ant-tree-switcher:active,
+.docu-file-tree .ant-tree-switcher:focus,
+.docu-file-tree .ant-tree-switcher:focus-visible,
+.docu-file-tree .ant-tree-switcher-icon:hover,
+.docu-file-tree .ant-tree-switcher-icon:active,
+.docu-file-tree .ant-tree-switcher-icon:focus {
   background: transparent !important;
   box-shadow: none !important;
   outline: none !important;
 }
 
-.docu-folder-tree-popup .ant-select-tree-switcher::before,
-.docu-folder-tree-popup .ant-select-tree-switcher-icon::before {
+.docu-file-tree .ant-tree-switcher .anticon:not(.docu-tree-chevron) {
   display: none !important;
 }
 
-.docu-folder-tree-popup .ant-select-tree-switcher_close,
-.docu-folder-tree-popup .ant-select-tree-switcher_open,
-.docu-folder-tree-popup .ant-select-tree-switcher_close:hover,
-.docu-folder-tree-popup .ant-select-tree-switcher_open:hover {
-  background: transparent !important;
-}
-
-.docu-folder-tree-popup .ant-select-tree-switcher .anticon:not(.docu-tree-chevron) {
-  display: none !important;
-}
-
-.docu-folder-tree-popup .docu-tree-chevron {
+.docu-tree-chevron {
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -203,20 +180,25 @@ input.ant-input:focus-visible {
   vertical-align: middle !important;
 }
 
-.docu-folder-tree-popup .docu-tree-chevron.expanded {
+.docu-tree-chevron.expanded {
   transform: rotate(90deg);
 }
 
-.docu-folder-tree-popup .ant-select-tree-indent-unit {
+.docu-file-tree .ant-tree-indent-unit {
   width: 18px !important;
 }
 
-.docu-folder-tree-popup .ant-select-tree-node-content-wrapper {
+.docu-file-tree .ant-tree-checkbox {
+  margin: 0 6px 0 0 !important;
+  align-self: center !important;
+}
+
+.docu-file-tree .ant-tree-node-content-wrapper {
   flex: 1 !important;
+  min-width: 0 !important;
   display: flex !important;
   align-items: center !important;
   min-height: 32px !important;
-  height: 32px !important;
   padding: 6px 10px 6px 4px !important;
   margin: 0 !important;
   border-radius: 0 !important;
@@ -228,34 +210,23 @@ input.ant-input:focus-visible {
   transition: color 0.12s ease !important;
 }
 
-.docu-folder-tree-popup .ant-select-tree-title {
+.docu-file-tree .ant-tree-title {
+  min-width: 0;
   line-height: 1.4 !important;
   font-weight: 400 !important;
   color: inherit !important;
 }
 
-.docu-folder-tree-popup .ant-select-tree-node-content-wrapper:hover,
-.docu-folder-tree-popup .ant-select-tree-node-content-wrapper:focus,
-.docu-folder-tree-popup .ant-select-tree-treenode-active .ant-select-tree-node-content-wrapper,
-.docu-folder-tree-popup .ant-select-tree-node-content-wrapper-open {
+.docu-file-tree .ant-tree-node-content-wrapper:hover,
+.docu-file-tree .ant-tree-node-content-wrapper:focus {
   background: transparent !important;
   box-shadow: none !important;
   color: var(--docu-text-primary) !important;
   font-weight: 400 !important;
 }
 
-.docu-folder-tree-popup .ant-select-tree-treenode:hover .ant-select-tree-node-content-wrapper,
-.docu-folder-tree-popup .ant-select-tree-treenode:hover .ant-select-tree-title {
-  color: var(--docu-text-primary) !important;
-  font-weight: 400 !important;
-}
-
-.docu-folder-tree-popup .ant-select-tree-treenode-selected .ant-select-tree-node-content-wrapper,
-.docu-folder-tree-popup
-  .ant-select-tree-treenode-selected
-  .ant-select-tree-node-content-wrapper:hover,
-.docu-folder-tree-popup .ant-select-tree-node-content-wrapper.ant-select-tree-node-selected {
-  background: transparent !important;
+.docu-file-tree .ant-tree-treenode:hover .ant-tree-node-content-wrapper,
+.docu-file-tree .ant-tree-treenode:hover .ant-tree-title {
   color: var(--docu-text-primary) !important;
   font-weight: 400 !important;
 }

@@ -31,6 +31,13 @@ export interface BrowseFolderContentsResponse {
   has_more_documents: boolean
 }
 
+export interface BrowseSubtreeDocumentsResponse {
+  folder: BrowseFolderNode
+  documents: BrowseDocumentItem[]
+  folder_count: number
+  truncated: boolean
+}
+
 export interface BrowseRootResponse {
   root_folder_id: number
   username: string

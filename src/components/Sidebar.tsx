@@ -80,7 +80,7 @@ export default function Sidebar({
               <ChatMessageIcon />
               Chats
             </span>
-            <div className="flex-1 overflow-auto min-h-0 space-y-0.5">
+            <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 space-y-0.5">
               {sessions.map((chat) => (
                 <ChatListItem
                   key={chat.id}

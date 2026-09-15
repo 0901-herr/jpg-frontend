@@ -6,6 +6,7 @@ import type {
   BrowseRootResponse,
   BrowseStatusRequest,
   BrowseStatusResponse,
+  BrowseSubtreeDocumentsResponse,
   DocumentSummaryResponse,
   MqaMetadataResponse,
   QueryScopeRequest,
@@ -25,6 +26,18 @@ export async function fetchFolderContents(
 ): Promise<BrowseFolderContentsResponse> {
   const query = page > 0 ? `?page=${page}` : ''
   return apiGet<BrowseFolderContentsResponse>(`/browse/folders/${folderId}${query}`)
+}
+
+/**
+ * Every document under folderId and all its descendant folders — powers
+ * checking a folder in the file-selection tree ("check the root = every
+ * file"), instead of only the immediate contents fetchFolderContents
+ * returns.
+ */
+export async function fetchSubtreeDocuments(
+  folderId: number,
+): Promise<BrowseSubtreeDocumentsResponse> {
+  return apiGet<BrowseSubtreeDocumentsResponse>(`/browse/folders/${folderId}/subtree-documents`)
 }
 
 export async function fetchBrowseCategories(

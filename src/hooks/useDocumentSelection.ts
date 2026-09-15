@@ -60,6 +60,15 @@ export function useDocumentSelection() {
     })
   }, [])
 
+  const removeSelection = useCallback((ids: Iterable<string>) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      for (const id of ids) next.delete(id)
+      persistSelection(next)
+      return next
+    })
+  }, [])
+
   const selectAllSelectable = useCallback(
     (documents: BrowseDocumentItem[], { replace = false }: { replace?: boolean } = {}) => {
       const ids = getSelectableDocumentIds(documents)
@@ -128,6 +137,7 @@ export function useDocumentSelection() {
     toggleDocument,
     setSelection,
     mergeSelection,
+    removeSelection,
     selectAllSelectable,
     autoSelectIfPending,
     deselectAllInView,

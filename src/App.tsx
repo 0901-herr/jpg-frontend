@@ -47,7 +47,7 @@ export default function App() {
             hoverBorderColor: '#ececec',
             activeBorderColor: '#ececec',
           },
-          TreeSelect: {
+          Tree: {
             borderRadius: 10,
             nodeSelectedBg: 'transparent',
             nodeHoverBg: 'transparent',

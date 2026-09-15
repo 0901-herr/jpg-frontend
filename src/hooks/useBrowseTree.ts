@@ -403,15 +403,24 @@ export function useBrowseTree(onDocumentsLoaded?: (event: DocumentsLoadedEvent) 
     [cache, loadFolder, onDocumentsLoaded],
   )
 
-  const handleLoadTreeData = useCallback(
-    async (node: TreeSelectNode) => {
-      const folderId = Number(node.value)
+  // Shared by the TreeSelect-style loadData (folder ids only) and the
+  // unified file tree (FolderSidebar), whose nodes carry a prefixed string
+  // key ('folder-<id>' / 'doc-<id>') rather than a bare numeric value.
+  const ensureFolderLoaded = useCallback(
+    async (folderId: number) => {
       if (!Number.isFinite(folderId)) return
       if (!cache.has(folderId)) {
         await loadFolder(folderId)
       }
     },
     [cache, loadFolder],
+  )
+
+  const handleLoadTreeData = useCallback(
+    async (node: TreeSelectNode) => {
+      await ensureFolderLoaded(Number(node.value))
+    },
+    [ensureFolderLoaded],
   )
 
   const handleLoadMoreDocuments = useCallback(async () => {
@@ -591,6 +600,12 @@ export function useBrowseTree(onDocumentsLoaded?: (event: DocumentsLoadedEvent) 
   return {
     username,
     rootFolderId,
+    // Raw per-folder cache + metadata, for building a unified folder+file
+    // tree (FolderSidebar) that needs every cached folder's document list,
+    // not just the currently active one that treeSelectData/
+    // activeFolderContents expose.
+    cache,
+    folderMeta,
     treeSelectData,
     activeFolderId,
     activeFolderName,
@@ -602,6 +617,7 @@ export function useBrowseTree(onDocumentsLoaded?: (event: DocumentsLoadedEvent) 
     loadingMoreFolderId,
     handleSelectFolder,
     handleLoadTreeData,
+    ensureFolderLoaded,
     handleLoadMoreDocuments,
     refreshActiveFolder,
     refreshDocumentStatuses,
