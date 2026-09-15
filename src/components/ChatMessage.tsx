@@ -99,6 +99,15 @@ function InterruptedNote() {
   )
 }
 
+/** Shown above the answer text instead of a progress label or related
+ * documents when the backend abstained — retrieval found nothing it could
+ * answer from. A short, honest caption rather than silently rendering the
+ * canned "couldn't find relevant content" answer as if it were backed by
+ * sources. */
+function AbstainedCaption() {
+  return <p className={`${type.caption} ${typeColor.muted}`}>No matching content</p>
+}
+
 function CoverageNotice({ coverage }: { coverage?: CoverageInfo }) {
   const indexing = coverage?.indexing_files ?? 0
   if (indexing <= 0) return null
@@ -188,6 +197,7 @@ function AssistantMessage({ message }: AssistantMessageProps) {
     <div className="space-y-3">
       <CoverageNotice coverage={message.coverage} />
       {message.status === 'streaming' && <StreamingProgressLabel message={message} />}
+      {message.abstained && <AbstainedCaption />}
       <AnswerContent message={message} />
       {message.interrupted && <InterruptedNote />}
 
@@ -199,9 +209,10 @@ function AssistantMessage({ message }: AssistantMessageProps) {
           </p>
         )}
 
-      {message.sources && message.sources.length > 0 && message.status !== 'streaming' && (
-        <CitationList sources={message.sources} />
-      )}
+      {!message.abstained &&
+        message.sources &&
+        message.sources.length > 0 &&
+        message.status !== 'streaming' && <CitationList sources={message.sources} />}
     </div>
   )
 }

@@ -45,12 +45,24 @@ export interface ChatMessage {
    * finishing or erroring normally. Renders a short "Answer interrupted."
    * note instead of (or alongside) whatever partial text had arrived. */
   interrupted?: boolean
+  /** True when the backend abstained — retrieval found nothing it could
+   * answer from — rather than writing a normal or error response. Drives
+   * the "No matching content" caption and suppresses the related-documents
+   * list, which would otherwise show retrieval candidates as if they had
+   * backed an answer that was never written. */
+  abstained?: boolean
 }
 
 export interface ChatSession {
   id: string
   title: string
   messages: ChatMessage[]
+  /** ISO timestamp set when the session is first created — the basis for
+   * the "Session {date} (n)" default title and its per-local-day numbering.
+   * Absent on sessions created before this field existed (or restored from
+   * an older localStorage payload); those keep whatever title they already
+   * had rather than being renamed. */
+  createdAt?: string
 }
 
 export interface UserProfile {

@@ -3,9 +3,14 @@ import type { ReactNode } from 'react'
 import type { IndexingStatus, BrowseDocumentItem } from '../api/types/browse'
 import {
   StatusFailedIcon,
+  StatusFailedIcon14,
   StatusIndexingIcon,
+  StatusIndexingIcon14,
   StatusNotIndexedIcon,
+  StatusNotIndexedIcon14,
+  StatusPartialIcon14,
   StatusReadyIcon,
+  StatusReadyIcon14,
 } from '../icons/chat'
 import { type } from '../styles/typography'
 import { radius } from '../styles/theme'
@@ -50,6 +55,53 @@ const STATUS_CONFIG: Record<
 export function getStatusLabel(status: IndexingStatus | string): string {
   const key = (status in STATUS_CONFIG ? status : 'NOT_INDEXED') as IndexingStatus
   return STATUS_CONFIG[key].label
+}
+
+/** Full status sentence plus the adapter's own reason when it says more
+ * than the label already does — the text behind a file row's status icon
+ * tooltip (`StatusIcon`) and, combined with the filename there, the whole
+ * tooltip's content. */
+export function describeStatus(
+  status: IndexingStatus | string,
+  statusReason?: string | null,
+): string {
+  const label = getStatusLabel(status)
+  const reason = statusReason?.trim()
+  return reason && reason !== label ? `${label} — ${reason}` : label
+}
+
+const STATUS_ICON_CONFIG: Record<IndexingStatus, { icon: ReactNode; colorClass: string }> = {
+  READY: { icon: <StatusReadyIcon14 />, colorClass: 'text-emerald-600' },
+  PARTIAL: { icon: <StatusPartialIcon14 />, colorClass: 'text-amber-600' },
+  INDEXING: { icon: <StatusIndexingIcon14 className="animate-spin" />, colorClass: 'text-sky-600' },
+  FAILED: { icon: <StatusFailedIcon14 />, colorClass: 'text-red-600' },
+  NOT_INDEXED: { icon: <StatusNotIndexedIcon14 />, colorClass: 'text-zinc-400' },
+}
+
+/** The compact file-row status marker: just the 14px coloured icon, with
+ * `aria-label` carrying the status label for anyone not hovering the row's
+ * own tooltip (which additionally carries the filename and reason — see
+ * `describeStatus` and `FolderSidebar`'s `buildDocLeaf`). No badge chrome,
+ * no visible text — that's the whole point of this variant over the
+ * `compact` badge below. */
+export function StatusIcon({
+  status,
+  className = '',
+}: {
+  status: IndexingStatus | string
+  className?: string
+}) {
+  const key = (status in STATUS_ICON_CONFIG ? status : 'NOT_INDEXED') as IndexingStatus
+  const config = STATUS_ICON_CONFIG[key]
+  return (
+    <span
+      role="img"
+      aria-label={getStatusLabel(status)}
+      className={`inline-flex shrink-0 items-center leading-none ${config.colorClass} ${className}`}
+    >
+      {config.icon}
+    </span>
+  )
 }
 
 interface IndexingStatusBadgeProps {

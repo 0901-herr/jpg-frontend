@@ -31,6 +31,7 @@ function sanitizeMessage(message: ChatMessage): ChatMessage {
     interrupted: wasInterrupted || message.interrupted,
     thinkingSeconds: message.thinkingSeconds,
     coverage: message.coverage,
+    abstained: message.abstained,
   }
 }
 
@@ -40,6 +41,7 @@ function sanitizeSession(session: ChatSession): ChatSession {
     id: session.id,
     title: session.title.trim() || 'New chat',
     messages,
+    createdAt: session.createdAt,
   }
 }
 

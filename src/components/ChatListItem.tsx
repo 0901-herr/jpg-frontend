@@ -70,6 +70,12 @@ export default function ChatListItem({
     },
   ]
 
+  // The first user question, as a preview — the row's muted second line.
+  // Sidebar titles are now dated ("Session 15 Sep 2026 (1)"), not the
+  // question itself, so this is the only place that question still shows
+  // up in the Chats list.
+  const preview = chat.messages.find((m) => m.role === 'user')?.content
+
   return (
     <div
       className={`group flex items-center gap-0.5 ${listRow} ${
@@ -95,14 +101,32 @@ export default function ChatListItem({
           maxLength={80}
         />
       ) : (
+        // Font-size/colour live on the inner spans, not this `<button>`
+        // element itself — `src/main.tsx` loads antd's unlayered
+        // reset.css, whose `button { color; font-size; ... }` rule always
+        // beats Tailwind's `@layer utilities` regardless of specificity
+        // (see `.docu-citation-pill` in src/index.css for the fuller
+        // writeup). A descendant span isn't a `button`, so its own
+        // Tailwind text classes apply normally; only padding/layout sit on
+        // the button itself, which the reset doesn't touch.
         <button
           type="button"
           onClick={onSelect}
-          className={`flex-1 min-w-0 text-left px-3 py-2 ${sidebar.body} truncate ${
-            isActive ? `${typeColor.primary} font-normal` : typeColor.secondary
-          }`}
+          className="flex-1 min-w-0 flex flex-col gap-0.5 text-left px-3 py-2"
         >
-          {chat.title}
+          <span
+            className={`block min-w-0 truncate ${sidebar.body} ${
+              isActive ? `${typeColor.primary} font-normal` : typeColor.secondary
+            }`}
+            title={chat.title}
+          >
+            {chat.title}
+          </span>
+          {preview && (
+            <span className={`block min-w-0 truncate ${sidebar.caption} ${typeColor.muted}`}>
+              {preview}
+            </span>
+          )}
         </button>
       )}
 

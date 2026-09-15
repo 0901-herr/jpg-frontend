@@ -81,14 +81,15 @@ describe('formatProgressStage', () => {
     expect(formatProgressStage('assembling', { chunks: 2 })).toBe('Reading 2 passages…')
   })
 
-  it('generating names the cited documents when known, else a generic label', () => {
-    expect(
-      formatProgressStage('generating', {}, { citationFilenames: ['A.pdf', 'B.pdf'] }),
-    ).toBe('Writing your answer from A.pdf and B.pdf…')
-    expect(formatProgressStage('generating', {}, { citationFilenames: [] })).toBe(
+  it('generating never names files — only "Writing your answer…", regardless of context', () => {
+    // Client feedback: naming files here read as if the model had already
+    // decided its sources before writing anything. The retrieving stage
+    // above still names what was searched; this one only says what's
+    // happening right now.
+    expect(formatProgressStage('generating')).toBe('Writing your answer…')
+    expect(formatProgressStage('generating', {}, { filenames: ['A.pdf', 'B.pdf'] })).toBe(
       'Writing your answer…',
     )
-    expect(formatProgressStage('generating')).toBe('Writing your answer…')
   })
 
   it('planning includes the iteration when given', () => {

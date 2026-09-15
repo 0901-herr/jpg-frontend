@@ -633,3 +633,56 @@ describe('AppLayout — selection hydration trim', () => {
     expect(trimSelectionSpy).toHaveBeenCalledWith(['300'])
   })
 })
+
+describe('AppLayout — dated session names', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    currentSignal = null
+    initialSelectedIds = new Set(['doc-1'])
+    initialDocumentMeta = defaultDocumentMeta()
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('names a fresh session "Session <date> (1)" and a second one the same day "(2)"', async () => {
+    const user = userEvent.setup()
+    render(<AppLayout />)
+
+    // Only the initial session exists so far.
+    const initialButtons = screen.getAllByRole('button', { name: /^select:/ })
+    expect(initialButtons).toHaveLength(1)
+    const match = initialButtons[0].textContent?.match(
+      /^select:Session (\d{1,2} [A-Z][a-z]{2} \d{4}) \(1\)$/,
+    )
+    expect(match).not.toBeNull()
+    const datePart = match?.[1]
+
+    await user.click(screen.getByRole('button', { name: 'New chat' }))
+
+    const buttons = screen.getAllByRole('button', { name: /^select:/ })
+    expect(buttons).toHaveLength(2)
+    const titles = buttons.map((b) => b.textContent)
+    expect(titles).toContain(`select:Session ${datePart} (1)`)
+    expect(titles).toContain(`select:Session ${datePart} (2)`)
+  })
+
+  it('does not overwrite the dated title with the first question while a reply is in flight', async () => {
+    const user = userEvent.setup()
+    render(<AppLayout />)
+
+    const initialTitle = screen.getByRole('button', { name: /^select:/ }).textContent
+
+    const textarea = await screen.findByPlaceholderText(/ask a question/i)
+    await user.type(textarea, 'What is in the contract?')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    await screen.findByRole('button', { name: 'Stop response' })
+
+    // The sidebar title is unchanged by sending a question — it was only
+    // ever overwritten (with the question text) once a reply completed,
+    // and dated titles are never overwritten at all now.
+    expect(screen.getByRole('button', { name: /^select:/ }).textContent).toBe(initialTitle)
+  })
+})

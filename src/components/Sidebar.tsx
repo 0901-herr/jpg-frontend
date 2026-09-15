@@ -75,7 +75,15 @@ export default function Sidebar({
             <FolderSidebar browse={browse} selection={selection} />
           </div>
 
-          <div className={`flex flex-col flex-1 min-h-0 overflow-hidden ${spacing.sectionY}`}>
+          {/* min-h-[270px] (~5 two-line ChatListItem rows, client feedback:
+              the list used to collapse to nothing once Files grew) is a
+              floor, not a fixed height — the Files section above still
+              takes the rest via flex-[3], and this section still grows
+              past its floor and scrolls its own overflow via the
+              overflow-y-auto list below rather than pushing Files off. */}
+          <div
+            className={`flex flex-col flex-1 min-h-[270px] overflow-hidden ${spacing.sectionY}`}
+          >
             <span className={sectionLabel}>
               <ChatMessageIcon />
               Chats

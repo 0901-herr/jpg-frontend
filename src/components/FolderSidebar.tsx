@@ -26,10 +26,11 @@ import {
 import BrowseViewToggle, { type BrowseViewMode } from './BrowseViewToggle'
 import CategoryTag from './CategoryTag'
 import DocumentChecklist from './DocumentChecklist'
-import IndexingStatusBadge, {
-  getDocumentSelectionHint,
+import {
+  describeStatus,
   getSelectableDocumentIds,
   isDocumentSelectable,
+  StatusIcon,
 } from './IndexingStatusBadge'
 
 interface FolderSidebarProps {
@@ -259,37 +260,44 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
     return ids
   }, [folderCheckStates])
 
-  // Building a doc's tree row: filename + category tag + status badge,
-  // matching the flat DocumentChecklist's visual language exactly (same
-  // sub-components), just laid out as one Tree node's title instead of a
-  // list row.
+  // Building a doc's tree row: a 14px status icon, then the filename
+  // filling the rest of the line and eliding under a long name — never the
+  // reverse, where a wide status badge used to crowd the filename off to
+  // one line and leave it unreadable (client feedback). One Tooltip on the
+  // whole row carries the full filename plus the status label and reason
+  // (`describeStatus`), covering both what a hover on the icon alone used
+  // to show and — since `describeStatus` folds in the adapter's own reason
+  // — why a disabled row's checkbox can't be ticked.
   const buildDocLeaf = useCallback((doc: BrowseDocumentItem): DataNode => {
     const selectable = isDocumentSelectable(doc.indexing_status, doc.queryable)
-    const hint = selectable ? null : getDocumentSelectionHint(doc)
+    const tooltip = (
+      <>
+        <div>{doc.filename}</div>
+        <div>{describeStatus(doc.indexing_status, doc.status_reason)}</div>
+      </>
+    )
     const row = (
       <span
-        className={`docu-document-row-primary flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 ${
+        className={`docu-document-row-primary flex min-w-0 flex-1 items-center gap-1.5 ${
           selectable ? '' : 'opacity-45'
         }`}
       >
+        <StatusIcon status={doc.indexing_status} />
         <span
-          className={`min-w-0 truncate ${sidebar.body} ${typeColor.primary}`}
+          className={`min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap ${sidebar.body} ${typeColor.primary}`}
           title={doc.filename}
         >
           {doc.filename}
         </span>
         {FEATURES.categoryView && <CategoryTag category={doc.classification_category} />}
-        <IndexingStatusBadge status={doc.indexing_status} statusReason={doc.status_reason} compact />
       </span>
     )
     return {
       key: `${DOC_KEY_PREFIX}${doc.document_id}`,
-      title: hint ? (
-        <Tooltip title={hint} mouseEnterDelay={0.2}>
+      title: (
+        <Tooltip title={tooltip} mouseEnterDelay={0.2}>
           {row}
         </Tooltip>
-      ) : (
-        row
       ),
       isLeaf: true,
       checkable: true,

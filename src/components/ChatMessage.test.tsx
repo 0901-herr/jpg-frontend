@@ -190,6 +190,51 @@ describe('interrupted answer note', () => {
   })
 })
 
+describe('abstained answer', () => {
+  it('shows the "No matching content" caption above the answer text', () => {
+    render(
+      <ChatMessageItem
+        message={assistantMessage({
+          content: "I couldn't find relevant content to answer this.",
+          status: 'complete',
+          abstained: true,
+        })}
+      />,
+    )
+
+    const caption = screen.getByText('No matching content')
+    expect(caption.tagName).toBe('P')
+    expect(
+      screen.getByText("I couldn't find relevant content to answer this."),
+    ).toBeInTheDocument()
+  })
+
+  it('renders no related-documents list on an abstained message even if sources were left over', () => {
+    render(
+      <ChatMessageItem
+        message={assistantMessage({
+          content: "I couldn't find relevant content to answer this.",
+          status: 'complete',
+          abstained: true,
+          sources: [{ index: 1, filename: 'Report.pdf' }],
+        })}
+      />,
+    )
+
+    expect(screen.queryByText('Report.pdf')).not.toBeInTheDocument()
+  })
+
+  it('does not show the caption for a normal, non-abstained answer', () => {
+    render(
+      <ChatMessageItem
+        message={assistantMessage({ content: 'All done.', status: 'complete' })}
+      />,
+    )
+
+    expect(screen.queryByText('No matching content')).not.toBeInTheDocument()
+  })
+})
+
 describe('progress label elapsed-time ticker', () => {
   beforeEach(() => {
     vi.useFakeTimers()
@@ -274,19 +319,19 @@ describe('progress label elapsed-time ticker', () => {
         message={assistantMessage({
           status: 'streaming',
           content: '',
-          progressLabel: 'Writing your answer from A.pdf…',
+          progressLabel: 'Writing your answer…',
           progressStage: 'generating',
           startedAt,
         })}
       />,
     )
 
-    expect(screen.getByText('Writing your answer from A.pdf… · 0s')).toBeInTheDocument()
+    expect(screen.getByText('Writing your answer… · 0s')).toBeInTheDocument()
 
     act(() => {
       vi.advanceTimersByTime(3000)
     })
-    expect(screen.getByText('Writing your answer from A.pdf… · 3s')).toBeInTheDocument()
+    expect(screen.getByText('Writing your answer… · 3s')).toBeInTheDocument()
   })
 
   it('does not append the ticker suffix to the streaming label once content has arrived', () => {

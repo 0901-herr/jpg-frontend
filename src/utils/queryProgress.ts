@@ -45,13 +45,12 @@ function readNumber(payload: Record<string, unknown>, key: string): number | und
   return typeof v === 'number' ? v : undefined
 }
 
-/** Documents in scope for the query (for "retrieving") and filenames drawn
- * from citation events seen so far (for "generating") — both optional,
- * since the caller may not have this context yet (e.g. before scope
- * validation resolves). */
+/** Documents in scope for the query, used to personalize the "retrieving"
+ * label — optional, since the caller may not have this context yet (e.g.
+ * before scope validation resolves). The "generating" stage deliberately
+ * never names files (client feedback), so it needs no context of its own. */
 export interface ProgressContext {
   filenames?: string[]
-  citationFilenames?: string[]
 }
 
 function legacyFallback(stage: string): string {
@@ -90,7 +89,6 @@ export function formatProgressStage(
   const key = stage.toLowerCase()
   const p = payload ?? {}
   const filenames = context?.filenames ?? []
-  const citationFilenames = context?.citationFilenames ?? []
 
   switch (key) {
     case 'classifying':
@@ -139,9 +137,12 @@ export function formatProgressStage(
     }
 
     case 'generating':
-      return citationFilenames.length > 0
-        ? `Writing your answer from ${listNames(citationFilenames)}…`
-        : 'Writing your answer…'
+      // Deliberately never names files here (client feedback: the
+      // "Writing your answer from X, Y…" subtitle read as if the model had
+      // already decided its sources before it had written anything) — the
+      // earlier retrieving/retrieved stages above still name what was
+      // searched, this one just says what's happening now.
+      return 'Writing your answer…'
 
     case 'planning': {
       const iteration = readNumber(p, 'iteration')

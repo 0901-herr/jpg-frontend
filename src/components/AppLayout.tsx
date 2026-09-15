@@ -17,7 +17,7 @@ import { useBrowseTree } from '../hooks/useBrowseTree'
 import { useDocumentSelection } from '../hooks/useDocumentSelection'
 import { useResizableWidth } from '../hooks/useResizableWidth'
 import { type, typeColor } from '../styles/typography'
-import { citationLabel, citationsToSources, displayFilename, mergeCitations } from '../utils/citations'
+import { citationsToSources, displayFilename, mergeCitations } from '../utils/citations'
 import { appendStreamDelta } from '../utils/appendStreamDelta'
 import { formatProgressStage, formatRouteLabel } from '../utils/queryProgress'
 import { loadChatHistory, persistChatHistory } from '../utils/chatPersistence'
@@ -80,10 +80,44 @@ function categorizeErrorMessage(err: unknown): string {
   return 'Could not categorize this file. Please try again.'
 }
 
-function createEmptySession(): ChatSession {
+const SESSION_TITLE_MONTHS = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+] as const
+
+/** "15 Sep 2026" — day (no leading zero), short English month, full year. */
+function formatSessionDate(date: Date): string {
+  return `${date.getDate()} ${SESSION_TITLE_MONTHS[date.getMonth()]} ${date.getFullYear()}`
+}
+
+function isSameLocalDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  )
+}
+
+/** "Session {date} (n)" — n is 1 + however many of `existingSessions` were
+ * created on the same local calendar day. A session with no `createdAt`
+ * (predates this field, or a demo/mock session) never counts toward that
+ * total — its own title is left alone wherever it's displayed, and it
+ * shouldn't silently renumber a same-day sibling either. */
+function nextSessionTitle(existingSessions: ChatSession[], now: Date): string {
+  const sameDay = existingSessions.filter(
+    (s) => s.createdAt && isSameLocalDay(new Date(s.createdAt), now),
+  )
+  return `Session ${formatSessionDate(now)} (${sameDay.length + 1})`
+}
+
+/** `existingSessions` is whatever sessions this new one will sit alongside
+ * — pass the current list so the "(n)" count is right; omit only when
+ * there truly are none yet (first-ever session). */
+function createEmptySession(existingSessions: ChatSession[] = []): ChatSession {
+  const now = new Date()
   return {
     id: crypto.randomUUID(),
-    title: 'New chat',
+    title: nextSessionTitle(existingSessions, now),
+    createdAt: now.toISOString(),
     messages: [],
   }
 }
@@ -128,13 +162,13 @@ export default function AppLayout() {
   const browse = useBrowseTree(handleDocumentsLoaded)
   const abortControllerRef = useRef<AbortController | null>(null)
   const streamingCitationsRef = useRef<Citation[]>([])
-  // Distinct display names from citation events received so far this
-  // query — a Set to de-duplicate while preserving first-seen order, fed
-  // into the "generating" progress label ("Writing your answer from
-  // A.pdf and B.pdf…").
-  const citationFilenamesRef = useRef<Set<string>>(new Set())
   const lastProgressStageRef = useRef<string | undefined>(undefined)
   const hadPartialAnswerRef = useRef(false)
+  // Sticky for the duration of one query: set true the moment an
+  // `abstention` event arrives, read when the final assistant message is
+  // built so it carries the flag through even though that message object
+  // is constructed fresh rather than derived from the streaming placeholder.
+  const abstainedRef = useRef(false)
 
   const chatUserId = authSession?.userId ?? (AUTH_BYPASS ? DEV_USER.userId : null)
 
@@ -323,9 +357,11 @@ export default function AppLayout() {
 
   const handleNewChat = useCallback(() => {
     abortActiveResponse()
-    const newChat = createEmptySession()
-    setSessions((prev) => [newChat, ...prev])
-    setActiveChatId(newChat.id)
+    setSessions((prev) => {
+      const newChat = createEmptySession(prev)
+      setActiveChatId(newChat.id)
+      return [newChat, ...prev]
+    })
   }, [abortActiveResponse])
 
   const handleSelectChat = useCallback(
@@ -345,7 +381,7 @@ export default function AppLayout() {
       setSessions((prev) => {
         const next = prev.filter((s) => s.id !== chatId)
         if (next.length === 0) {
-          const fresh = createEmptySession()
+          const fresh = createEmptySession(next)
           setActiveChatId(fresh.id)
           return [fresh]
         }
@@ -393,6 +429,7 @@ export default function AppLayout() {
       abortControllerRef.current = controller
       lastProgressStageRef.current = undefined
       hadPartialAnswerRef.current = false
+      abstainedRef.current = false
       const startedAt = Date.now()
 
       const elapsedSeconds = () => Math.max(1, Math.round((Date.now() - startedAt) / 1000))
@@ -496,10 +533,8 @@ export default function AppLayout() {
       requestAnimationFrame(() => scrollToBottom('auto'))
 
       streamingCitationsRef.current = []
-      citationFilenamesRef.current = new Set()
       const progressContext = () => ({
         filenames: scopeFilenames,
-        citationFilenames: [...citationFilenamesRef.current],
       })
       let coverage: CoverageInfo | undefined
 
@@ -573,9 +608,6 @@ export default function AppLayout() {
                 batch,
               )
               const citations = streamingCitationsRef.current
-              for (const c of batch) {
-                citationFilenamesRef.current.add(citationLabel(c))
-              }
               updateAssistantMessage(activeChatId, (msg) => {
                 const next: ChatMessage = {
                   ...msg,
@@ -583,8 +615,7 @@ export default function AppLayout() {
                 }
                 // Citations arrive right before the "generating" progress
                 // event — if nothing has streamed in yet, show the
-                // generating label with the citation names now instead of
-                // waiting for that event.
+                // generating label now instead of waiting for that event.
                 if (!msg.content) {
                   next.progressLabel = formatProgressStage('generating', {}, progressContext())
                   next.progressStage = 'generating'
@@ -596,12 +627,16 @@ export default function AppLayout() {
               // Citations already shown were retrieval candidates, not
               // sources for an answer that was never written — clear them
               // rather than let them linger as if they backed the canned
-              // "couldn't find relevant content" message that follows.
+              // "couldn't find relevant content" message that follows. The
+              // progress label is cleared too: ChatMessage's "No matching
+              // content" caption (driven by `abstained`, set below) takes
+              // over as the explanation instead.
               streamingCitationsRef.current = []
-              citationFilenamesRef.current = new Set()
+              abstainedRef.current = true
               updateAssistantMessage(activeChatId, (msg) => ({
                 ...msg,
                 sources: undefined,
+                progressLabel: undefined,
               }))
             },
           },
@@ -613,10 +648,14 @@ export default function AppLayout() {
           id: response.messageId,
           role: 'assistant',
           content: response.content,
-          sources: response.sources,
+          // Retrieval candidates shown mid-stream never back an abstained
+          // answer — belt-and-braces alongside streamQuery already zeroing
+          // its own `citations` on abstention.
+          sources: abstainedRef.current ? undefined : response.sources,
           status: 'complete',
           thinkingSeconds: response.thinkingSeconds,
           coverage: response.coverage ?? coverage,
+          abstained: abstainedRef.current,
         }
 
         setSessions((prev) =>
@@ -624,7 +663,9 @@ export default function AppLayout() {
             s.id === activeChatId
               ? {
                   ...s,
-                  title: s.messages.length <= 2 ? userMsg.content.slice(0, 40) : s.title,
+                  // Sidebar titles are dated ("Session 15 Sep 2026 (1)"),
+                  // set once at session creation — no longer overwritten
+                  // with the first question.
                   messages: [...s.messages.slice(0, -1), assistantMsg],
                 }
               : s,

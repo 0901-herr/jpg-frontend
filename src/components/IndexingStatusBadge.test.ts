@@ -3,10 +3,12 @@ import userEvent from '@testing-library/user-event'
 import { createElement } from 'react'
 import { describe, expect, it } from 'vitest'
 import IndexingStatusBadge, {
+  describeStatus,
   getDocumentSelectionHint,
   getSelectableDocumentIds,
   getStatusLabel,
   isDocumentSelectable,
+  StatusIcon,
 } from './IndexingStatusBadge'
 import type { BrowseDocumentItem } from '../api/types/browse'
 
@@ -161,5 +163,51 @@ describe('IndexingStatusBadge compact mode', () => {
     expect(await screen.findByRole('tooltip')).toHaveTextContent(
       'Partially indexed — searchable',
     )
+  })
+})
+
+describe('describeStatus', () => {
+  it('is just the label when there is no reason', () => {
+    expect(describeStatus('READY')).toBe('Ready')
+  })
+
+  it('folds in the reason when it says more than the label', () => {
+    expect(describeStatus('FAILED', 'Unsupported file format.')).toBe(
+      'Failed — Unsupported file format.',
+    )
+  })
+
+  it('is not duplicated when the reason is identical to the label', () => {
+    expect(describeStatus('READY', 'Ready')).toBe('Ready')
+  })
+
+  it('ignores a blank or whitespace-only reason', () => {
+    expect(describeStatus('READY', '   ')).toBe('Ready')
+  })
+})
+
+describe('StatusIcon (compact file-row marker)', () => {
+  const expectedAriaLabel: Record<string, string> = {
+    READY: 'Ready',
+    PARTIAL: 'Partially indexed — searchable',
+    INDEXING: 'Indexing…',
+    FAILED: 'Failed',
+    NOT_INDEXED: 'Queued',
+  }
+
+  for (const status of Object.keys(expectedAriaLabel)) {
+    it(`renders one icon with an aria-label for ${status}, no visible text`, () => {
+      const { container, unmount } = render(createElement(StatusIcon, { status }))
+
+      expect(screen.getByRole('img', { name: expectedAriaLabel[status] })).toBeInTheDocument()
+      expect(container).toHaveTextContent('')
+
+      unmount()
+    })
+  }
+
+  it('treats an unrecognised status (e.g. adapter PENDING) as Queued', () => {
+    render(createElement(StatusIcon, { status: 'PENDING' }))
+    expect(screen.getByRole('img', { name: 'Queued' })).toBeInTheDocument()
   })
 })

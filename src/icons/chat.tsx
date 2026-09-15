@@ -1,6 +1,7 @@
 import AddIcon from '@mui/icons-material/Add'
 import AttachFileOutlinedIcon from '@mui/icons-material/AttachFileOutlined'
 import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined'
+import AutorenewOutlinedIcon from '@mui/icons-material/AutorenewOutlined'
 import AppsIcon from '@mui/icons-material/Apps'
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward'
 import CallMadeIcon from '@mui/icons-material/CallMade'
@@ -14,6 +15,7 @@ import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import FolderOpenOutlinedIcon from '@mui/icons-material/FolderOpenOutlined'
 import HighlightOffOutlinedIcon from '@mui/icons-material/HighlightOffOutlined'
+import IncompleteCircleOutlinedIcon from '@mui/icons-material/IncompleteCircleOutlined'
 import InsertDriveFileOutlinedIcon from '@mui/icons-material/InsertDriveFileOutlined'
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined'
 import LogoutIcon from '@mui/icons-material/Logout'
@@ -53,3 +55,12 @@ export const StatusReadyIcon = appIcon(CheckCircleOutlinedIcon, 12)
 export const StatusIndexingIcon = appIcon(ScheduleOutlinedIcon, 12)
 export const StatusFailedIcon = appIcon(HighlightOffOutlinedIcon, 12)
 export const StatusNotIndexedIcon = appIcon(RemoveCircleOutlinedIcon, 12)
+
+// 14px, one per indexing status — the compact file-row icon
+// (IndexingStatusBadge's `StatusIcon`), coloured distinctly per status so a
+// glance at the row tells READY from FAILED without reading the tooltip.
+export const StatusReadyIcon14 = appIcon(CheckCircleOutlinedIcon, 14)
+export const StatusPartialIcon14 = appIcon(IncompleteCircleOutlinedIcon, 14)
+export const StatusIndexingIcon14 = appIcon(AutorenewOutlinedIcon, 14)
+export const StatusFailedIcon14 = appIcon(HighlightOffOutlinedIcon, 14)
+export const StatusNotIndexedIcon14 = appIcon(RemoveCircleOutlinedIcon, 14)

@@ -91,4 +91,45 @@ describe('chatPersistence', () => {
     const loaded = loadChatHistory(USER)
     expect(loaded?.sessions[0].messages.every((m) => !m.interrupted)).toBe(true)
   })
+
+  it('persists and reloads a session createdAt timestamp', () => {
+    const sessions = [
+      { ...sampleSession('s1', 'Session 15 Sep 2026 (1)'), createdAt: '2026-09-15T08:00:00.000Z' },
+    ]
+    persistChatHistory(USER, sessions, 's1')
+    const loaded = loadChatHistory(USER)
+    expect(loaded?.sessions[0].createdAt).toBe('2026-09-15T08:00:00.000Z')
+  })
+
+  it('keeps createdAt undefined for a session that never had one (pre-existing localStorage payload)', () => {
+    const sessions = [sampleSession('s1', 'First chat')]
+    persistChatHistory(USER, sessions, 's1')
+    const loaded = loadChatHistory(USER)
+    expect(loaded?.sessions[0].createdAt).toBeUndefined()
+  })
+
+  it('persists an abstained message so the "No matching content" caption survives a reload', () => {
+    persistChatHistory(
+      USER,
+      [
+        {
+          id: 's1',
+          title: 'Draft',
+          messages: [
+            { id: 'u1', role: 'user', content: 'Q', status: 'complete' },
+            {
+              id: 'a1',
+              role: 'assistant',
+              content: "I couldn't find relevant content to answer this.",
+              status: 'complete',
+              abstained: true,
+            },
+          ],
+        },
+      ],
+      's1',
+    )
+    const loaded = loadChatHistory(USER)
+    expect(loaded?.sessions[0].messages[1].abstained).toBe(true)
+  })
 })

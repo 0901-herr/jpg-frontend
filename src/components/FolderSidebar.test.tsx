@@ -444,3 +444,63 @@ describe('FolderSidebar with the category-view flag off', () => {
     expect(await screen.findByText('contract.pdf')).toBeInTheDocument()
   })
 })
+
+describe('FolderSidebar file row status icon', () => {
+  beforeEach(() => {
+    vi.mocked(useBrowseCategoriesModule.useBrowseCategories).mockReturnValue({
+      serverCategories: null,
+      categoriesLoading: false,
+    })
+  })
+
+  it('shows a coloured status icon with an aria-label and the full filename as a title attribute, no status-text chip', async () => {
+    render(<FolderSidebar browse={createBrowseFixture()} selection={createSelectionFixture()} />)
+
+    const filename = await screen.findByText('contract.pdf')
+    expect(filename).toHaveAttribute('title', 'contract.pdf')
+    expect(filename.className).toContain('text-ellipsis')
+
+    expect(screen.getByRole('img', { name: 'Ready' })).toBeInTheDocument()
+    // The old badge's visible status-text chip (e.g. "Ready" as its own
+    // span next to the filename) is gone — only the icon's aria-label
+    // carries that word now.
+    expect(screen.queryByText('Ready')).not.toBeInTheDocument()
+  })
+
+  it('shows the full filename and the status label + reason in the row tooltip on hover', async () => {
+    const failedDoc: BrowseDocumentItem = {
+      ...folderDocuments[0],
+      indexing_status: 'FAILED',
+      status_reason: 'Unsupported file format.',
+    }
+    render(
+      <FolderSidebar
+        browse={createBrowseFixture({
+          cache: new Map([
+            [
+              1,
+              {
+                contents: {
+                  folder: { folder_id: 1, name: 'Root', parent_id: null, has_children: false },
+                  folders: [],
+                  documents: [failedDoc],
+                  page: 0,
+                  has_more_documents: false,
+                },
+                loadedPages: new Set([0]),
+              },
+            ],
+          ]),
+        })}
+        selection={createSelectionFixture()}
+      />,
+    )
+
+    const user = userEvent.setup()
+    await user.hover(await screen.findByText('contract.pdf'))
+
+    const tooltip = await screen.findByRole('tooltip')
+    expect(tooltip).toHaveTextContent('contract.pdf')
+    expect(tooltip).toHaveTextContent('Failed — Unsupported file format.')
+  })
+})
