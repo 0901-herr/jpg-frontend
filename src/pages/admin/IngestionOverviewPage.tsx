@@ -14,7 +14,6 @@ import IngestionControls from '../../components/admin/IngestionControls'
 import IngestionSectionNav, {
   getIngestionSection,
 } from '../../components/admin/IngestionSectionNav'
-import IngestionStatusHeader from '../../components/admin/IngestionStatusHeader'
 import PipelineProgressCard from '../../components/admin/PipelineProgressCard'
 import ReclassifyMissingButton from '../../components/admin/ReclassifyMissingButton'
 import ReconciliationStatus from '../../components/admin/ReconciliationStatus'
@@ -119,8 +118,6 @@ export default function IngestionOverviewPage() {
 
       <main className={ADMIN_SECTION_MAIN_CLASS}>
         <div className={`max-w-6xl w-full mx-auto ${ADMIN_STACK_SPACE} pb-2`}>
-          <IngestionStatusHeader overview={overview} section={section} />
-
           {section === 'overview' && (
             <div className={ADMIN_STACK_SPACE}>
               <PipelineProgressCard

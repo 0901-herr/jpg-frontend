@@ -158,7 +158,7 @@ export default function PipelineProgressCard({
           <Progress
             percent={progress.percent ?? 0}
             status={gatesPaused ? 'exception' : 'active'}
-            strokeColor="#0084ff"
+            strokeColor="var(--admin-accent)"
             showInfo={Boolean(progress.label)}
           />
           {!traversalComplete && bulk?.job_state === 'running' && (

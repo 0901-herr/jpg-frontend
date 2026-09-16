@@ -69,7 +69,7 @@ export default function IngestionSectionNav({ failedCount = 0 }: IngestionSectio
             <span className="shrink-0">{item.icon}</span>
             <span className="flex-1 truncate">{item.label}</span>
             {showBadge && (
-              <Badge count={failedCount} size="small" color="#cf1322" overflowCount={999} />
+              <Badge count={failedCount} size="small" color="var(--admin-danger)" overflowCount={999} />
             )}
           </Link>
         )

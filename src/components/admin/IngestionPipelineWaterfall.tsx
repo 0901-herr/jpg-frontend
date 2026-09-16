@@ -40,13 +40,13 @@ function nodeStyles(state: PipelineStageState, compact: boolean): string {
 
   switch (state) {
     case 'complete':
-      return `${size} border-emerald-500 bg-emerald-500 text-white shadow-sm`
+      return `${size} admin-pipeline-node--complete text-white shadow-sm`
     case 'current':
-      return `${size} border-[#0084ff] bg-white text-[#0084ff] shadow-[0_0_0_3px_rgba(0,132,255,0.18)]`
+      return `${size} admin-pipeline-node--current bg-white`
     case 'failed':
-      return `${size} border-red-500 bg-red-500 text-white shadow-[0_0_0_3px_rgba(207,19,34,0.15)]`
+      return `${size} admin-pipeline-node--failed text-white`
     default:
-      return `${size} border-[#d9dee7] bg-white text-[#94a3b8]`
+      return `${size} admin-pipeline-node--pending bg-white`
   }
 }
 
@@ -60,11 +60,11 @@ function trackTone(states: PipelineStageState[]): 'success' | 'active' | 'failed
 function trackFillClass(tone: ReturnType<typeof trackTone>): string {
   switch (tone) {
     case 'failed':
-      return 'bg-red-400'
+      return 'admin-pipeline-track--failed'
     case 'success':
-      return 'bg-emerald-500'
+      return 'admin-pipeline-track--complete'
     case 'active':
-      return 'bg-[#0084ff]'
+      return 'admin-pipeline-track--active'
     default:
       return 'bg-transparent'
   }
@@ -123,7 +123,7 @@ export default function IngestionPipelineWaterfall({
     >
       <div className={`relative ${compact ? 'pb-5' : 'pb-8'}`}>
         <div
-          className={`pointer-events-none absolute ${trackOffset} left-[7px] right-[7px] h-0.5 rounded-full bg-[#e8edf2]`}
+          className={`admin-pipeline-track pointer-events-none absolute ${trackOffset} left-[7px] right-[7px] h-0.5 rounded-full`}
           aria-hidden
         />
         <div
@@ -149,12 +149,12 @@ export default function IngestionPipelineWaterfall({
                     <span
                       className={`mt-2 max-w-[4.75rem] text-center text-xs leading-tight ${
                         state === 'current'
-                          ? 'font-semibold text-[#0084ff]'
+                          ? 'admin-pipeline-label--active font-semibold'
                           : state === 'failed'
-                            ? 'font-semibold text-red-600'
+                            ? 'admin-pipeline-label--failed font-semibold'
                             : state === 'complete'
-                              ? 'font-medium text-emerald-700'
-                              : 'text-[#94a3b8]'
+                              ? 'admin-pipeline-label--complete font-medium'
+                              : 'admin-pipeline-label--pending'
                       }`}
                     >
                       {stage.shortLabel}
@@ -171,12 +171,12 @@ export default function IngestionPipelineWaterfall({
             <span
               className={`text-xs font-medium leading-none whitespace-nowrap ${
                 tone === 'failed'
-                  ? 'text-red-600'
+                  ? 'admin-pipeline-label--failed'
                   : tone === 'success'
-                    ? 'text-emerald-700'
+                    ? 'admin-pipeline-label--complete'
                     : tone === 'active'
-                      ? 'text-[#0084ff]'
-                      : 'text-[#64748b]'
+                      ? 'admin-pipeline-label--active'
+                      : 'admin-pipeline-label--muted'
               }`}
             >
               {activeStage.shortLabel}
@@ -185,7 +185,7 @@ export default function IngestionPipelineWaterfall({
         )}
       </div>
 
-      {!compact && <p className="mt-1 text-xs text-[#64748b]">{progress.summary}</p>}
+      {!compact && <p className="admin-pipeline-label--muted mt-1 text-xs">{progress.summary}</p>}
     </div>
   )
 }

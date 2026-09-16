@@ -12,13 +12,13 @@ export default function AdminLayout() {
 
   return (
     <App>
-      <Layout className={`${ADMIN_PANEL_CLASS} h-screen overflow-hidden overflow-x-hidden bg-[#f4f6f9]`}>
+      <Layout className={`${ADMIN_PANEL_CLASS} h-screen overflow-hidden overflow-x-hidden`}>
         <Sider
           width={240}
           theme="light"
-          className="!bg-white border-r border-[#e8edf2] shrink-0"
+          className="admin-primary-nav !bg-white border-r shrink-0"
         >
-          <div className="px-6 py-6 border-b border-[#eef1f5]">
+          <div className="admin-primary-nav-header px-6 py-6 border-b">
             <Text strong className="admin-sidebar-title">
               JPG Admin
             </Text>
@@ -37,7 +37,7 @@ export default function AdminLayout() {
             ]}
           />
         </Sider>
-        <Layout className="min-w-0 flex flex-col bg-[#f4f6f9]">
+        <Layout className="admin-page min-w-0 flex flex-col">
           <Content className="flex-1 min-h-0 min-w-0 overflow-hidden">
             <Outlet />
           </Content>

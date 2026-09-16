@@ -56,7 +56,7 @@ function stateTag(state: string) {
 }
 
 function ControlGroup({ children }: { children: ReactNode }) {
-  return <div className="divide-y divide-[#eef1f5]">{children}</div>
+  return <div className="admin-divide divide-y">{children}</div>
 }
 
 interface ControlRowProps {
@@ -258,7 +258,7 @@ export default function IngestionControls({ overview }: IngestionControlsProps) 
           />
         </ControlGroup>
         {(ingestionPaused || discoveryPaused) && (
-          <div className="mt-4 pt-4 border-t border-[#eef1f5] space-y-1">
+          <div className="admin-border-top mt-4 pt-4 border-t space-y-1">
             {discoveryPaused && (
               <Text className={`block ${ADMIN_TEXT_MUTED}`}>
                 Discovery pause: {overview.discovery_pause_reason ?? 'manual'}

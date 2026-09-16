@@ -95,8 +95,8 @@ export default function DocumentDetailsPanel({ docId, open, onClose }: DocumentD
           </div>
 
           {data.lifecycle_status === 'FAILED' && data.last_error && (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-3">
-              <Text strong className="text-red-700">
+            <div className="admin-error-panel rounded-lg border p-3">
+              <Text strong className="admin-error-panel-title">
                 Failure
               </Text>
               <Paragraph className={`!mb-0 mt-1 ${ADMIN_TEXT_ERROR}`}>{data.last_error}</Paragraph>

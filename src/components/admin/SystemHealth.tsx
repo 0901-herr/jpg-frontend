@@ -96,7 +96,7 @@ export default function SystemHealth({
           Degraded
         </Tag>
       )}
-      <div className="divide-y divide-[#eef1f5]">
+      <div className="admin-divide divide-y">
         {rows.map((row) => {
           const target = formatServiceTarget(row.endpoint)
           return (

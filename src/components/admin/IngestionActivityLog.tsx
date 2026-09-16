@@ -23,16 +23,16 @@ interface IngestionActivityLogProps {
   onSelectDocument?: (docId: string) => void
 }
 
-function timelineColor(level: ActivityLevel): 'green' | 'red' | 'blue' | 'gray' {
+function timelineColor(level: ActivityLevel): string {
   switch (level) {
     case 'success':
-      return 'green'
+      return 'var(--admin-success)'
     case 'error':
-      return 'red'
+      return 'var(--admin-danger)'
     case 'warning':
-      return 'blue'
+      return 'var(--admin-warning)'
     default:
-      return 'gray'
+      return 'var(--admin-text-muted)'
   }
 }
 
@@ -92,19 +92,19 @@ export default function IngestionActivityLog({
             <Statistic
               title="Indexing"
               value={counts.indexing}
-              valueStyle={{ color: '#d48806' }}
+              valueStyle={{ color: 'var(--admin-warning)' }}
               className={`${ADMIN_STAT_VALUE} ${ADMIN_STAT_TITLE}`}
             />
             <Statistic
               title="Ready"
               value={counts.ready}
-              valueStyle={{ color: '#389e0d' }}
+              valueStyle={{ color: 'var(--admin-success)' }}
               className={`${ADMIN_STAT_VALUE} ${ADMIN_STAT_TITLE}`}
             />
             <Statistic
               title="Failed"
               value={counts.failed}
-              valueStyle={{ color: counts.failed ? '#cf1322' : undefined }}
+              valueStyle={{ color: counts.failed ? 'var(--admin-danger)' : undefined }}
               className={`${ADMIN_STAT_VALUE} ${ADMIN_STAT_TITLE}`}
             />
           </Space>
