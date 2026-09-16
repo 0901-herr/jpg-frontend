@@ -72,7 +72,10 @@ function legacyFallback(stage: string): string {
     return 'Understanding your question'
   }
 
-  return `Still working on ${humanizeStage(stage)}`
+  // Plain-language sweep: a raw backend stage name (e.g. `tier_escalated`)
+  // must never reach the user, humanized or not — a fixed generic line
+  // stands in for anything this function doesn't otherwise recognize.
+  return 'Working on it'
 }
 
 /** Turns one `progress` SSE stage into a specific, human-readable label.
@@ -98,11 +101,10 @@ export function formatProgressStage(
     case 'decontextualizing':
       return 'Understanding your question'
 
-    case 'rewriting': {
-      const variants = readNumber(p, 'variants')
-      const suffix = variants != null && variants >= 2 ? ` (${variants} variants)` : ''
-      return `Refining your question${suffix}`
-    }
+    case 'rewriting':
+      // Plain-language sweep: the owner asked for the "(N variants)" suffix
+      // gone — a fixed label regardless of how many rewrites ran.
+      return 'Refining your question'
 
     case 'retrieving':
       return filenames.length > 0
@@ -112,30 +114,29 @@ export function formatProgressStage(
     case 'retrieved': {
       const candidates = readNumber(p, 'candidates') ?? 0
       const distinctItems = readNumber(p, 'distinct_items') ?? 0
-      if (candidates === 0) return 'No matching passages yet'
-      return `Found ${candidates} ${plural(candidates, 'passage')} across ${distinctItems} ${plural(distinctItems, 'document')}`
+      if (candidates === 0) return 'Nothing matching yet'
+      return `Found ${candidates} ${plural(candidates, 'section')} across ${distinctItems} ${plural(distinctItems, 'document')}`
     }
 
-    case 'reranking': {
-      const total = readNumber(p, 'total')
-      return total != null
-        ? `Ranking ${total} ${plural(total, 'passage')} by relevance`
-        : 'Finding the best matches'
-    }
+    case 'reranking':
+      // Plain-language sweep: always the same fixed line — no passage
+      // count ("chunks"/"passages" are exactly the vocabulary the owner
+      // asked to remove).
+      return 'Finding the best matches'
 
     case 'reranked': {
       const selected = readNumber(p, 'selected') ?? 0
-      return `Picked the ${selected} most relevant ${plural(selected, 'passage')}`
+      return `Picked the ${selected} most relevant ${plural(selected, 'section')}`
     }
 
     case 'postprocessing': {
       const kept = readNumber(p, 'kept') ?? 0
-      return `Checking ${kept} ${plural(kept, 'passage')}`
+      return `Checking ${kept} ${plural(kept, 'section')}`
     }
 
     case 'assembling': {
       const chunks = readNumber(p, 'chunks') ?? 0
-      return `Reading ${chunks} ${plural(chunks, 'passage')}`
+      return `Reading ${chunks} ${plural(chunks, 'section')}`
     }
 
     case 'generating':
@@ -165,8 +166,8 @@ export function formatProgressStage(
 export function formatRouteLabel(strategy: string | undefined): string | undefined {
   if (!strategy) return undefined
   const labels: Record<string, string> = {
-    simple: 'Quick lookup',
-    simple_lookup: 'Quick lookup',
+    simple: 'Looking it up',
+    simple_lookup: 'Looking it up',
     aggregation: 'Summarizing across documents',
     agent: 'Working through your question',
   }

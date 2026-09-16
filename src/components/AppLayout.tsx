@@ -498,7 +498,7 @@ export default function AppLayout() {
         if (scopeDocuments.length === 0) {
           const reason =
             scope.failed_files > 0
-              ? 'None of the selected documents are ready to query (failed or not indexed).'
+              ? 'None of the selected documents are ready to answer questions yet.'
               : 'No accessible documents in your selection.'
           setInputBlockedReason(reason)
           message.error(reason)
@@ -506,7 +506,7 @@ export default function AppLayout() {
         }
 
         if (scope.ready_files === 0 && scope.indexing_files > 0) {
-          const reason = 'Documents are still indexing. Please wait until at least one is ready.'
+          const reason = 'Documents are still being prepared. Please wait until at least one is ready.'
           setInputBlockedReason(reason)
           message.warning(reason)
           return
@@ -521,7 +521,7 @@ export default function AppLayout() {
 
         if (scope.indexing_files > 0) {
           message.info(
-            `${scope.indexing_files} selected ${scope.indexing_files === 1 ? 'document is' : 'documents are'} still indexing. Answers may be incomplete.`,
+            `${scope.indexing_files} selected ${scope.indexing_files === 1 ? 'document is' : 'documents are'} still being prepared. Answers may be incomplete.`,
           )
         }
       } catch (err) {

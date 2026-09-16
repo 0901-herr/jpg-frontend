@@ -150,20 +150,24 @@ export function toUserFacingFolderLoadError(httpStatus: number | undefined): Fol
 
 export const MQA_METADATA_GENERIC_ERROR = 'Could not extract metadata. Please try again.'
 
-/** The mqa-metadata contract's own error details (409/504/502) are already
- * plain language — show them verbatim. Anything else (network failure,
- * an unexpected detail string, no detail at all) falls back to the
- * generic message rather than surfacing raw/technical text. 401 is not
- * handled here: it goes through the same session-expired path the query
- * flow uses (`toUserFacingQueryError` with httpStatus 401). */
-const MQA_METADATA_KNOWN_DETAILS = new Set([
-  'Document is still being indexed. Try again when it is Ready.',
-  'Document is not ready for extraction.',
-  'Metadata extraction timed out. Please try again.',
-  'Metadata extraction failed. Please try again.',
-])
+/** The mqa-metadata contract's own error details (409/504/502) are matched
+ * by their raw (technical) wording below, but plain-language sweep: never
+ * shown verbatim — each known detail maps to its own jargon-free display
+ * line. Anything else (network failure, an unrecognized detail string, no
+ * detail at all) falls back to the generic message rather than surfacing
+ * raw/technical text. 401 is not handled here: it goes through the same
+ * session-expired path the query flow uses (`toUserFacingQueryError` with
+ * httpStatus 401). */
+const MQA_METADATA_KNOWN_DETAILS: Record<string, string> = {
+  'Document is still being indexed. Try again when it is Ready.':
+    "This document isn't ready yet. Try again once it shows Ready.",
+  'Document is not ready for extraction.':
+    "This document isn't ready for that yet. Please try again shortly.",
+  'Metadata extraction timed out. Please try again.': 'That took too long. Please try again.',
+  'Metadata extraction failed. Please try again.': 'That did not work. Please try again.',
+}
 
 export function toUserFacingMqaMetadataError(detail: string | undefined): string {
-  if (detail && MQA_METADATA_KNOWN_DETAILS.has(detail)) return detail
+  if (detail && detail in MQA_METADATA_KNOWN_DETAILS) return MQA_METADATA_KNOWN_DETAILS[detail]
   return MQA_METADATA_GENERIC_ERROR
 }

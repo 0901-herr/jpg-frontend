@@ -65,13 +65,28 @@ describe('toUserFacingFolderLoadError', () => {
 })
 
 describe('toUserFacingMqaMetadataError', () => {
+  // The contract's own detail strings are matched by their raw (technical)
+  // wording, but never shown verbatim — plain-language sweep: each known
+  // detail maps to its own jargon-free display line instead.
   it.each([
-    'Document is still being indexed. Try again when it is Ready.',
-    'Document is not ready for extraction.',
-    'Metadata extraction timed out. Please try again.',
-    'Metadata extraction failed. Please try again.',
-  ])('passes the contract detail "%s" through verbatim', (detail) => {
-    expect(toUserFacingMqaMetadataError(detail)).toBe(detail)
+    [
+      'Document is still being indexed. Try again when it is Ready.',
+      "This document isn't ready yet. Try again once it shows Ready.",
+    ],
+    [
+      'Document is not ready for extraction.',
+      "This document isn't ready for that yet. Please try again shortly.",
+    ],
+    [
+      'Metadata extraction timed out. Please try again.',
+      'That took too long. Please try again.',
+    ],
+    [
+      'Metadata extraction failed. Please try again.',
+      'That did not work. Please try again.',
+    ],
+  ])('maps the contract detail "%s" to a plain-language line', (detail, expected) => {
+    expect(toUserFacingMqaMetadataError(detail)).toBe(expected)
   })
 
   it('falls back to the generic message for an unrecognized detail', () => {

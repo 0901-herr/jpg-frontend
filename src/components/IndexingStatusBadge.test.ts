@@ -41,7 +41,7 @@ describe('getDocumentSelectionHint', () => {
 
   it('falls back to indexing-status copy when status_reason is absent', () => {
     expect(getDocumentSelectionHint(doc('1', 'FAILED', false))).toBe(
-      'Indexing failed. Not queryable.',
+      'Could not be prepared. Not ready for questions.',
     )
   })
 })
@@ -61,8 +61,8 @@ describe('IndexingStatusBadge selection rules', () => {
 describe('getStatusLabel', () => {
   it('maps every status to the demo copy', () => {
     expect(getStatusLabel('READY')).toBe('Ready')
-    expect(getStatusLabel('PARTIAL')).toBe('Partially indexed — searchable')
-    expect(getStatusLabel('INDEXING')).toBe('Indexing')
+    expect(getStatusLabel('PARTIAL')).toBe('Partially ready — ready for questions')
+    expect(getStatusLabel('INDEXING')).toBe('Preparing')
     expect(getStatusLabel('NOT_INDEXED')).toBe('Queued')
     expect(getStatusLabel('FAILED')).toBe('Failed')
   })
@@ -82,7 +82,7 @@ describe('IndexingStatusBadge tooltip', () => {
       }),
     )
 
-    await user.hover(screen.getByText('Partially indexed — searchable'))
+    await user.hover(screen.getByText('Partially ready — ready for questions'))
 
     expect(await screen.findByRole('tooltip')).toHaveTextContent(
       'Text search only; full vector indexing is still in progress.',
@@ -103,15 +103,15 @@ describe('IndexingStatusBadge compact mode', () => {
   const compactLabels: Record<string, string> = {
     READY: 'Ready',
     PARTIAL: 'Partial',
-    INDEXING: 'Indexing',
+    INDEXING: 'Preparing',
     FAILED: 'Failed',
     NOT_INDEXED: 'Queued',
   }
 
   const longLabels: Record<string, string> = {
     READY: 'Ready',
-    PARTIAL: 'Partially indexed — searchable',
-    INDEXING: 'Indexing',
+    PARTIAL: 'Partially ready — ready for questions',
+    INDEXING: 'Preparing',
     FAILED: 'Failed',
     NOT_INDEXED: 'Queued',
   }
@@ -161,7 +161,7 @@ describe('IndexingStatusBadge compact mode', () => {
     await user.hover(screen.getByText('Partial'))
 
     expect(await screen.findByRole('tooltip')).toHaveTextContent(
-      'Partially indexed — searchable',
+      'Partially ready — ready for questions',
     )
   })
 })
@@ -189,8 +189,8 @@ describe('describeStatus', () => {
 describe('StatusIcon (compact file-row marker)', () => {
   const expectedAriaLabel: Record<string, string> = {
     READY: 'Ready',
-    PARTIAL: 'Partially indexed — searchable',
-    INDEXING: 'Indexing',
+    PARTIAL: 'Partially ready — ready for questions',
+    INDEXING: 'Preparing',
     FAILED: 'Failed',
     NOT_INDEXED: 'Queued',
   }

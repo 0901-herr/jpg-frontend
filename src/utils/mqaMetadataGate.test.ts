@@ -62,7 +62,7 @@ describe('mqaMetadataGate', () => {
         isResponding: false,
         disabled: false,
       }),
-    ).toBe('Not indexed. Not queryable.')
+    ).toBe('Not ready yet. Not ready for questions.')
 
     expect(
       getExtractMetadataDisabledReason({

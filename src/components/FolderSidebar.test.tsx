@@ -171,10 +171,10 @@ describe('FolderSidebar category note', () => {
       screen.getByText('1 file is not shown because it has not been categorised yet.'),
     ).toBeInTheDocument()
     expect(
-      screen.getByText('Categories appear after ingestion classification completes.'),
+      screen.getByText('Categories appear once categorizing finishes for this folder.'),
     ).toBeInTheDocument()
     expect(
-      screen.getByText('No classification categories in this folder yet.'),
+      screen.getByText('No categories yet in this folder.'),
     ).toBeInTheDocument()
   })
 })

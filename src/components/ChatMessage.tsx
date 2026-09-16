@@ -176,11 +176,13 @@ function CoverageNotice({ coverage }: { coverage?: CoverageInfo }) {
   const total = coverage?.total_files
   const ready = coverage?.ready_files ?? 0
   const scope =
-    total != null ? `${ready} of ${total} selected documents ready` : `${indexing} still indexing`
+    total != null
+      ? `${ready} of ${total} selected documents ready`
+      : `${indexing} still getting ready`
 
   return (
     <p className={`${type.caption} ${typeColor.muted} leading-relaxed`} role="status">
-      {scope}. Some documents are still indexing, so the answer may be incomplete.
+      {scope}. Some documents are still getting ready, so the answer may be incomplete.
     </p>
   )
 }

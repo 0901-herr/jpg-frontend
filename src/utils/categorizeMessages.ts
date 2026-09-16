@@ -32,7 +32,7 @@ function buildAnswer(response: DocumentCategorizeResponse): string {
     return `This file does not clearly belong to any of the folders in **${folder_name}** (${candidates}). ${reasoning} You may leave it where it is or file it by hand.`
   }
 
-  return `I could not match the model's answer to one of the folders in **${folder_name}**: ${candidates}. Please try again.`
+  return `I could not match the answer to one of the folders in **${folder_name}**: ${candidates}. Please try again.`
 }
 
 /** Builds the user-request + completed-answer message pair for a

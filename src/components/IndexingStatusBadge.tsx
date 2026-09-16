@@ -26,14 +26,14 @@ const STATUS_CONFIG: Record<
     icon: <StatusReadyIcon />,
   },
   PARTIAL: {
-    label: 'Partially indexed — searchable',
+    label: 'Partially ready — ready for questions',
     compactLabel: 'Partial',
     className: 'bg-sky-50 text-sky-700',
     icon: <StatusIndexingIcon />,
   },
   INDEXING: {
-    label: 'Indexing',
-    compactLabel: 'Indexing',
+    label: 'Preparing',
+    compactLabel: 'Preparing',
     className: 'bg-amber-50 text-amber-700',
     icon: <StatusIndexingIcon />,
   },
@@ -163,10 +163,10 @@ export function getSelectableDocumentIds(documents: BrowseDocumentItem[]): strin
 }
 
 export function getSelectionWarning(status: IndexingStatus | string): string | null {
-  if (status === 'PARTIAL') return 'Partially indexed. Answers may be incomplete.'
-  if (status === 'INDEXING') return 'Still indexing. Answers may be incomplete.'
-  if (status === 'FAILED') return 'Indexing failed. Not queryable.'
-  if (status === 'NOT_INDEXED') return 'Not indexed. Not queryable.'
+  if (status === 'PARTIAL') return 'Partially ready. Answers may be incomplete.'
+  if (status === 'INDEXING') return 'Still getting ready. Answers may be incomplete.'
+  if (status === 'FAILED') return 'Could not be prepared. Not ready for questions.'
+  if (status === 'NOT_INDEXED') return 'Not ready yet. Not ready for questions.'
   return null
 }
 

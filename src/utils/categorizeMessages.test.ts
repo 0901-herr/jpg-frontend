@@ -86,7 +86,7 @@ describe('buildCategorizeMessages', () => {
     )
 
     expect(assistantMessage.content).toContain(
-      "I could not match the model's answer to one of the folders in **Minutes**: Approved, Draft.",
+      'I could not match the answer to one of the folders in **Minutes**: Approved, Draft.',
     )
     expect(assistantMessage.content).toContain('Please try again.')
     expect(assistantMessage.content).not.toContain('Suggested folder')

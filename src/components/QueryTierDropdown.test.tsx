@@ -11,7 +11,7 @@ describe('QueryTierDropdown tooltip', () => {
     await user.hover(screen.getByRole('button', { name: /query speed: fast/i }))
 
     expect(await screen.findByRole('tooltip')).toHaveTextContent(
-      'Fastest answer. Uses a smaller model; may miss detail.',
+      'Fastest answer. May miss some detail.',
     )
   })
 

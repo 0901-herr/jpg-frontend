@@ -415,7 +415,7 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
         )
         const ids = getSelectableDocumentIds(docs)
         if (ids.length === 0) {
-          message.info('No indexed files in this folder yet.')
+          message.info('No files ready yet in this folder.')
         } else {
           selection.mergeSelection(ids)
         }
@@ -526,7 +526,7 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
             </div>
           ) : categoryOptions.length === 0 ? (
             <p className={`${sidebar.caption} ${typeColor.muted} px-1 py-2 m-0`}>
-              No classification categories in this folder yet.
+              No categories yet in this folder.
             </p>
           ) : (
             <Select
@@ -599,7 +599,7 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
           ) : categoryOptions.length === 0 ? (
             <div className="flex h-full min-h-[80px] items-center justify-center px-3 text-center">
               <span className={`${sidebar.caption} ${typeColor.muted}`}>
-                Categories appear after ingestion classification completes.
+                Categories appear once categorizing finishes for this folder.
               </span>
             </div>
           ) : (
