@@ -1286,6 +1286,10 @@ button.docu-citation-pill:hover {
   box-shadow: none !important;
 }
 
+.admin-activity-card.ant-card {
+  border: none !important;
+}
+
 .admin-system-status-card.ant-card .ant-card-body {
   padding-top: 0.75rem !important;
 }

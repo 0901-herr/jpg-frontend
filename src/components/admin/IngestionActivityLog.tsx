@@ -79,6 +79,7 @@ export default function IngestionActivityLog({
       )}
 
       <AdminCard
+        className="admin-activity-card"
         title={
           <Space size="small">
             <AdminDescriptionIcon />
