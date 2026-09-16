@@ -156,12 +156,15 @@ export default function IngestionOverviewPage() {
                 onSearch={(query) => {
                   handleSearch(query)
                 }}
+                onRefresh={() => {
+                  void documentsQuery.refetch()
+                  void overviewQuery.refetch()
+                }}
               />
               <DocumentTable
                 items={documentsQuery.data?.items ?? []}
                 total={documentsQuery.data?.total ?? 0}
                 loading={documentsQuery.isLoading}
-                refreshing={documentsQuery.isFetching && !documentsQuery.isLoading}
                 page={page}
                 pageSize={pageSize}
                 onPageChange={(p, size) => {
@@ -172,10 +175,6 @@ export default function IngestionOverviewPage() {
                   }))
                 }}
                 onSelect={openDocument}
-                onRefresh={() => {
-                  void documentsQuery.refetch()
-                  void overviewQuery.refetch()
-                }}
               />
             </div>
           )}

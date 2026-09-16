@@ -1164,14 +1164,6 @@ button.docu-citation-pill:hover {
   color: var(--admin-text);
 }
 
-.admin-list-heading {
-  margin: 0;
-  font-size: var(--admin-font-lg);
-  font-weight: 600;
-  line-height: var(--admin-line-lg);
-  color: var(--admin-text);
-}
-
 .admin-pipeline-progress-action {
   display: flex;
   flex-shrink: 0;
@@ -1292,6 +1284,13 @@ button.docu-citation-pill:hover {
 
 .admin-card.ant-card .ant-card-body {
   box-shadow: none !important;
+}
+
+.admin-document-table .ant-table,
+.admin-document-table .ant-table-container,
+.admin-document-table .ant-table-thead > tr > th,
+.admin-document-table .ant-table-tbody > tr > td {
+  background: #fff !important;
 }
 
 .admin-divide > :not(:last-child) {

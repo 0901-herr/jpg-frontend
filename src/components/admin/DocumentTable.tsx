@@ -6,30 +6,25 @@ import { formatDateTime } from '../../utils/lifecycle'
 import CategoryTag from '../CategoryTag'
 import DocumentStatusBadge from './DocumentStatusBadge'
 import IngestionPipelineWaterfall from './IngestionPipelineWaterfall'
-import AdminRefreshButton from './AdminRefreshButton'
 
 interface DocumentTableProps {
   items: AdminDocumentSummary[]
   total: number
   loading?: boolean
-  refreshing?: boolean
   page: number
   pageSize: number
   onPageChange: (page: number, pageSize: number) => void
   onSelect: (doc: AdminDocumentSummary) => void
-  onRefresh?: () => void
 }
 
 export default function DocumentTable({
   items,
   total,
   loading,
-  refreshing,
   page,
   pageSize,
   onPageChange,
   onSelect,
-  onRefresh,
 }: DocumentTableProps) {
   const columns: ColumnsType<AdminDocumentSummary> = [
     {
@@ -104,12 +99,6 @@ export default function DocumentTable({
 
   return (
     <section>
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 className="admin-list-heading">Documents</h2>
-        {onRefresh ? (
-          <AdminRefreshButton loading={refreshing} onClick={onRefresh} />
-        ) : null}
-      </div>
       <div className="min-w-0 overflow-x-auto">
         <Table
           rowKey="source_document_id"

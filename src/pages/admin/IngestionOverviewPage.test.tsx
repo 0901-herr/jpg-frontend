@@ -85,8 +85,10 @@ describe('IngestionOverviewPage', () => {
     const searchForm = (await screen.findByPlaceholderText('LogicalDOC ID or filename')).closest(
       'form',
     ) as HTMLElement
-    await user.type(within(searchForm).getByPlaceholderText('LogicalDOC ID or filename'), '5052')
-    await user.click(within(searchForm).getByRole('button', { name: /search/i }))
+    await user.type(
+      within(searchForm).getByPlaceholderText('LogicalDOC ID or filename'),
+      '5052{enter}',
+    )
     await waitFor(() =>
       expect(adminApi.fetchAdminDocuments).toHaveBeenCalledWith(
         expect.objectContaining({ docId: '5052' }),
@@ -104,6 +106,10 @@ describe('IngestionOverviewPage', () => {
     expect(
       screen.queryByRole('button', { name: /Re-ingest missing classification/i }),
     ).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Search' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Reset' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Refresh' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Documents' })).not.toBeInTheDocument()
   })
 
   it('searches documents by filename', async () => {
@@ -186,11 +192,10 @@ describe('IngestionOverviewPage', () => {
   it('applies failed-only filter', async () => {
     const user = userEvent.setup()
     renderPage()
-    const searchForm = (await screen.findByPlaceholderText('LogicalDOC ID or filename')).closest(
-      'form',
-    ) as HTMLElement
-    await user.click(within(searchForm).getByRole('checkbox', { name: 'Failed only' }))
-    await user.click(within(searchForm).getByRole('button', { name: /search/i }))
+    await screen.findByPlaceholderText('LogicalDOC ID or filename')
+    await user.click(screen.getByRole('button', { name: 'Filter' }))
+    await user.click(await screen.findByRole('checkbox', { name: 'Failed only' }))
+    await user.click(screen.getByRole('button', { name: 'Apply' }))
     await waitFor(() =>
       expect(adminApi.fetchAdminDocuments).toHaveBeenCalledWith(
         expect.objectContaining({ lifecycleStatus: 'FAILED' }),

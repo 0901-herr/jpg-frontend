@@ -19,6 +19,7 @@ import RefreshIcon from '@mui/icons-material/Refresh'
 import SearchIcon from '@mui/icons-material/Search'
 import SendOutlinedIcon from '@mui/icons-material/SendOutlined'
 import SyncIcon from '@mui/icons-material/Sync'
+import TuneIcon from '@mui/icons-material/Tune'
 import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined'
 import { appIcon } from './AppIcon'
 
@@ -29,6 +30,7 @@ export const AdminTagIcon = appIcon(LocalOfferOutlinedIcon)
 export const AdminOpenIcon = appIcon(OpenInNewIcon)
 export const AdminRefreshIcon = appIcon(RefreshIcon)
 export const AdminSearchIcon = appIcon(SearchIcon)
+export const AdminFilterIcon = appIcon(TuneIcon)
 export const AdminDescriptionIcon = appIcon(DescriptionOutlinedIcon)
 export const AdminDashboardIcon = appIcon(DashboardOutlinedIcon)
 
