@@ -352,13 +352,6 @@ export default function AppLayout() {
     [sessions, sharedSessions, activeChatId],
   )
 
-  // True while `useChatStore`'s `ensureMessagesLoaded` is fetching the
-  // active chat's own history (first-open of an existing chat, or a
-  // shared chat re-syncing) — drives the message-pane skeleton below and
-  // ORs into ChatInput's `disabled`, alongside the pre-existing
-  // `sessionExpired` reason, rather than replacing it.
-  const isActiveChatMessagesLoading = Boolean(activeChatId && messagesLoading.has(activeChatId))
-
   // A shared chat the viewer doesn't own: the owner's chosen visibility
   // decides whether the composer accepts new questions.
   const isSharedViewOnly = activeSession?.isOwner === false && activeSession?.canQuery !== true
@@ -379,6 +372,25 @@ export default function AppLayout() {
   const messagePairs = useMemo(
     () => pairMessages(activeSession?.messages ?? []),
     [activeSession?.messages],
+  )
+
+  // True while `useChatStore`'s `ensureMessagesLoaded` is fetching the
+  // active chat's own history AND that chat has nothing to show yet —
+  // drives the message-pane skeleton below and ORs into ChatInput's
+  // `disabled`, alongside the pre-existing `sessionExpired` reason, rather
+  // than replacing it. The `messagePairs.length === 0` guard matters for a
+  // shared chat specifically: its branch of `ensureMessagesLoaded` is
+  // deliberately ungated (re-fetches on every activation so a host-side
+  // scope change is always picked up — see useChatStore.ts's
+  // `trackMessagesLoading` comment), so reselecting an already-open shared
+  // chat re-adds its id to `messagesLoading` while its previously-loaded
+  // messages are still sitting in `activeSession.messages` the whole time.
+  // Without this guard that background re-fetch would flicker the already-
+  // correct message list into a skeleton and disable the composer for no
+  // visible reason — mirrors FolderSidebar's own "loading but have
+  // something to show already" distinction (fileTreeData.length === 0).
+  const isActiveChatMessagesLoading = Boolean(
+    activeChatId && messagesLoading.has(activeChatId) && messagePairs.length === 0,
   )
 
   const scrollContainerRef = useRef<HTMLDivElement>(null)

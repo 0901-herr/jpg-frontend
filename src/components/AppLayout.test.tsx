@@ -1684,12 +1684,14 @@ describe('AppLayout — message pane skeleton while a chat is loading messages',
     initialDocumentMeta = defaultDocumentMeta()
     listChatSessions.mockReset()
     getChatSession.mockReset()
+    getChatSession.mockResolvedValue({})
   })
 
   afterEach(() => {
     vi.clearAllMocks()
     listChatSessions.mockResolvedValue({ sessions: [], shared: [] })
     getChatSession.mockResolvedValue({})
+    window.history.pushState({}, '', '/')
   })
 
   it('shows a skeleton in the message pane and disables the composer while the active (not-yet-loaded) chat is fetching messages, then reveals the composer once it resolves', async () => {
@@ -1759,6 +1761,145 @@ describe('AppLayout — message pane skeleton while a chat is loading messages',
     expect(
       screen.getByPlaceholderText('Ask a question about the selected documents'),
     ).not.toBeDisabled()
+  })
+
+  it('does NOT show the skeleton or disable the composer when a chat that already has messages is silently re-fetching in the background (reselecting an already-open shared chat)', async () => {
+    // Shared chats are re-fetched on every activation (ungated, unlike own
+    // chats — see useChatStore.ts's `ensureMessagesLoaded`), so reselecting
+    // one that's already open and fully loaded re-adds its id to
+    // `messagesLoading` while its messages are still sitting in
+    // `activeSession.messages` from the earlier load. The message list
+    // must stay put and the composer must stay enabled for that background
+    // re-fetch — only a genuinely empty, first-ever load should skeleton.
+    //
+    // Restore-on-reload (localStorage + listChatSessions), not the
+    // `?share=` link flow, mirroring the already-stable "fetches a
+    // restored shared chat's detail on reload" test above — it exercises
+    // the identical ungated shared-branch `ensureMessagesLoaded` fetch
+    // with one fewer moving part (no shareToken/loadSharedSession/
+    // replaceState hop).
+    const user = userEvent.setup()
+    window.history.pushState({}, '', '/chat')
+    window.localStorage.setItem(
+      'docu_chat_history_user-1',
+      JSON.stringify({
+        version: 1,
+        activeChatId: 'shared-9',
+        sessions: [
+          { id: 's1', title: 'My own chat', messages: [], createdAt: '2026-09-01T00:00:00.000Z' },
+        ],
+        updatedAt: '2026-09-01T00:00:00.000Z',
+      }),
+    )
+    listChatSessions.mockResolvedValueOnce({
+      sessions: [
+        {
+          id: 's1',
+          title: 'My own chat',
+          project_id: null,
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-01T00:00:00Z',
+          updated_at: '2026-09-01T00:00:00Z',
+          message_count: 0,
+        },
+      ],
+      shared: [
+        {
+          id: 'shared-9',
+          title: 'Reselect Chat',
+          owner_username: 'alice',
+          visibility: 'query',
+          opened_at: '2026-09-01T00:00:00Z',
+        },
+      ],
+    })
+    // `pairMessages` (AppLayout.tsx) anchors each pair on a `user` message
+    // — a lone `assistant` entry with no preceding `user` turn is silently
+    // dropped, so a fixture asserting a rendered message needs both.
+    const shared9Detail = {
+      id: 'shared-9',
+      title: 'Reselect Chat',
+      project_id: null,
+      visibility: 'query',
+      share_token: null,
+      created_at: '2026-09-01T00:00:00Z',
+      updated_at: '2026-09-01T00:00:00Z',
+      message_count: 2,
+      owner_username: 'alice',
+      is_owner: false,
+      can_query: true,
+      scope_document_ids: ['doc-9'],
+      messages: [
+        {
+          id: 'm0',
+          seq: 1,
+          role: 'user',
+          content: 'What is the status?',
+          author_username: 'alice',
+          created_at: '2026-09-01T00:00:00Z',
+        },
+        {
+          id: 'm1',
+          seq: 2,
+          role: 'assistant',
+          content: 'Already loaded answer',
+          author_username: 'alice',
+          created_at: '2026-09-01T00:00:00Z',
+        },
+      ],
+    }
+    getChatSession.mockImplementation((id: string) =>
+      id === 'shared-9' ? Promise.resolve(shared9Detail) : Promise.resolve({ id, title: id, messages: [] }),
+    )
+
+    render(<AppLayout />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('active-chat-id').textContent).toBe('shared-9')
+    })
+    // First activation — a genuine first-ever load, expected to show the
+    // skeleton briefly and then reveal the message (setup, not the
+    // assertion under test).
+    expect(await screen.findByText('Already loaded answer')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByTestId('messages-skeleton')).not.toBeInTheDocument()
+    })
+
+    // Switch away to an own (new) chat, then back — a reachable A -> B ->
+    // A reselect of the already-open, already-loaded shared chat.
+    await user.click(screen.getByRole('button', { name: 'New chat' }))
+    await waitFor(() => {
+      expect(screen.getByTestId('active-chat-id').textContent).not.toBe('shared-9')
+    })
+
+    let resolveDetail: ((value: unknown) => void) | undefined
+    getChatSession.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveDetail = resolve
+        }),
+    )
+
+    await user.click(screen.getByRole('button', { name: 'shared:Reselect Chat' }))
+    await waitFor(() => {
+      expect(screen.getByTestId('active-chat-id').textContent).toBe('shared-9')
+    })
+
+    // The background re-fetch is now in flight (deliberately never
+    // resolved yet) — the already-correct message and an enabled composer
+    // must stay exactly as they were: no skeleton, no disable.
+    expect(screen.getByText('Already loaded answer')).toBeInTheDocument()
+    expect(screen.queryByTestId('messages-skeleton')).not.toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Ask about the shared files')).not.toBeDisabled()
+
+    await act(async () => {
+      resolveDetail?.(shared9Detail)
+    })
+
+    // Still fine once the background re-fetch actually settles.
+    expect(screen.getByText('Already loaded answer')).toBeInTheDocument()
+    expect(screen.queryByTestId('messages-skeleton')).not.toBeInTheDocument()
   })
 })
 
