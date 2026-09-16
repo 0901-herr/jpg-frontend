@@ -71,6 +71,17 @@ interface ChatInputProps {
   /** Placeholder shown when `allowEmptySelection` is set and nothing is
    * manually selected. */
   emptySelectionPlaceholder?: string
+  /** For a shared chat the viewer can query: the host's currently chosen
+   * files, rendered as read-only chips in place of the normal editable
+   * files pill — the viewer can't change these (see `sharedScopeEmpty`
+   * for when there are none). `filename` is `null` when the viewer can't
+   * resolve it locally; shown as "File <id>" instead of being dropped. */
+  sharedScopeFiles?: { documentId: string; filename: string | null }[]
+  /** True when `allowEmptySelection` is set but the host hasn't chosen
+   * any files yet — forces the composer to a disabled state with a
+   * placeholder distinct from `emptySelectionPlaceholder` (which implies
+   * there IS a scope to fall back to). */
+  sharedScopeEmpty?: boolean
 }
 
 // Numbered, single-line-per-entry list (client feedback: "they should be
@@ -128,11 +139,13 @@ export default function ChatInput({
   viewOnlyPlaceholder,
   allowEmptySelection = false,
   emptySelectionPlaceholder,
+  sharedScopeFiles,
+  sharedScopeEmpty = false,
 }: ChatInputProps) {
   const [value, setValue] = useState('')
   const isPhone = useMediaQuery(PHONE_QUERY)
 
-  const hasScope = selectedCount > 0 || allowEmptySelection
+  const hasScope = !sharedScopeEmpty && (selectedCount > 0 || allowEmptySelection)
   const canSend = !isResponding && !disabled && !viewOnly && value.trim().length > 0 && hasScope
   const canSummarize = summarizeDisabledReason == null
   const canCategorize = categorizeDisabledReason == null
@@ -141,8 +154,8 @@ export default function ChatInput({
     selectedCount,
     hasMessage: value.trim().length > 0,
     isResponding,
-    disabled: disabled || viewOnly,
-    allowEmptySelection,
+    disabled: disabled || viewOnly || sharedScopeEmpty,
+    allowEmptySelection: allowEmptySelection && !sharedScopeEmpty,
   })
 
   const handleSend = () => {
@@ -199,6 +212,28 @@ export default function ChatInput({
         >
           <ChatCloseIcon className="text-inherit" />
         </button>
+      </div>
+    ) : null
+
+  // A shared queryable chat's host-chosen files — read-only (no clear
+  // control, the viewer can't change these), rendered in place of
+  // `filesChip` above. Only rendered when there's something to show;
+  // `sharedScopeEmpty` gets its own disabled placeholder instead.
+  const sharedFilesChip =
+    sharedScopeFiles && sharedScopeFiles.length > 0 ? (
+      <div
+        className="docu-chat-composer-shared-files-wrap flex items-center gap-1 flex-wrap"
+        aria-label="Files chosen by the chat owner"
+      >
+        {sharedScopeFiles.map((file) => (
+          <span
+            key={file.documentId}
+            className="docu-chat-composer-shared-file-chip inline-flex items-center max-w-[10rem] truncate px-2 py-1 rounded-full bg-[#f4f4f4] text-xs text-[#404040]"
+            title={file.filename ?? `File ${file.documentId}`}
+          >
+            {file.filename ?? `File ${file.documentId}`}
+          </span>
+        ))}
       </div>
     ) : null
 
@@ -333,11 +368,13 @@ export default function ChatInput({
               placeholder={
                 viewOnly
                   ? (viewOnlyPlaceholder ?? 'View only')
-                  : selectedCount > 0
-                    ? 'Ask a question about the selected documents'
-                    : allowEmptySelection
-                      ? (emptySelectionPlaceholder ?? 'Ask a question')
-                      : 'Select documents first'
+                  : sharedScopeEmpty
+                    ? 'The chat owner has not chosen files yet'
+                    : selectedCount > 0
+                      ? 'Ask a question about the selected documents'
+                      : allowEmptySelection
+                        ? (emptySelectionPlaceholder ?? 'Ask a question')
+                        : 'Select documents first'
               }
               disabled={disabled || viewOnly || !hasScope}
               autoSize={{ minRows: 1, maxRows: 6 }}
@@ -358,6 +395,7 @@ export default function ChatInput({
               <div className="docu-chat-composer-row1 flex items-center gap-2">
                 <div className="flex items-center flex-1 min-w-0 gap-2">
                   {filesChip}
+                  {sharedFilesChip}
                   {tierDropdown}
                 </div>
                 {sendButton}
@@ -375,8 +413,9 @@ export default function ChatInput({
                   vertically centred against whatever height this cluster
                   ends up at. */}
               <div className="docu-chat-composer-actions flex items-center flex-wrap flex-1 min-w-0">
-                <div className="docu-chat-composer-lead flex items-center shrink-0">
+                <div className="docu-chat-composer-lead flex items-center gap-1 shrink-0">
                   {filesChip}
+                  {sharedFilesChip}
                 </div>
                 {tierDropdown}
                 {summarizeButton}

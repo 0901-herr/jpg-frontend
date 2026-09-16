@@ -453,4 +453,35 @@ describe('ChatInput — shared queryable chat with no manual file selection', ()
 
     expect(onSend).toHaveBeenCalledWith('What is in these files?')
   })
+
+  it('renders the host-chosen files as read-only chips instead of the editable files pill', () => {
+    renderChatInput({
+      selectedCount: 0,
+      allowEmptySelection: true,
+      emptySelectionPlaceholder: 'Ask about the shared files',
+      sharedScopeFiles: [
+        { documentId: 'doc-9', filename: 'Contract.pdf' },
+        { documentId: 'doc-10', filename: null },
+      ],
+    })
+
+    expect(screen.getByText('Contract.pdf')).toBeInTheDocument()
+    expect(screen.getByText('File doc-10')).toBeInTheDocument()
+    // The normal editable chip (with its own "Clear selection" control)
+    // never renders alongside the read-only ones.
+    expect(screen.queryByLabelText('Clear selection')).not.toBeInTheDocument()
+  })
+
+  it('disables the composer with a distinct placeholder when the host has not chosen any files yet', () => {
+    renderChatInput({
+      selectedCount: 0,
+      allowEmptySelection: true,
+      emptySelectionPlaceholder: 'Ask about the shared files',
+      sharedScopeFiles: [],
+      sharedScopeEmpty: true,
+    })
+
+    const textarea = screen.getByPlaceholderText('The chat owner has not chosen files yet')
+    expect(textarea).toBeDisabled()
+  })
 })
