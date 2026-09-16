@@ -352,6 +352,12 @@ describe('AppLayout — shared link (?share=token)', () => {
     currentSignal = null
     initialSelectedIds = new Set(['doc-1'])
     initialDocumentMeta = defaultDocumentMeta()
+    // A shared chat's detail is now re-fetched every time it becomes
+    // active (`useChatStore`'s `ensureMessagesLoaded`), not just once —
+    // reset any per-id `mockImplementation` a previous test in this block
+    // left behind so it can't leak into this one's own activation fetch.
+    getChatSession.mockReset()
+    getChatSession.mockResolvedValue({})
   })
 
   afterEach(() => {
