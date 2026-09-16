@@ -22,11 +22,33 @@ const categorizeDocument = vi.fn<
   (documentId: string, signal?: AbortSignal) => Promise<DocumentCategorizeResponse>
 >()
 
+const fetchDocumentSummary = vi.fn()
+const postChatMessage = vi.fn().mockResolvedValue(undefined)
+
 vi.mock('../api/browse', () => ({
   validateQueryScope: (...args: [string[], AbortSignal?]) => validateQueryScope(...args),
-  fetchDocumentSummary: vi.fn(),
+  fetchDocumentSummary: (...args: [string]) => fetchDocumentSummary(...args),
   extractMqaMetadata: (...args: [string, AbortSignal?]) => extractMqaMetadata(...args),
   categorizeDocument: (...args: [string, AbortSignal?]) => categorizeDocument(...args),
+}))
+
+// Persistence follow-up: Summarize/Categorize/Extract-metadata turns are
+// posted to the server through the same `postChatMessage` helper handleSend
+// uses (see useChatStore.ts). Mocked here so those flows never hit real
+// `fetch`, and so tests can assert the assistant content that got persisted.
+vi.mock('../api/chat', () => ({
+  listChatSessions: vi.fn().mockResolvedValue({ sessions: [], shared: [] }),
+  listChatProjects: vi.fn().mockResolvedValue([]),
+  createChatProject: vi.fn().mockResolvedValue({ id: 'p1', name: 'p1' }),
+  renameChatProject: vi.fn().mockResolvedValue({ id: 'p1', name: 'p1' }),
+  deleteChatProject: vi.fn().mockResolvedValue(undefined),
+  createChatSession: vi.fn().mockResolvedValue({}),
+  getChatSession: vi.fn().mockResolvedValue({}),
+  patchChatSession: vi.fn().mockResolvedValue({}),
+  deleteChatSession: vi.fn().mockResolvedValue(undefined),
+  postChatMessage: (...args: unknown[]) => postChatMessage(...args),
+  patchChatMessage: vi.fn().mockResolvedValue(undefined),
+  getSharedChatSession: vi.fn().mockResolvedValue({}),
 }))
 
 vi.mock('../context/AuthContext', () => ({
@@ -247,6 +269,56 @@ describe('AppLayout — abort on New chat / select chat while streaming', () => 
   })
 })
 
+describe('AppLayout — Summarize', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    currentSignal = null
+    initialSelectedIds = new Set(['doc-1'])
+    initialDocumentMeta = defaultDocumentMeta()
+    validateQueryScope.mockResolvedValue({
+      total_files: 1,
+      ready_files: 1,
+      indexing_files: 0,
+      failed_files: 0,
+      missing_files: 0,
+      accessible_document_ids: ['doc-1'],
+    })
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('persists both the user request and the summary answer to the server', async () => {
+    const user = userEvent.setup()
+    fetchDocumentSummary.mockResolvedValueOnce({ summary: 'This document covers Q3 minutes.' })
+
+    render(<AppLayout />)
+
+    await user.click(screen.getByRole('button', { name: 'Summarize selected document' }))
+
+    expect(await screen.findByText('Summarize this document')).toBeInTheDocument()
+    expect(await screen.findByText('This document covers Q3 minutes.')).toBeInTheDocument()
+
+    await waitFor(() => {
+      expect(postChatMessage).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ role: 'user', content: 'Summarize this document' }),
+      )
+    })
+    await waitFor(() => {
+      expect(postChatMessage).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          role: 'assistant',
+          content: 'This document covers Q3 minutes.',
+          status: 'complete',
+        }),
+      )
+    })
+  })
+})
+
 describe('AppLayout — Extract metadata', () => {
   beforeEach(() => {
     // Each test mounts its own AppLayout: without this, chat history
@@ -375,6 +447,47 @@ describe('AppLayout — Extract metadata', () => {
     expect(await screen.findByText('Answer interrupted.')).toBeInTheDocument()
     expect(screen.getByText('Extract MQA metadata from doc-1.pdf')).toBeInTheDocument()
   })
+
+  it('persists both the user request and the extracted metadata to the server', async () => {
+    const user = userEvent.setup()
+    extractMqaMetadata.mockResolvedValueOnce({
+      document_id: 'doc-1',
+      filename: 'doc-1.pdf',
+      fields: {
+        'Document Title': 'Meeting Minutes',
+        Faculty: 'Not stated',
+        'Programme name and code': 'Not stated',
+        'Academic year': 'Not stated',
+        'Accreditation body': 'Not stated',
+        'Programme Coordinator': 'Not stated',
+      },
+      comment: 'Arche AI extracted metadata — Document Title: Meeting Minutes; ...',
+      pushed: true,
+      push_error: null,
+    })
+
+    render(<AppLayout />)
+
+    await user.click(screen.getByRole('button', { name: 'Extract MQA metadata' }))
+    expect(await screen.findByText('MQA metadata — doc-1.pdf')).toBeInTheDocument()
+
+    await waitFor(() => {
+      expect(postChatMessage).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ role: 'user', content: 'Extract MQA metadata from doc-1.pdf' }),
+      )
+    })
+    await waitFor(() => {
+      expect(postChatMessage).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          role: 'assistant',
+          content: expect.stringContaining('MQA metadata — doc-1.pdf'),
+          status: 'complete',
+        }),
+      )
+    })
+  })
 })
 
 describe('AppLayout — Categorize', () => {
@@ -476,6 +589,32 @@ describe('AppLayout — Categorize', () => {
     expect(
       await screen.findByRole('button', { name: 'Categorize selected document' }),
     ).toBeEnabled()
+  })
+
+  it('persists both the user request and the categorize answer to the server', async () => {
+    const user = userEvent.setup()
+    categorizeDocument.mockResolvedValueOnce(matchedResponse())
+
+    render(<AppLayout />)
+
+    await user.click(screen.getByRole('button', { name: 'Categorize selected document' }))
+    expect(await screen.findByText('Categorize "doc-1.pdf"')).toBeInTheDocument()
+
+    await waitFor(() => {
+      expect(postChatMessage).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ role: 'user', content: 'Categorize "doc-1.pdf"' }),
+      )
+    })
+    await waitFor(() => {
+      expect(postChatMessage).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          role: 'assistant',
+          content: expect.stringContaining('Approved'),
+        }),
+      )
+    })
   })
 })
 

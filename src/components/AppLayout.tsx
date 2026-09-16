@@ -426,6 +426,24 @@ export default function AppLayout() {
     [setSessions],
   )
 
+  // Persists a non-streaming turn (Summarize/Categorize/Extract metadata:
+  // one user request, one already-complete answer, appended to local state
+  // in one shot) through the same chatStore.recordUserMessage/
+  // recordAssistantMessage calls handleSend uses for its own turns — one
+  // persistence path, so a chat's history round-trips the same way however
+  // the turn was produced. `scopeDocumentIds` defaults to empty: these
+  // flows act on one already-selected document, not a query's document
+  // scope, and the adapter only reads this field to update the session's
+  // own scope_document_ids — fine to leave alone for a turn that isn't a
+  // query.
+  const persistTurn = useCallback(
+    (userMsg: ChatMessage, assistantMsg: ChatMessage, scopeDocumentIds: string[] = []) => {
+      chatStore.recordUserMessage(activeChatId, userMsg, scopeDocumentIds)
+      chatStore.recordAssistantMessage(activeChatId, assistantMsg)
+    },
+    [activeChatId, chatStore.recordUserMessage, chatStore.recordAssistantMessage],
+  )
+
   const handleSend = useCallback(
     async (text: string, options?: { displayText?: string }) => {
       const selectedDocs = [...selection.selectedIds]
@@ -865,6 +883,7 @@ export default function AppLayout() {
               : s,
           ),
         )
+        persistTurn(userMessage, assistantMessage, [documentId])
         requestAnimationFrame(() => scrollToBottom('auto'))
       } catch (err) {
         const httpStatus = err instanceof ApiError ? err.status : undefined
@@ -880,7 +899,7 @@ export default function AppLayout() {
         setIsSummarizing(false)
       }
     })()
-  }, [activeChatId, scrollToBottom, selectedDocument, summarizeDisabledReason])
+  }, [activeChatId, persistTurn, scrollToBottom, selectedDocument, summarizeDisabledReason])
 
   const handleExtractMetadata = useCallback(() => {
     if (extractMetadataDisabledReason) {
@@ -921,6 +940,12 @@ export default function AppLayout() {
           : s,
       ),
     )
+    // Posted immediately, same as handleSend's user turn — the "thinking"
+    // assistant placeholder is deliberately NOT posted here: on failure
+    // it's removed from local state entirely (see the catch branch below),
+    // so there'd be nothing left to reconcile it with, only a stray
+    // never-finished row on the server.
+    chatStore.recordUserMessage(activeChatId, userMsg, [documentId])
     requestAnimationFrame(() => scrollToBottom('auto'))
 
     void (async () => {
@@ -929,21 +954,23 @@ export default function AppLayout() {
         if (controller.signal.aborted) return
 
         const content = buildMqaMetadataAnswer(response)
+        const finalAssistantMsg: ChatMessage = {
+          ...thinkingMsg,
+          content,
+          status: 'complete',
+          progressLabel: undefined,
+        }
         setSessions((prev) =>
           prev.map((s) => {
             if (s.id !== activeChatId) return s
             const messages = [...s.messages]
             const idx = messages.findIndex((m) => m.id === assistantId)
             if (idx === -1) return s
-            messages[idx] = {
-              ...messages[idx],
-              content,
-              status: 'complete',
-              progressLabel: undefined,
-            }
+            messages[idx] = finalAssistantMsg
             return { ...s, messages }
           }),
         )
+        chatStore.recordAssistantMessage(activeChatId, finalAssistantMsg)
         requestAnimationFrame(() => scrollToBottom('auto'))
       } catch (err) {
         if (controller.signal.aborted) return
@@ -973,7 +1000,14 @@ export default function AppLayout() {
         setIsExtracting(false)
       }
     })()
-  }, [activeChatId, extractMetadataDisabledReason, scrollToBottom, selectedDocument])
+  }, [
+    activeChatId,
+    chatStore.recordUserMessage,
+    chatStore.recordAssistantMessage,
+    extractMetadataDisabledReason,
+    scrollToBottom,
+    selectedDocument,
+  ])
 
   const handleCategorize = useCallback(() => {
     if (categorizeDisabledReason) {
@@ -1021,12 +1055,13 @@ export default function AppLayout() {
           s.id === activeChatId ? { ...s, messages: [...s.messages, userMsg, assistantMsg] } : s,
         ),
       )
+      persistTurn(userMsg, assistantMsg, [documentId])
       requestAnimationFrame(() => scrollToBottom('auto'))
 
       categorizingRef.current = false
       setIsCategorizing(false)
     })()
-  }, [activeChatId, categorizeDisabledReason, scrollToBottom, selectedDocument])
+  }, [activeChatId, categorizeDisabledReason, persistTurn, scrollToBottom, selectedDocument])
 
   return (
     <div
