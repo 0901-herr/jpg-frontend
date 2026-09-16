@@ -129,7 +129,12 @@ export function formatDateTime(value: string | null | undefined): string {
   if (!value) return 'None'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString()
+  const day = date.getDate()
+  const month = date.toLocaleDateString('en', { month: 'short' })
+  const year = date.getFullYear()
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  return `${day} ${month} ${year}, ${hours}:${minutes}`
 }
 
 export function formatRelativeTime(value: string | null | undefined): string {

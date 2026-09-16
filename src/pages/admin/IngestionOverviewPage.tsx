@@ -14,9 +14,7 @@ import IngestionControls from '../../components/admin/IngestionControls'
 import IngestionSectionNav, {
   getIngestionSection,
 } from '../../components/admin/IngestionSectionNav'
-import IngestionStatusHeader from '../../components/admin/IngestionStatusHeader'
 import PipelineProgressCard from '../../components/admin/PipelineProgressCard'
-import ReclassifyMissingButton from '../../components/admin/ReclassifyMissingButton'
 import ReconciliationStatus from '../../components/admin/ReconciliationStatus'
 import SystemHealth from '../../components/admin/SystemHealth'
 import ThroughputSummary from '../../components/admin/ThroughputSummary'
@@ -119,8 +117,6 @@ export default function IngestionOverviewPage() {
 
       <main className={ADMIN_SECTION_MAIN_CLASS}>
         <div className={`max-w-6xl w-full mx-auto ${ADMIN_STACK_SPACE} pb-2`}>
-          <IngestionStatusHeader overview={overview} section={section} />
-
           {section === 'overview' && (
             <div className={ADMIN_STACK_SPACE}>
               <PipelineProgressCard
@@ -155,29 +151,20 @@ export default function IngestionOverviewPage() {
 
           {section === 'documents' && (
             <div className={ADMIN_STACK_SPACE}>
-              <PipelineProgressCard
-                overview={overview}
-                dataUpdatedAt={overviewQuery.dataUpdatedAt}
-                isRefreshing={overviewQuery.isFetching || documentsQuery.isFetching}
+              <DocumentSearch
+                loading={documentsQuery.isFetching}
+                onSearch={(query) => {
+                  handleSearch(query)
+                }}
                 onRefresh={() => {
-                  void overviewQuery.refetch()
                   void documentsQuery.refetch()
+                  void overviewQuery.refetch()
                 }}
               />
-              <div className="flex items-start justify-between gap-3 flex-wrap">
-                <DocumentSearch
-                  loading={documentsQuery.isFetching}
-                  onSearch={(query) => {
-                    handleSearch(query)
-                  }}
-                />
-                <ReclassifyMissingButton />
-              </div>
               <DocumentTable
                 items={documentsQuery.data?.items ?? []}
                 total={documentsQuery.data?.total ?? 0}
                 loading={documentsQuery.isLoading}
-                refreshing={documentsQuery.isFetching && !documentsQuery.isLoading}
                 page={page}
                 pageSize={pageSize}
                 onPageChange={(p, size) => {
@@ -188,31 +175,26 @@ export default function IngestionOverviewPage() {
                   }))
                 }}
                 onSelect={openDocument}
-                onRefresh={() => {
-                  void documentsQuery.refetch()
-                  void overviewQuery.refetch()
-                }}
               />
             </div>
           )}
 
           {section === 'errors' && <FailedDocumentsTable onSelect={openDocument} />}
 
-          {section === 'health' && (
-            <div className={`grid grid-cols-1 md:grid-cols-2 ${ADMIN_STACK_GAP} max-w-3xl`}>
-              <SystemHealth
-                health={overview.health}
-                circuitOpen={overview.circuit_open}
-                ragApiBaseUrl={overview.rag_api_base_url}
-              />
-              <ThroughputSummary bulk={overview.bulk_progress} />
-            </div>
-          )}
-
-          {section === 'sync' && (
-            <div className={`grid grid-cols-1 md:grid-cols-2 ${ADMIN_STACK_GAP} max-w-4xl`}>
-              <AuditSyncStatus overview={overview} />
-              <ReconciliationStatus overview={overview} />
+          {section === 'system' && (
+            <div className={ADMIN_STACK_SPACE}>
+              <div className={`grid grid-cols-1 md:grid-cols-2 ${ADMIN_STACK_GAP}`}>
+                <SystemHealth
+                  health={overview.health}
+                  circuitOpen={overview.circuit_open}
+                  ragApiBaseUrl={overview.rag_api_base_url}
+                />
+                <ThroughputSummary bulk={overview.bulk_progress} />
+              </div>
+              <div className={`grid grid-cols-1 md:grid-cols-2 ${ADMIN_STACK_GAP}`}>
+                <AuditSyncStatus overview={overview} />
+                <ReconciliationStatus overview={overview} />
+              </div>
             </div>
           )}
         </div>

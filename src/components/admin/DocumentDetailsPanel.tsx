@@ -1,9 +1,8 @@
-import { AdminRefreshIcon } from '../../icons/admin'
-import { App, Button, Descriptions, Drawer, Spin, Typography } from 'antd'
+import { App, Descriptions, Drawer, Spin, Typography } from 'antd'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchAdminDocument, retryDocument } from '../../api/admin'
 import { ADMIN_DOCUMENT_POLL_MS } from '../../config/admin'
-import { ADMIN_EMPTY, ADMIN_TEXT_BODY, ADMIN_TEXT_ERROR, ADMIN_TEXT_MUTED } from '../../config/adminStyles'
+import { ADMIN_EMPTY, ADMIN_TEXT_ERROR, ADMIN_TEXT_MUTED } from '../../config/adminStyles'
 import { adminQueryKeys } from '../../lib/adminQueryKeys'
 import {
   formatDateTime,
@@ -13,6 +12,7 @@ import {
 } from '../../utils/lifecycle'
 import DocumentStatusBadge from './DocumentStatusBadge'
 import IngestionPipelineWaterfall from './IngestionPipelineWaterfall'
+import AdminRetryButton from './AdminRetryButton'
 import type { LifecycleStatus } from '../../api/types/admin'
 
 const { Text, Paragraph } = Typography
@@ -51,20 +51,20 @@ export default function DocumentDetailsPanel({ docId, open, onClose }: DocumentD
 
   return (
     <Drawer
+      rootClassName="admin-document-drawer"
+      className="admin-panel"
       title={data?.filename ?? `Document ${docId}`}
       open={open}
       onClose={onClose}
       width={560}
       extra={
         data?.lifecycle_status === 'FAILED' ? (
-          <Button
+          <AdminRetryButton
             type="primary"
-            icon={<AdminRefreshIcon />}
+            label="Retry document"
             loading={retryMutation.isPending}
             onClick={() => retryMutation.mutate()}
-          >
-            Retry Document
-          </Button>
+          />
         ) : null
       }
     >
@@ -77,12 +77,12 @@ export default function DocumentDetailsPanel({ docId, open, onClose }: DocumentD
         <Paragraph type="danger">{(error as Error).message || 'Failed to load document'}</Paragraph>
       )}
       {data && (
-        <div className="space-y-6">
-          <div className="rounded-lg border border-gray-200 p-4">
+        <div className="admin-document-details">
+          <section className="admin-document-details-section admin-document-pipeline-section">
             <IngestionPipelineWaterfall status={data.lifecycle_status} doc={data} compact={false} />
-            <div className="mt-3 flex items-center gap-2">
+            <div className="admin-document-status-summary">
               <DocumentStatusBadge status={data.lifecycle_status} />
-              <Text type="secondary" className={ADMIN_TEXT_BODY}>
+              <Text type="secondary">
                 {LIFECYCLE_HINTS[data.lifecycle_status as LifecycleStatus] ??
                   LIFECYCLE_LABELS[data.lifecycle_status as LifecycleStatus]}
               </Text>
@@ -92,11 +92,12 @@ export default function DocumentDetailsPanel({ docId, open, onClose }: DocumentD
                 Refreshing
               </Text>
             )}
-          </div>
+          </section>
 
           {data.lifecycle_status === 'FAILED' && data.last_error && (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-3">
-              <Text strong className="text-red-700">
+            <section className="admin-document-details-section">
+              <div className="admin-error-panel rounded-xl border p-4">
+              <Text strong className="admin-error-panel-title">
                 Failure
               </Text>
               <Paragraph className={`!mb-0 mt-1 ${ADMIN_TEXT_ERROR}`}>{data.last_error}</Paragraph>
@@ -105,18 +106,31 @@ export default function DocumentDetailsPanel({ docId, open, onClose }: DocumentD
                   Code: {data.last_error_code}
                 </Text>
               )}
-            </div>
+              </div>
+            </section>
           )}
 
-          <Descriptions column={1} size="small" title="LogicalDOC">
-            <Descriptions.Item label="docId">{data.source_document_id}</Descriptions.Item>
+          <Descriptions
+            className="admin-document-details-section admin-document-descriptions"
+            column={1}
+            size="small"
+            colon={false}
+            title="Document source"
+          >
+            <Descriptions.Item label="LogicalDOC ID">{data.source_document_id}</Descriptions.Item>
             <Descriptions.Item label="Folder / path">{data.file_path ?? ADMIN_EMPTY}</Descriptions.Item>
             <Descriptions.Item label="Folder ID">{data.source_folder_id ?? ADMIN_EMPTY}</Descriptions.Item>
             <Descriptions.Item label="Version">{data.source_file_version ?? ADMIN_EMPTY}</Descriptions.Item>
             <Descriptions.Item label="Checksum">{data.checksum ?? ADMIN_EMPTY}</Descriptions.Item>
           </Descriptions>
 
-          <Descriptions column={1} size="small" title="Ingestion timeline">
+          <Descriptions
+            className="admin-document-details-section admin-document-descriptions"
+            column={1}
+            size="small"
+            colon={false}
+            title="Ingestion timeline"
+          >
             <Descriptions.Item label="Discovered">{formatDateTime(data.discovered_at)}</Descriptions.Item>
             <Descriptions.Item label="Queued">{formatDateTime(data.queued_at)}</Descriptions.Item>
             <Descriptions.Item label="Submitted">{formatDateTime(data.submitted_at)}</Descriptions.Item>
@@ -126,14 +140,26 @@ export default function DocumentDetailsPanel({ docId, open, onClose }: DocumentD
             <Descriptions.Item label="Processing stage">{data.processing_stage ?? ADMIN_EMPTY}</Descriptions.Item>
           </Descriptions>
 
-          <Descriptions column={1} size="small" title="RAG">
+          <Descriptions
+            className="admin-document-details-section admin-document-descriptions"
+            column={1}
+            size="small"
+            colon={false}
+            title="Search index"
+          >
             <Descriptions.Item label="RAG item ID">{data.rag_document_id ?? ADMIN_EMPTY}</Descriptions.Item>
             <Descriptions.Item label="Indexed">
               {data.lifecycle_status === 'READY' ? 'Yes' : 'No'}
             </Descriptions.Item>
           </Descriptions>
 
-          <Descriptions column={1} size="small" title="Retry & orchestration">
+          <Descriptions
+            className="admin-document-details-section admin-document-descriptions"
+            column={1}
+            size="small"
+            colon={false}
+            title="Processing details"
+          >
             <Descriptions.Item label="Retry count">{data.retry_count}</Descriptions.Item>
             <Descriptions.Item label="Discovery source">{data.discovery_source ?? ADMIN_EMPTY}</Descriptions.Item>
             <Descriptions.Item label="Temporal workflow">

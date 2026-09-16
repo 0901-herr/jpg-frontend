@@ -1,6 +1,5 @@
 import {
   AdminAppsNavIcon,
-  AdminCloudSyncNavIcon,
   AdminFindNavIcon,
   AdminHealthNavIcon,
   AdminListNavIcon,
@@ -10,7 +9,7 @@ import { Badge } from 'antd'
 import type { ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
-export type IngestionSection = 'overview' | 'activity' | 'documents' | 'errors' | 'health' | 'sync'
+export type IngestionSection = 'overview' | 'activity' | 'documents' | 'errors' | 'system'
 
 interface NavItem {
   key: IngestionSection
@@ -28,8 +27,11 @@ export const INGESTION_SECTION_LABELS: Record<IngestionSection, string> = {
   activity: 'Activity',
   documents: 'Documents',
   errors: 'Failures',
-  health: 'Health',
-  sync: 'Sync',
+  // Combines the former separate Health + Sync tabs — one place for
+  // "is everything connected and is auto-ingestion running" (dashboard
+  // cleanup pass: two tabs answering closely related questions read as
+  // one too many).
+  system: 'System',
 }
 
 const NAV_ITEMS: Omit<NavItem, 'badge'>[] = [
@@ -37,8 +39,7 @@ const NAV_ITEMS: Omit<NavItem, 'badge'>[] = [
   { key: 'activity', label: INGESTION_SECTION_LABELS.activity, icon: <AdminListNavIcon /> },
   { key: 'documents', label: INGESTION_SECTION_LABELS.documents, icon: <AdminFindNavIcon /> },
   { key: 'errors', label: INGESTION_SECTION_LABELS.errors, icon: <AdminWarningNavIcon /> },
-  { key: 'health', label: INGESTION_SECTION_LABELS.health, icon: <AdminHealthNavIcon /> },
-  { key: 'sync', label: INGESTION_SECTION_LABELS.sync, icon: <AdminCloudSyncNavIcon /> },
+  { key: 'system', label: INGESTION_SECTION_LABELS.system, icon: <AdminHealthNavIcon /> },
 ]
 
 function isSection(value: string | null): value is IngestionSection {
@@ -68,7 +69,7 @@ export default function IngestionSectionNav({ failedCount = 0 }: IngestionSectio
             <span className="shrink-0">{item.icon}</span>
             <span className="flex-1 truncate">{item.label}</span>
             {showBadge && (
-              <Badge count={failedCount} size="small" color="#cf1322" overflowCount={999} />
+              <Badge count={failedCount} size="small" color="var(--admin-danger)" overflowCount={999} />
             )}
           </Link>
         )

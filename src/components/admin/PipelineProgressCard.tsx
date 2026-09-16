@@ -1,6 +1,7 @@
-import { AdminPauseIcon, AdminPlayIcon, AdminRefreshIcon } from '../../icons/admin'
-import { App, Button, Col, Progress, Row, Statistic, Tooltip, Typography } from 'antd'
+import { AdminPauseIcon, AdminPlayIcon } from '../../icons/admin'
+import { App, Button, Col, Popover, Progress, Row, Statistic, Tooltip, Typography } from 'antd'
 import { useMutation } from '@tanstack/react-query'
+import { useState } from 'react'
 import type { IngestionOverview } from '../../api/types/admin'
 import { pausePipeline, resumeAllIngestion } from '../../api/admin'
 import {
@@ -20,6 +21,8 @@ import {
   shouldShowProgressBar,
 } from '../../utils/pipelineStatus'
 import AdminCard from './AdminCard'
+import AdminConfirmDialog from './AdminConfirmDialog'
+import AdminRefreshButton from './AdminRefreshButton'
 
 const { Text } = Typography
 
@@ -30,13 +33,71 @@ interface PipelineProgressCardProps {
   onRefresh?: () => void
 }
 
+interface CapacityMeterProps {
+  label: string
+  value: number
+  capacity: number
+  description: string
+  backpressured?: boolean | null
+}
+
+function CapacityMeter({
+  label,
+  value,
+  capacity,
+  description,
+  backpressured,
+}: CapacityMeterProps) {
+  const percent = Math.min(Math.round((value / capacity) * 100), 100)
+  const nearCapacity = percent >= 80
+  const state = backpressured
+    ? 'Draining'
+    : percent >= 100
+      ? 'At capacity'
+      : nearCapacity
+        ? 'Near capacity'
+        : 'Available'
+
+  return (
+    <Popover
+      title={label}
+      content={<p className="admin-capacity-popover-description">{description}</p>}
+      trigger={['hover', 'focus']}
+      placement="top"
+      rootClassName="admin-capacity-popover"
+    >
+      <div className="admin-capacity-meter" tabIndex={0}>
+        <div className="admin-capacity-meter-heading">
+          <Text>{label}</Text>
+          <Text className={nearCapacity || backpressured ? 'admin-capacity-warning' : ADMIN_TEXT_MUTED}>
+            {value.toLocaleString()} / {capacity.toLocaleString()}
+          </Text>
+        </div>
+        <Progress
+          percent={percent}
+          showInfo={false}
+          size="small"
+          strokeColor={
+            nearCapacity || backpressured ? 'var(--admin-warning)' : 'var(--admin-success)'
+          }
+          railColor="var(--admin-border)"
+        />
+        <Text className={nearCapacity || backpressured ? 'admin-capacity-warning' : ADMIN_TEXT_MUTED}>
+          {state}
+        </Text>
+      </div>
+    </Popover>
+  )
+}
+
 export default function PipelineProgressCard({
   overview,
   dataUpdatedAt,
   isRefreshing,
   onRefresh,
 }: PipelineProgressCardProps) {
-  const { message, modal } = App.useApp()
+  const { message } = App.useApp()
+  const [pauseConfirmOpen, setPauseConfirmOpen] = useState(false)
   const invalidate = useInvalidateAdminQueries()
   const intro = pipelineProgressIntro(overview)
   const primaryAction = pipelinePrimaryAction(overview)
@@ -96,16 +157,58 @@ export default function PipelineProgressCard({
     bulk != null &&
     bulk.job_state === 'running' &&
     bulk.documents_per_second != null
+  const capacityItems: CapacityMeterProps[] =
+    bulk
+      ? [
+          {
+            label: 'Waiting to prepare',
+            value: bulk.total_preparing,
+            capacity: bulk.preparing_capacity,
+            description:
+              'Documents discovered in LogicalDOC that are waiting to be downloaded and prepared. Discovery pauses automatically if this queue fills.',
+            backpressured: bulk.discovery_backpressured,
+          },
+          {
+            label: 'Waiting for RAG',
+            value: bulk.total_staged_for_rag,
+            capacity: bulk.staged_capacity,
+            description:
+              'Prepared documents waiting to be sent to RAG for indexing. Preparation slows automatically when this queue reaches capacity.',
+            backpressured: bulk.preparation_backpressured,
+          },
+          {
+            label: 'Indexing',
+            value: bulk.current_inflight ?? bulk.total_submitted,
+            capacity: bulk.target_inflight,
+            description:
+              'Documents currently being indexed by RAG. New submissions wait when all indexing slots are in use.',
+            backpressured: bulk.submission_backpressured,
+          },
+        ].flatMap((item) =>
+          typeof item.capacity === 'number' && item.capacity > 0
+            ? [{ ...item, capacity: item.capacity }]
+            : [],
+        )
+      : []
+  const backpressureMessage = bulk?.discovery_backpressured
+    ? 'Discovery is waiting while the preparation queue drains.'
+    : bulk?.preparation_backpressured
+      ? 'Document preparation is waiting while the RAG queue drains.'
+      : bulk?.submission_backpressured
+        ? 'RAG is at capacity. Prepared documents will be sent as space becomes available.'
+        : null
 
   function confirmPause() {
-    modal.confirm({
-      title: 'Pause ingestion?',
-      content:
-        'Stops scanning for new files and sending new documents for indexing. Files already in progress keep going.',
-      okText: 'Pause',
-      cancelText: 'Cancel',
-      onOk: () => pauseMutation.mutateAsync(),
-    })
+    setPauseConfirmOpen(true)
+  }
+
+  async function pauseConfirmed() {
+    try {
+      await pauseMutation.mutateAsync()
+      setPauseConfirmOpen(false)
+    } catch {
+      // Mutation error messaging is handled by onError.
+    }
   }
 
   function renderActionButton() {
@@ -117,7 +220,7 @@ export default function PipelineProgressCard({
           loading={actionPending}
           aria-label="Pause pipeline"
           title="Pause pipeline"
-          className="admin-control-btn shrink-0"
+          className="admin-control-btn admin-control-btn--primary shrink-0"
           onClick={confirmPause}
         />
       )
@@ -136,14 +239,15 @@ export default function PipelineProgressCard({
         loading={actionPending}
         aria-label={label}
         title={label}
-        className="admin-control-btn shrink-0"
+        className="admin-control-btn admin-control-btn--primary shrink-0"
         onClick={onClick}
       />
     )
   }
 
   return (
-    <AdminCard>
+    <>
+      <AdminCard>
       <div className="admin-pipeline-progress-lead mb-6">
         <div className="admin-pipeline-progress-copy">
           <h3 className="admin-pipeline-progress-title">Pipeline progress</h3>
@@ -158,7 +262,7 @@ export default function PipelineProgressCard({
           <Progress
             percent={progress.percent ?? 0}
             status={gatesPaused ? 'exception' : 'active'}
-            strokeColor="#0084ff"
+            strokeColor="var(--admin-accent)"
             showInfo={Boolean(progress.label)}
           />
           {!traversalComplete && bulk?.job_state === 'running' && (
@@ -167,6 +271,29 @@ export default function PipelineProgressCard({
             </Text>
           )}
         </div>
+      )}
+
+      {capacityItems.length > 0 && (
+        <section className="admin-capacity-section">
+          <div className="admin-capacity-section-heading">
+            <Text strong>Live capacity</Text>
+            {bulk?.job_state === 'running' &&
+              !traversalComplete &&
+              bulk.current_page != null && (
+              <Text className={ADMIN_TEXT_MUTED}>
+                Scanning page {bulk.current_page + 1}
+              </Text>
+              )}
+          </div>
+          {backpressureMessage && (
+            <div className="admin-capacity-notice">{backpressureMessage}</div>
+          )}
+          <div className="admin-capacity-grid">
+            {capacityItems.map((item) => (
+              <CapacityMeter key={item.label} {...item} />
+            ))}
+          </div>
+        </section>
       )}
 
       <Row gutter={[20, 20]}>
@@ -226,17 +353,20 @@ export default function PipelineProgressCard({
             <span />
           )}
           {onRefresh && (
-            <Button
-              size="small"
-              icon={<AdminRefreshIcon />}
-              loading={isRefreshing}
-              onClick={onRefresh}
-            >
-              Refresh
-            </Button>
+            <AdminRefreshButton loading={isRefreshing} onClick={onRefresh} />
           )}
         </div>
       )}
-    </AdminCard>
+      </AdminCard>
+      <AdminConfirmDialog
+        open={pauseConfirmOpen}
+        title="Pause pipeline?"
+        description="Stops scanning for new files and sending new documents for indexing. Files already in progress keep going."
+        confirmText="Pause"
+        loading={pauseMutation.isPending}
+        onCancel={() => setPauseConfirmOpen(false)}
+        onConfirm={() => void pauseConfirmed()}
+      />
+    </>
   )
 }

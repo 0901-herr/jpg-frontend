@@ -1,16 +1,18 @@
-import { AdminDescriptionIcon, AdminRefreshIcon } from '../../icons/admin'
-import { Alert, Button, Empty, Space, Statistic, Tag, Timeline, Typography } from 'antd'
+import { AdminDescriptionIcon } from '../../icons/admin'
+import { Alert, Empty, Space, Tag, Timeline, Typography } from 'antd'
 import { useMemo } from 'react'
 import type { AdminDocumentSummary, IngestionActivityItem, IngestionOverview } from '../../api/types/admin'
-import { ADMIN_STACK_SPACE, ADMIN_STAT_TITLE, ADMIN_STAT_VALUE } from '../../config/adminStyles'
+import { ADMIN_STACK_SPACE } from '../../config/adminStyles'
 import {
   formatActivityTime,
   groupActivityByDay,
   mergeActivityFeed,
+  type ActivityKind,
   type ActivityLevel,
 } from '../../utils/activityLog'
 import { ADMIN_TEXT_BODY, ADMIN_TEXT_LINK, ADMIN_TEXT_MUTED } from '../../config/adminStyles'
 import AdminCard from './AdminCard'
+import AdminRefreshButton from './AdminRefreshButton'
 
 const { Text } = Typography
 
@@ -23,17 +25,27 @@ interface IngestionActivityLogProps {
   onSelectDocument?: (docId: string) => void
 }
 
-function timelineColor(level: ActivityLevel): 'green' | 'red' | 'blue' | 'gray' {
+function timelineColor(level: ActivityLevel): string {
   switch (level) {
     case 'success':
-      return 'green'
+      return 'var(--admin-success)'
     case 'error':
-      return 'red'
+      return 'var(--admin-danger)'
     case 'warning':
-      return 'blue'
+      return 'var(--admin-warning)'
     default:
-      return 'gray'
+      return 'var(--admin-text-muted)'
   }
+}
+
+const ACTIVITY_KIND_LABELS: Record<ActivityKind, string> = {
+  discovery: 'Discovery',
+  processing: 'Processing',
+  completed: 'Completed',
+  failed: 'Failed',
+  sync: 'Sync',
+  action: 'Action',
+  system: 'System',
 }
 
 export default function IngestionActivityLog({
@@ -55,6 +67,7 @@ export default function IngestionActivityLog({
           headline: event.headline,
           detail: event.detail,
           category: event.category,
+          action: event.action,
         })),
         overview.bulk_progress,
       ),
@@ -65,10 +78,6 @@ export default function IngestionActivityLog({
 
   const bulkFailed = overview.bulk_progress?.job_state === 'failed'
   const bulkError = overview.bulk_progress?.job_error
-
-  const { counts } = overview
-  const inFlight =
-    counts.preparing + counts.staged + counts.indexing + counts.discovered
 
   return (
     <div className={ADMIN_STACK_SPACE}>
@@ -81,48 +90,19 @@ export default function IngestionActivityLog({
         />
       )}
 
-      <AdminCard>
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <Space wrap size="large">
-            <Statistic
-              title="In flight"
-              value={inFlight}
-              className={`${ADMIN_STAT_VALUE} ${ADMIN_STAT_TITLE}`}
-            />
-            <Statistic
-              title="Indexing"
-              value={counts.indexing}
-              valueStyle={{ color: '#d48806' }}
-              className={`${ADMIN_STAT_VALUE} ${ADMIN_STAT_TITLE}`}
-            />
-            <Statistic
-              title="Ready"
-              value={counts.ready}
-              valueStyle={{ color: '#389e0d' }}
-              className={`${ADMIN_STAT_VALUE} ${ADMIN_STAT_TITLE}`}
-            />
-            <Statistic
-              title="Failed"
-              value={counts.failed}
-              valueStyle={{ color: counts.failed ? '#cf1322' : undefined }}
-              className={`${ADMIN_STAT_VALUE} ${ADMIN_STAT_TITLE}`}
-            />
-          </Space>
-          {onRefresh && (
-            <Button icon={<AdminRefreshIcon />} onClick={onRefresh} loading={loading}>
-              Refresh
-            </Button>
-          )}
-        </div>
-      </AdminCard>
-
       <AdminCard
+        className="admin-activity-card"
         title={
           <Space size="small">
             <AdminDescriptionIcon />
             <span>Activity log</span>
             <Tag className="!m-0">{entries.length}</Tag>
           </Space>
+        }
+        extra={
+          onRefresh ? (
+            <AdminRefreshButton onClick={onRefresh} loading={loading} />
+          ) : null
         }
       >
         {entries.length === 0 ? (
@@ -138,24 +118,31 @@ export default function IngestionActivityLog({
                     color: timelineColor(entry.level),
                     children: (
                       <div className="min-w-0 pr-2">
-                        <Text className={`block mb-1 ${ADMIN_TEXT_MUTED} admin-activity-time`}>
-                          {formatActivityTime(entry.at)}
-                        </Text>
-                        {entry.docId && onSelectDocument ? (
-                          <button
-                            type="button"
-                            className={ADMIN_TEXT_LINK}
-                            onClick={() => onSelectDocument(entry.docId!)}
-                          >
-                            {entry.headline}
-                          </button>
-                        ) : (
-                          <Text strong className={ADMIN_TEXT_BODY}>
-                            {entry.headline}
+                        <div className="admin-activity-entry-header">
+                          <Text className={`${ADMIN_TEXT_MUTED} admin-activity-time`}>
+                            {formatActivityTime(entry.at)}
                           </Text>
-                        )}
+                          <Tag
+                            className={`admin-activity-kind admin-activity-kind--${entry.kind}`}
+                          >
+                            {ACTIVITY_KIND_LABELS[entry.kind]}
+                          </Tag>
+                          {entry.docId && onSelectDocument ? (
+                            <button
+                              type="button"
+                              className={ADMIN_TEXT_LINK}
+                              onClick={() => onSelectDocument(entry.docId!)}
+                            >
+                              {entry.headline}
+                            </button>
+                          ) : (
+                            <Text strong className={ADMIN_TEXT_BODY}>
+                              {entry.headline}
+                            </Text>
+                          )}
+                        </div>
                         {entry.detail && (
-                          <Text className={`block mt-0.5 break-words ${ADMIN_TEXT_MUTED}`}>
+                          <Text className={`admin-activity-detail break-words ${ADMIN_TEXT_MUTED}`}>
                             {entry.detail}
                           </Text>
                         )}

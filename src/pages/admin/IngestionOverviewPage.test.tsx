@@ -51,20 +51,18 @@ describe('IngestionOverviewPage', () => {
 
   it('loads overview', async () => {
     renderPage('/admin/ingestion?tab=overview')
-    expect(await screen.findByText('Ingestion Operations')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Overall: Running/i })).toBeInTheDocument()
+    expect(await screen.findByText('Pipeline progress')).toBeInTheDocument()
   })
 
   it('shows running state', async () => {
     renderPage('/admin/ingestion?tab=overview')
-    expect(await screen.findByRole('button', { name: /Discovery: Running/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Ingestion: Running/i })).toBeInTheDocument()
+    expect(await screen.findAllByText('Running')).toHaveLength(2)
   })
 
   it('shows paused state', async () => {
     vi.mocked(adminApi.fetchIngestionOverview).mockResolvedValue(mockOverviewPaused)
     renderPage('/admin/ingestion?tab=overview')
-    expect(await screen.findByRole('button', { name: /Overall: Paused/i })).toBeInTheDocument()
+    expect(await screen.findAllByText('Paused')).toHaveLength(2)
     expect(screen.getAllByRole('button', { name: /Resume discovery|Resume ingestion/i }).length).toBeGreaterThan(0)
   })
 
@@ -84,11 +82,13 @@ describe('IngestionOverviewPage', () => {
   it('searches documents by docId', async () => {
     const user = userEvent.setup()
     renderPage()
-    const searchCard = (await screen.findByPlaceholderText('docId or filename')).closest(
-      '.ant-card',
+    const searchForm = (await screen.findByPlaceholderText('LogicalDOC ID or filename')).closest(
+      'form',
     ) as HTMLElement
-    await user.type(within(searchCard).getByPlaceholderText('docId or filename'), '5052')
-    await user.click(within(searchCard).getByRole('button', { name: /search/i }))
+    await user.type(
+      within(searchForm).getByPlaceholderText('LogicalDOC ID or filename'),
+      '5052{enter}',
+    )
     await waitFor(() =>
       expect(adminApi.fetchAdminDocuments).toHaveBeenCalledWith(
         expect.objectContaining({ docId: '5052' }),
@@ -97,10 +97,25 @@ describe('IngestionOverviewPage', () => {
     )
   })
 
+  it('keeps document search unboxed and removes ingestion actions', async () => {
+    renderPage()
+    const search = await screen.findByPlaceholderText('LogicalDOC ID or filename')
+    expect(search.closest('form')).toBeInTheDocument()
+    expect(search.closest('.ant-card')).not.toBeInTheDocument()
+    expect(screen.queryByText('Pipeline progress')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /Re-ingest missing classification/i }),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Search' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Reset' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Refresh' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Documents' })).not.toBeInTheDocument()
+  })
+
   it('searches documents by filename', async () => {
     const { buildDocumentQuery } = await import('../../components/admin/DocumentSearch')
     const query = buildDocumentQuery(
-      { search: 'CT_Report', searchBy: 'filename', failedOnly: false },
+      { search: 'CT_Report', failedOnly: false },
       1,
       50,
     )
@@ -177,21 +192,20 @@ describe('IngestionOverviewPage', () => {
   it('applies failed-only filter', async () => {
     const user = userEvent.setup()
     renderPage()
-    const searchCard = (await screen.findByPlaceholderText('docId or filename')).closest(
-      '.ant-card',
-    ) as HTMLElement
-    await user.click(within(searchCard).getByRole('checkbox', { name: 'Failed only' }))
-    await user.click(within(searchCard).getByRole('button', { name: /search/i }))
+    await screen.findByPlaceholderText('LogicalDOC ID or filename')
+    await user.click(screen.getByRole('button', { name: 'Filter' }))
+    await user.click(await screen.findByRole('checkbox', { name: 'Failed only' }))
+    await user.click(screen.getByRole('button', { name: 'Apply' }))
     await waitFor(() =>
       expect(adminApi.fetchAdminDocuments).toHaveBeenCalledWith(
         expect.objectContaining({ lifecycleStatus: 'FAILED' }),
         expect.anything(),
       ),
     )
-  })
+  }, 10_000)
 
-  it('shows service ports on health tab', async () => {
-    renderPage('/admin/ingestion?tab=health')
+  it('shows service ports on the system tab', async () => {
+    renderPage('/admin/ingestion?tab=system')
     expect(await screen.findByText('localhost:8001')).toBeInTheDocument()
     expect(screen.getByText('localhost:8082')).toBeInTheDocument()
     expect(screen.getByText('rag.example:8080')).toBeInTheDocument()
@@ -202,7 +216,7 @@ describe('IngestionOverviewPage', () => {
       ...mockOverviewRunning,
       last_audit_poll_at: new Date(Date.now() - 20 * 60 * 1000).toISOString(),
     })
-    renderPage('/admin/ingestion?tab=sync')
+    renderPage('/admin/ingestion?tab=system')
     expect(await screen.findByText('Stale')).toBeInTheDocument()
   })
 })

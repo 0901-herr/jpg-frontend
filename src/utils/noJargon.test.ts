@@ -13,8 +13,10 @@ const SRC_DIR = path.resolve(__dirname, '..')
  *    key, never rendered copy (verified by inspection: scanning it before
  *    this exclusion produced zero real UI-copy hits, only this noise).
  *  - `test/` holds shared test fixtures (e.g. `adminFixtures.ts`), not
- *    shipped UI copy — same spirit as excluding `*.test.*` files below. */
-const EXCLUDED_DIRS = new Set(['admin', 'api', 'test'])
+ *    shipped UI copy — same spirit as excluding `*.test.*` files below.
+ *  - `mocks/` holds the opt-in admin demo backend and its fixture data;
+ *    it is only reached through the admin-only `VITE_ADMIN_MOCK` mode. */
+const EXCLUDED_DIRS = new Set(['admin', 'api', 'mocks', 'test'])
 
 /** Individual files outside those directories that are nonetheless
  * exclusively operator-only: every importer of each of these lives under
@@ -362,6 +364,7 @@ describe('no jargon anywhere in shipped, non-admin UI copy', () => {
     expect(files.some((f) => f.startsWith('pages/admin/'))).toBe(false)
     expect(files.some((f) => f.startsWith('components/admin/'))).toBe(false)
     expect(files.some((f) => f.startsWith('api/'))).toBe(false)
+    expect(files.some((f) => f.startsWith('mocks/'))).toBe(false)
     expect(files.some((f) => f.startsWith('test/'))).toBe(false)
     expect(files.includes('utils/lifecycle.ts')).toBe(false)
   })

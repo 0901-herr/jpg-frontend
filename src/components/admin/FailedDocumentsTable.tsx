@@ -1,5 +1,4 @@
-import { AdminRefreshIcon } from '../../icons/admin'
-import { App, Button, Table } from 'antd'
+import { App, Table } from 'antd'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnsType } from 'antd/es/table'
 import { fetchAdminDocuments, fetchIngestionErrors, retryDocument, retryFailedDocuments } from '../../api/admin'
@@ -9,6 +8,7 @@ import { adminQueryKeys } from '../../lib/adminQueryKeys'
 import { formatDateTime } from '../../utils/lifecycle'
 import { ADMIN_TEXT_MUTED } from '../../config/adminStyles'
 import AdminCard from './AdminCard'
+import AdminRetryButton from './AdminRetryButton'
 
 interface FailedDocumentsTableProps {
   onSelect: (doc: AdminDocumentSummary) => void
@@ -68,17 +68,14 @@ export default function FailedDocumentsTable({ onSelect }: FailedDocumentsTableP
       key: 'actions',
       width: 100,
       render: (_, row) => (
-        <Button
-          size="small"
-          icon={<AdminRefreshIcon />}
+        <AdminRetryButton
+          label="Retry"
           loading={retryOneMutation.isPending}
           onClick={(e) => {
             e.stopPropagation()
             retryOneMutation.mutate(row.source_document_id)
           }}
-        >
-          Retry
-        </Button>
+        />
       ),
     },
   ]
@@ -87,17 +84,16 @@ export default function FailedDocumentsTable({ onSelect }: FailedDocumentsTableP
 
   return (
     <AdminCard
+      className="admin-failures-card"
       title={`Failures (${totalFailed.toLocaleString()})`}
       extra={
         totalFailed > 0 ? (
-          <Button
+          <AdminRetryButton
             type="primary"
-            icon={<AdminRefreshIcon />}
+            label="Retry all"
             loading={retryAllMutation.isPending}
             onClick={() => retryAllMutation.mutate()}
-          >
-            Retry all
-          </Button>
+          />
         ) : null
       }
     >
@@ -110,15 +106,17 @@ export default function FailedDocumentsTable({ onSelect }: FailedDocumentsTableP
             .join(' · ')}
         </div>
       )}
-      <div className="min-w-0 overflow-x-auto -mx-1">
+      <div className="admin-table-scroll min-w-0 overflow-x-auto">
         <Table
           rowKey="source_document_id"
-          size="small"
+          className="admin-document-table admin-failure-table"
+          size="middle"
           columns={columns}
           dataSource={data?.items ?? []}
           loading={isLoading}
           pagination={false}
           scroll={{ x: 720 }}
+          tableLayout="fixed"
           locale={{ emptyText: 'No failed documents' }}
           onRow={(record) => ({
             onClick: () => onSelect(record),
