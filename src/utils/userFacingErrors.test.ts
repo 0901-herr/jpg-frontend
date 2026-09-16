@@ -4,6 +4,7 @@ import {
   FOLDER_LOAD_SERVER_ERROR,
   MQA_METADATA_GENERIC_ERROR,
   QUERY_ALMOST_DONE_ERROR,
+  QUERY_NO_HOST_SCOPE_ERROR,
   QUERY_PARTIAL_ANSWER_ERROR,
   QUERY_PERMISSION_DENIED_ERROR,
   QUERY_SERVER_ERROR,
@@ -44,6 +45,18 @@ describe('toUserFacingQueryError', () => {
     expect(toUserFacingQueryError('This chat is view-only', { httpStatus: 403 })).toBe(
       'This chat is view-only',
     )
+  })
+
+  it('uses the no-host-scope message for 409 with no body message', () => {
+    expect(toUserFacingQueryError(undefined, { httpStatus: 409 })).toBe(
+      QUERY_NO_HOST_SCOPE_ERROR,
+    )
+  })
+
+  it('surfaces the server message for a 409 that carries one (host has not chosen files)', () => {
+    expect(
+      toUserFacingQueryError('The chat owner has not chosen any files yet', { httpStatus: 409 }),
+    ).toBe('The chat owner has not chosen any files yet')
   })
 
   it('uses server error message for 5xx before streaming heuristics', () => {

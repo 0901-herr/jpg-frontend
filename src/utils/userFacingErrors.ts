@@ -17,6 +17,8 @@ export const QUERY_SESSION_EXPIRED_ERROR =
 export const QUERY_PERMISSION_DENIED_ERROR =
   "You don't have permission to query the selected documents."
 
+export const QUERY_NO_HOST_SCOPE_ERROR = 'The chat owner has not chosen any files yet.'
+
 export const QUERY_SERVER_ERROR =
   'Something went wrong on our side. Wait a moment and try again.'
 
@@ -65,6 +67,14 @@ export function toUserFacingQueryError(
     // (a bare 403 with no parseable body) still falls back to the generic
     // line rather than a raw HTTP reason phrase.
     return raw?.trim() ? raw.trim() : QUERY_PERMISSION_DENIED_ERROR
+  }
+
+  if (httpStatus === 409) {
+    // A shared query against a host who hasn't chosen any files yet — the
+    // adapter's body message is already jargon-free (same trust as the 403
+    // branch above); no body falls back to the generic line below rather
+    // than a raw HTTP reason phrase.
+    return raw?.trim() ? raw.trim() : QUERY_NO_HOST_SCOPE_ERROR
   }
 
   if (httpStatus != null && httpStatus >= 500) {
