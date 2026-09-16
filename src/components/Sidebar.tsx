@@ -313,7 +313,6 @@ export default function Sidebar({
       projects={projects}
       onMove={onMoveChat}
       onShare={onShareChat ? (chatId) => setShareChatId(chatId) : undefined}
-      onStopSharing={onShareChat ? (chatId) => void onShareChat(chatId, 'private') : undefined}
     />
   )
 

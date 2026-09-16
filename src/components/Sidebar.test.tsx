@@ -339,7 +339,7 @@ describe('Sidebar — Files pane disabled for a shared chat', () => {
   })
 })
 
-describe('Sidebar — host revocation ("Stop sharing")', () => {
+describe('Sidebar — host revocation (Share modal Private row)', () => {
   function renderSidebar(onShareChat = vi.fn().mockResolvedValue(undefined)) {
     return render(
       <MemoryRouter>
@@ -359,39 +359,9 @@ describe('Sidebar — host revocation ("Stop sharing")', () => {
     )
   }
 
-  it('shows a "Stop sharing" item on the chat row menu only while the chat is shared', async () => {
-    const user = userEvent.setup()
-    const onShareChat = vi.fn().mockResolvedValue(undefined)
-    renderSidebar(onShareChat)
-
-    await user.click(screen.getByRole('button', { name: 'Chat options' }))
-    await user.click(screen.getByText('Stop sharing'))
-
-    expect(onShareChat).toHaveBeenCalledWith('c1', 'private')
-  })
-
-  it('never shows "Stop sharing" for a private chat', async () => {
-    const user = userEvent.setup()
-    render(
-      <MemoryRouter>
-        <Sidebar
-          width={280}
-          sessions={[{ id: 'c1', title: 'Chat A', messages: [], visibility: 'private' }]}
-          activeChatId="c1"
-          browse={browseFixture()}
-          selection={selectionFixture()}
-          onSelectChat={vi.fn()}
-          onRenameChat={vi.fn()}
-          onDeleteChat={vi.fn()}
-          onNewChat={vi.fn()}
-          onShareChat={vi.fn()}
-        />
-      </MemoryRouter>,
-    )
-
-    await user.click(screen.getByRole('button', { name: 'Chat options' }))
-    expect(screen.queryByText('Stop sharing')).not.toBeInTheDocument()
-  })
+  // The chat-row menu's own "Stop sharing" item was removed (client
+  // feedback, Task 5) — it duplicated this modal's Private-radio revoke
+  // action. Only the modal-driven revoke flow below remains.
 
   it('revokes sharing from inside the share modal by selecting the Private row', async () => {
     const user = userEvent.setup()

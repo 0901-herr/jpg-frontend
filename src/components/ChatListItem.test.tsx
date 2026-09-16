@@ -5,6 +5,11 @@ import { vi } from 'vitest'
 import ChatListItem from './ChatListItem'
 import type { ChatSession } from '../types'
 
+// Sharing menu items/badge are gated behind this build-time flag (see
+// `src/config/features.ts`) — mirrors Sidebar.test.tsx's mock so this
+// file's sharing-related tests exercise the real gated code path.
+vi.mock('../config/features', () => ({ FEATURES: { categoryView: false, chatSharing: true } }))
+
 function session(overrides: Partial<ChatSession> = {}): ChatSession {
   return {
     id: 's1',
@@ -103,5 +108,90 @@ describe('ChatListItem', () => {
 
     await user.click(screen.getByText('Session 15 Sep 2026 (1)'))
     expect(onSelect).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses consistent padding on the options button, matching ProjectGroupHeader', () => {
+    render(
+      <ChatListItem
+        chat={session()}
+        isActive={false}
+        onSelect={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    )
+
+    const optionsButton = screen.getByRole('button', { name: 'Chat options' })
+    expect(optionsButton.className).toContain('px-2')
+    expect(optionsButton.className).toContain('py-1.5')
+    expect(optionsButton.className).not.toContain('px-3 py-2')
+  })
+
+  it('renders icons on the Move to and Share menu items', async () => {
+    const user = userEvent.setup()
+    render(
+      <ChatListItem
+        chat={session()}
+        isActive={false}
+        onSelect={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+        projects={[]}
+        onMove={vi.fn()}
+        onShare={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Chat options' }))
+
+    const moveItem = screen.getByText('Move to').closest('li')
+    const shareItem = screen.getByText('Share').closest('li')
+    expect(moveItem?.querySelector('svg')).toBeTruthy()
+    expect(shareItem?.querySelector('svg')).toBeTruthy()
+  })
+
+  it('never renders a "Stop sharing" menu item, even for an already-shared chat', async () => {
+    const user = userEvent.setup()
+    render(
+      <ChatListItem
+        chat={session({ visibility: 'query', shareToken: 'tok123' })}
+        isActive={false}
+        onSelect={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+        onShare={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Chat options' }))
+    expect(screen.queryByText('Stop sharing')).not.toBeInTheDocument()
+  })
+
+  it('shows a shared-chat badge when the chat is shared', () => {
+    render(
+      <ChatListItem
+        chat={session({ visibility: 'query' })}
+        isActive={false}
+        onSelect={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByLabelText(/shared/i)).toBeInTheDocument()
+  })
+
+  it('does not show a shared-chat badge for a private chat', () => {
+    render(
+      <ChatListItem
+        chat={session()}
+        isActive={false}
+        onSelect={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByLabelText(/shared/i)).not.toBeInTheDocument()
   })
 })

@@ -1,6 +1,7 @@
 import { Dropdown, Input, Modal } from 'antd'
-import { ChatDeleteIcon, ChatEditIcon, ChatMoreIcon } from '../icons/chat'
+import { ChatDeleteIcon, ChatEditIcon, ChatMoreIcon, ChatMoveIcon, ChatShareIcon } from '../icons/chat'
 import type { InputRef, MenuProps } from 'antd'
+import type { MouseEvent } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { FEATURES } from '../config/features'
 import { sidebar, typeColor } from '../styles/typography'
@@ -8,6 +9,32 @@ import { listRow, sidebarNav, surface } from '../styles/theme'
 import type { ChatProject, ChatSession } from '../types'
 
 const NO_PROJECT_KEY = '__no_project__'
+
+/** The row's "..." trigger — shared by the owned-row and read-only-row
+ * `Dropdown`s below (they were previously two copies of the same
+ * oversized-padding button). `px-2 py-1.5` matches `ProjectGroupHeader`'s
+ * own "..." button (`Sidebar.tsx`) so the two dropdown triggers in the
+ * sidebar look consistent. */
+function ChatOptionsButton({
+  menuOpen,
+  onClick,
+}: {
+  menuOpen: boolean
+  onClick: (e: MouseEvent) => void
+}) {
+  return (
+    <button
+      type="button"
+      aria-label="Chat options"
+      onClick={onClick}
+      className={`shrink-0 px-2 py-1.5 rounded-lg ${typeColor.muted} hover:text-[#404040] ${surface.hover} transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0084ff]/35 ${
+        menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
+      }`}
+    >
+      <ChatMoreIcon className={sidebar.caption} />
+    </button>
+  )
+}
 
 interface ChatListItemProps {
   chat: ChatSession
@@ -21,10 +48,6 @@ interface ChatListItemProps {
   projects?: ChatProject[]
   onMove?: (chatId: string, projectId: string | null) => void
   onShare?: (chatId: string) => void
-  /** Direct "Stop sharing" action (sets visibility to private) — a menu
-   * item distinct from `onShare` (which opens the modal): shown only
-   * while `chat.visibility` isn't already `'private'`. */
-  onStopSharing?: (chatId: string) => void
   /** "by <owner>" — shown instead of the first-question preview for a
    * shared, non-owned chat. */
   subtitle?: string
@@ -48,7 +71,6 @@ export default function ChatListItem({
   projects = [],
   onMove,
   onShare,
-  onStopSharing,
   subtitle,
   readOnly = false,
   onRemove,
@@ -90,10 +112,6 @@ export default function ChatListItem({
       onShare?.(chat.id)
       return
     }
-    if (key === 'stop-sharing') {
-      onStopSharing?.(chat.id)
-      return
-    }
     if (key === 'remove') {
       onRemove?.(chat.id)
       return
@@ -109,8 +127,10 @@ export default function ChatListItem({
   }
 
   const canShare = FEATURES.chatSharing && chat.isOwner !== false && Boolean(onShare)
-  const isShared = Boolean(chat.visibility) && chat.visibility !== 'private'
-  const canStopSharing = FEATURES.chatSharing && isShared && Boolean(onStopSharing)
+  /** Owned-and-shared-by-me or shared-with-me — drives the sidebar badge.
+   * `false` once sharing is disabled entirely at build time, even for a
+   * chat with stale `visibility` from before the flag was flipped off. */
+  const isShared = FEATURES.chatSharing && Boolean(chat.visibility) && chat.visibility !== 'private'
 
   const menuItems: MenuProps['items'] = [
     { key: 'rename', label: 'Rename', icon: <ChatEditIcon /> },
@@ -119,6 +139,7 @@ export default function ChatListItem({
           {
             key: 'move',
             label: 'Move to',
+            icon: <ChatMoveIcon />,
             children: [
               ...projects.map((project) => ({ key: `move:${project.id}`, label: project.name })),
               { key: `move:${NO_PROJECT_KEY}`, label: 'No project' },
@@ -126,8 +147,7 @@ export default function ChatListItem({
           },
         ]
       : []),
-    ...(canShare ? [{ key: 'share', label: 'Share' }] : []),
-    ...(canStopSharing ? [{ key: 'stop-sharing', label: 'Stop sharing' }] : []),
+    ...(canShare ? [{ key: 'share', label: 'Share', icon: <ChatShareIcon /> }] : []),
     { type: 'divider' as const },
     {
       key: 'delete',
@@ -154,6 +174,17 @@ export default function ChatListItem({
   // question itself, so this is the only place that question still shows
   // up in the Chats list. A shared row shows "by <owner>" instead.
   const preview = subtitle ?? chat.messages.find((m) => m.role === 'user')?.content
+
+  const titleSpan = (
+    <span
+      className={`block min-w-0 truncate ${sidebar.body} ${
+        isActive ? `${typeColor.primary} font-normal` : typeColor.secondary
+      }`}
+      title={chat.title}
+    >
+      {chat.title}
+    </span>
+  )
 
   return (
     <div
@@ -193,14 +224,20 @@ export default function ChatListItem({
           onClick={onSelect}
           className="flex-1 min-w-0 flex flex-col gap-0.5 text-left px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0084ff]/35 rounded-[10px]"
         >
-          <span
-            className={`block min-w-0 truncate ${sidebar.body} ${
-              isActive ? `${typeColor.primary} font-normal` : typeColor.secondary
-            }`}
-            title={chat.title}
-          >
-            {chat.title}
-          </span>
+          {isShared ? (
+            <span className="flex items-center gap-1 min-w-0">
+              {titleSpan}
+              <span
+                role="img"
+                aria-label="Shared chat"
+                className="shrink-0 inline-flex items-center leading-none text-[#8e8e8e]"
+              >
+                <ChatShareIcon />
+              </span>
+            </span>
+          ) : (
+            titleSpan
+          )}
           {preview && (
             <span className={`block min-w-0 truncate ${sidebar.caption} ${typeColor.muted}`}>
               {preview}
@@ -218,16 +255,7 @@ export default function ChatListItem({
           open={menuOpen}
           onOpenChange={setMenuOpen}
         >
-          <button
-            type="button"
-            aria-label="Chat options"
-            onClick={(e) => e.stopPropagation()}
-            className={`shrink-0 px-3 py-2 rounded-lg ${typeColor.muted} hover:text-[#404040] ${surface.hover} transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0084ff]/35 ${
-              menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
-            }`}
-          >
-            <ChatMoreIcon className={sidebar.caption} />
-          </button>
+          <ChatOptionsButton menuOpen={menuOpen} onClick={(e) => e.stopPropagation()} />
         </Dropdown>
       )}
 
@@ -240,16 +268,7 @@ export default function ChatListItem({
           open={menuOpen}
           onOpenChange={setMenuOpen}
         >
-          <button
-            type="button"
-            aria-label="Chat options"
-            onClick={(e) => e.stopPropagation()}
-            className={`shrink-0 px-3 py-2 rounded-lg ${typeColor.muted} hover:text-[#404040] ${surface.hover} transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0084ff]/35 ${
-              menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
-            }`}
-          >
-            <ChatMoreIcon className={sidebar.caption} />
-          </button>
+          <ChatOptionsButton menuOpen={menuOpen} onClick={(e) => e.stopPropagation()} />
         </Dropdown>
       )}
 
