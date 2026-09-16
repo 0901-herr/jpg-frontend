@@ -38,7 +38,10 @@ describe('IngestionControls', () => {
     expect(screen.getByText('Change detection')).toBeInTheDocument()
     expect(screen.queryByText('Initial corpus')).not.toBeInTheDocument()
     expect(screen.queryByText('Bulk crawl')).not.toBeInTheDocument()
-    expect(screen.getByText('Maintenance')).toBeInTheDocument()
+    // Maintenance card was removed as a duplicate — retrying failed
+    // documents lives on the Failures tab and classification lives on
+    // Documents (dashboard cleanup pass).
+    expect(screen.queryByText('Maintenance')).not.toBeInTheDocument()
     expect(screen.getByText('Operator')).toBeInTheDocument()
     expect(screen.getByText('Audit changelog')).toBeInTheDocument()
     expect(screen.getByText('Reconciliation')).toBeInTheDocument()
@@ -49,6 +52,20 @@ describe('IngestionControls', () => {
     renderControls(mockOverviewPaused)
     await user.click(screen.getByRole('button', { name: /Resume ingestion/i }))
     await waitFor(() => expect(adminApi.resumeIngestion).toHaveBeenCalled())
+  })
+
+  it('uses the shared centered confirmation before pausing ingestion', async () => {
+    const user = userEvent.setup()
+    renderControls()
+
+    await user.click(screen.getByRole('button', { name: 'Pause ingestion' }))
+
+    expect(screen.getByRole('dialog')).toHaveClass('admin-confirm-modal')
+    expect(screen.getByText('Pause ingestion?')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Pause' }))
+    await waitFor(() => expect(adminApi.pauseIngestion).toHaveBeenCalledOnce())
   })
 
   it('names the operator link "Arche AI session", not the old "AI chat session" copy', () => {

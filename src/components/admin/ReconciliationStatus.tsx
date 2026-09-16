@@ -11,8 +11,8 @@ export default function ReconciliationStatus({ overview }: ReconciliationStatusP
   const lastRun = overview.last_reconciliation_at
 
   return (
-    <AdminCard title="Reconciliation">
-      <Descriptions column={1} size="small">
+    <AdminCard title="Reconciliation" className="admin-system-card admin-system-status-card">
+      <Descriptions column={1} size="small" className="admin-system-descriptions">
         <Descriptions.Item label="Last run">{formatDateTime(lastRun)}</Descriptions.Item>
         <Descriptions.Item label="Status">
           {lastRun ? <Tag color="success">Completed</Tag> : <Tag>Not run yet</Tag>}

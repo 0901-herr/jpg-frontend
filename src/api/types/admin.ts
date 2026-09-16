@@ -42,6 +42,17 @@ export interface BulkProgressSnapshot {
   total_submitted: number
   total_fully_indexed: number
   total_failed: number
+  current_inflight?: number
+  target_inflight?: number
+  preparing_capacity?: number
+  preparing_resume_threshold?: number
+  staged_capacity?: number
+  staged_resume_threshold?: number
+  current_folder_id?: number | null
+  current_page?: number | null
+  discovery_backpressured?: boolean
+  preparation_backpressured?: boolean | null
+  submission_backpressured?: boolean | null
   documents_per_second: number | null
   estimated_seconds_remaining: number | null
   job_error?: string | null

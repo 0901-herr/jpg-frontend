@@ -1,15 +1,13 @@
 import { AdminOpenIcon, AdminPauseIcon, AdminPlayIcon } from '../../icons/admin'
-import { App, Button, Popconfirm, Select, Switch, Tag, Typography } from 'antd'
-import type { ReactNode } from 'react'
+import { App, Button, Select, Switch, Tag, Typography } from 'antd'
+import { useState, type ReactNode } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import {
-  classifyMissingDocuments,
   mintAdminChatSession,
   pauseDiscovery,
   pauseIngestion,
   resumeDiscovery,
   resumeIngestion,
-  retryFailedDocuments,
   triggerAuditPoll,
   triggerReconciliation,
   updateIngestionSyncSettings,
@@ -25,6 +23,7 @@ import {
 import { formatRelativeTime } from '../../utils/lifecycle'
 import { formatStateLabel } from '../../utils/adminState'
 import AdminCard from './AdminCard'
+import AdminConfirmDialog from './AdminConfirmDialog'
 
 const { Text } = Typography
 
@@ -58,7 +57,7 @@ function stateTag(state: string) {
 }
 
 function ControlGroup({ children }: { children: ReactNode }) {
-  return <div className="divide-y divide-[#eef1f5]">{children}</div>
+  return <div className="admin-divide divide-y">{children}</div>
 }
 
 interface ControlRowProps {
@@ -113,6 +112,7 @@ function reconcileLabel(hours: number): string {
 
 export default function IngestionControls({ overview }: IngestionControlsProps) {
   const { message } = App.useApp()
+  const [confirmation, setConfirmation] = useState<'discovery' | 'ingestion' | null>(null)
   const invalidate = useInvalidateAdminQueries()
   const { sync } = overview
 
@@ -186,25 +186,6 @@ export default function IngestionControls({ overview }: IngestionControlsProps) 
     onError: (err: Error) => message.error(err.message),
   })
 
-  const retryFailedMutation = useMutation({
-    mutationFn: () => retryFailedDocuments(),
-    onSuccess: (result) => {
-      message.success(`Scheduled ${result.retried} retries`)
-      invalidate()
-    },
-    onError: (err: Error) => message.error(err.message),
-  })
-
-  const classifyMutation = useMutation({
-    mutationFn: () => classifyMissingDocuments(10),
-    onSuccess: (result) => {
-      message.success(
-        result.queued ? `Queued ${result.queued} for classification` : 'No documents need classification',
-      )
-    },
-    onError: (err: Error) => message.error(err.message),
-  })
-
   const chatSessionMutation = useMutation({
     mutationFn: () => mintAdminChatSession(),
     onSuccess: (result) => {
@@ -218,6 +199,19 @@ export default function IngestionControls({ overview }: IngestionControlsProps) 
 
   const ingestionPaused = overview.ingestion_state === 'PAUSED'
   const discoveryPaused = overview.discovery_state === 'PAUSED'
+
+  async function confirmPause() {
+    try {
+      if (confirmation === 'discovery') {
+        await pauseDiscoveryMutation.mutateAsync()
+      } else if (confirmation === 'ingestion') {
+        await pauseIngestionMutation.mutateAsync()
+      }
+      setConfirmation(null)
+    } catch {
+      // Mutation error messaging is handled by each mutation's onError.
+    }
+  }
 
   return (
     <div className={ADMIN_STACK_SPACE}>
@@ -236,17 +230,12 @@ export default function IngestionControls({ overview }: IngestionControlsProps) 
                   onClick={() => resumeDiscoveryMutation.mutate()}
                 />
               ) : (
-                <Popconfirm
-                  title="Pause discovery?"
-                  description="Folder traversal and new document discovery stop."
-                  onConfirm={() => pauseDiscoveryMutation.mutate()}
-                >
-                  <IconControlButton
-                    label="Pause discovery"
-                    icon={<AdminPauseIcon />}
-                    loading={pauseDiscoveryMutation.isPending}
-                  />
-                </Popconfirm>
+                <IconControlButton
+                  label="Pause discovery"
+                  icon={<AdminPauseIcon />}
+                  loading={pauseDiscoveryMutation.isPending}
+                  onClick={() => setConfirmation('discovery')}
+                />
               )
             }
           />
@@ -263,23 +252,18 @@ export default function IngestionControls({ overview }: IngestionControlsProps) 
                   onClick={() => resumeIngestionMutation.mutate()}
                 />
               ) : (
-                <Popconfirm
-                  title="Pause ingestion?"
-                  description="New RAG submissions stop. In flight indexing continues."
-                  onConfirm={() => pauseIngestionMutation.mutate()}
-                >
-                  <IconControlButton
-                    label="Pause ingestion"
-                    icon={<AdminPauseIcon />}
-                    loading={pauseIngestionMutation.isPending}
-                  />
-                </Popconfirm>
+                <IconControlButton
+                  label="Pause ingestion"
+                  icon={<AdminPauseIcon />}
+                  loading={pauseIngestionMutation.isPending}
+                  onClick={() => setConfirmation('ingestion')}
+                />
               )
             }
           />
         </ControlGroup>
         {(ingestionPaused || discoveryPaused) && (
-          <div className="mt-4 pt-4 border-t border-[#eef1f5] space-y-1">
+          <div className="admin-border-top mt-4 pt-4 border-t space-y-1">
             {discoveryPaused && (
               <Text className={`block ${ADMIN_TEXT_MUTED}`}>
                 Discovery pause: {overview.discovery_pause_reason ?? 'manual'}
@@ -359,37 +343,6 @@ export default function IngestionControls({ overview }: IngestionControlsProps) 
         </ControlGroup>
       </AdminCard>
 
-      <AdminCard title="Maintenance">
-        <ControlGroup>
-          <ControlRow
-            title="Retry failed"
-            description="Requeues up to 500 failed documents for another ingest attempt."
-            status={<Tag>{overview.counts.failed.toLocaleString()} failed</Tag>}
-            action={
-              <IconControlButton
-                label="Retry failed documents"
-                icon={<AdminPlayIcon />}
-                loading={retryFailedMutation.isPending}
-                disabled={overview.counts.failed === 0}
-                onClick={() => retryFailedMutation.mutate()}
-              />
-            }
-          />
-          <ControlRow
-            title="Classify missing"
-            description="Runs the RAG classifier on READY documents without a category label."
-            action={
-              <IconControlButton
-                label="Classify missing documents"
-                icon={<AdminPlayIcon />}
-                loading={classifyMutation.isPending}
-                onClick={() => classifyMutation.mutate()}
-              />
-            }
-          />
-        </ControlGroup>
-      </AdminCard>
-
       <AdminCard title="Operator">
         <ControlGroup>
           <ControlRow
@@ -406,6 +359,19 @@ export default function IngestionControls({ overview }: IngestionControlsProps) 
           />
         </ControlGroup>
       </AdminCard>
+      <AdminConfirmDialog
+        open={confirmation != null}
+        title={confirmation === 'discovery' ? 'Pause discovery?' : 'Pause ingestion?'}
+        description={
+          confirmation === 'discovery'
+            ? 'Folder traversal and new document discovery will stop.'
+            : 'New RAG submissions will stop. Indexing already in progress will continue.'
+        }
+        confirmText="Pause"
+        loading={pauseDiscoveryMutation.isPending || pauseIngestionMutation.isPending}
+        onCancel={() => setConfirmation(null)}
+        onConfirm={() => void confirmPause()}
+      />
     </div>
   )
 }

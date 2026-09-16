@@ -4,12 +4,7 @@ export const ADMIN_EMPTY = 'None'
 export const ADMIN_PANEL_CLASS = 'admin-panel'
 
 export const ADMIN_CARD_CLASS =
-  'admin-card !bg-white !border !border-[#eef1f5] !shadow-none rounded-2xl overflow-hidden'
-
-export const ADMIN_STATUS_HEADER_CLASS =
-  'admin-status-header bg-white rounded-2xl px-6 py-5 border border-[#eef1f5]'
-
-export const ADMIN_STATUS_POPOVER_CLASS = 'admin-status-popover'
+  'admin-card !shadow-none rounded-2xl overflow-hidden'
 
 /** Vertical spacing between stacked admin cards. */
 export const ADMIN_STACK_SPACE = 'admin-stack'
@@ -22,17 +17,13 @@ export const ADMIN_CARD_HEAD_CLASS =
 
 export const ADMIN_CARD_BODY_CLASS = '!px-6 !pb-5 !pt-5'
 
-export const ADMIN_PAGE_CLASS = 'flex h-full min-h-0 min-w-0 bg-[#f4f6f9]'
+export const ADMIN_PAGE_CLASS = 'admin-page flex h-full min-h-0 min-w-0'
 
 export const ADMIN_SECTION_NAV_CLASS =
-  'w-[220px] shrink-0 border-r border-[#e8edf2] bg-white flex flex-col'
+  'admin-section-nav w-[220px] shrink-0 border-r bg-white flex flex-col'
 
 export const ADMIN_SECTION_MAIN_CLASS =
-  'flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-6 md:p-8 bg-[#f4f6f9]'
-
-export const ADMIN_PAGE_TITLE = 'admin-page-title'
-
-export const ADMIN_PAGE_SUBTITLE = 'admin-page-subtitle'
+  'admin-section-main flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-6 md:p-8'
 
 export const ADMIN_TEXT_LABEL = 'admin-text-label'
 

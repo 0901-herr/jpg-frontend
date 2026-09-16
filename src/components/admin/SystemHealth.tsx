@@ -90,19 +90,19 @@ export default function SystemHealth({
   const ragEndpoint = rows.find((row) => row.key === 'rag_engine')?.endpoint
 
   return (
-    <AdminCard title="System health">
+    <AdminCard title="System health" className="admin-system-card">
       {degraded && (
         <Tag color="warning" className="mb-4">
           Degraded
         </Tag>
       )}
-      <div className="divide-y divide-[#eef1f5]">
+      <div className="admin-divide divide-y">
         {rows.map((row) => {
           const target = formatServiceTarget(row.endpoint)
           return (
             <div
               key={row.key}
-              className="flex items-start justify-between gap-4 py-3 first:pt-0 last:pb-0"
+              className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0"
             >
               <div className="min-w-0 flex-1">
                 <Text className={ADMIN_TEXT_LABEL}>{row.label}</Text>

@@ -1,5 +1,6 @@
 import React from 'react'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { App as AntApp } from 'antd'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { vi } from 'vitest'
@@ -32,6 +33,9 @@ describe('PipelineProgressCard', () => {
     expect(screen.getByText('Pipeline progress')).toBeInTheDocument()
     expect(screen.getByText('Discovered')).toBeInTheDocument()
     expect(screen.getByText('Queued')).toBeInTheDocument()
+    expect(screen.getByText('Live capacity')).toBeInTheDocument()
+    expect(screen.getByText('Waiting to prepare')).toBeInTheDocument()
+    expect(screen.getByText('Waiting for RAG')).toBeInTheDocument()
     expect(screen.getByText(/^Last update /)).toBeInTheDocument()
     expect(screen.queryByText(/Auto-refreshes/i)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Refresh/i })).toBeInTheDocument()
@@ -43,7 +47,49 @@ describe('PipelineProgressCard', () => {
       screen.getByText(/Documents being prepared for AI search\. Press start to begin/),
     ).toBeInTheDocument()
     expect(screen.queryByText(/waiting to be scheduled/i)).not.toBeInTheDocument()
-    expect(screen.queryByText(/Live/)).not.toBeInTheDocument()
+  })
+
+  it('explains when RAG capacity is applying backpressure', () => {
+    renderCard({
+      ...mockOverviewRunning,
+      bulk_progress: {
+        ...mockOverviewRunning.bulk_progress!,
+        current_inflight: 80,
+        submission_backpressured: true,
+      },
+    })
+
+    expect(screen.getByText('80 / 80')).toBeInTheDocument()
+    expect(screen.getByText(/RAG is at capacity/)).toBeInTheDocument()
+  })
+
+  it('explains each live capacity queue on hover', async () => {
+    const user = userEvent.setup()
+    renderCard()
+
+    await user.hover(screen.getByText('Waiting for RAG'))
+
+    expect(
+      await screen.findByText(/Prepared documents waiting to be sent to RAG/),
+    ).toBeInTheDocument()
+  })
+
+  it('still renders against an older adapter without capacity fields', () => {
+    const legacyBulk = { ...mockOverviewRunning.bulk_progress! }
+    delete legacyBulk.current_inflight
+    delete legacyBulk.target_inflight
+    delete legacyBulk.preparing_capacity
+    delete legacyBulk.preparing_resume_threshold
+    delete legacyBulk.staged_capacity
+    delete legacyBulk.staged_resume_threshold
+    delete legacyBulk.discovery_backpressured
+    delete legacyBulk.preparation_backpressured
+    delete legacyBulk.submission_backpressured
+
+    renderCard({ ...mockOverviewRunning, bulk_progress: legacyBulk })
+
+    expect(screen.getByText('Pipeline progress')).toBeInTheDocument()
+    expect(screen.queryByText('Live capacity')).not.toBeInTheDocument()
   })
 
   it('shows pause control while work is active', () => {
@@ -83,5 +129,6 @@ describe('PipelineProgressCard', () => {
       screen.getByText(/Documents being prepared for AI search\. Press start to begin/),
     ).toBeInTheDocument()
     expect(screen.queryByText(/No documents discovered yet/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Scanning page/i)).not.toBeInTheDocument()
   })
 })
