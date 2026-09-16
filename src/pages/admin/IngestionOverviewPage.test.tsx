@@ -82,17 +82,28 @@ describe('IngestionOverviewPage', () => {
   it('searches documents by docId', async () => {
     const user = userEvent.setup()
     renderPage()
-    const searchCard = (await screen.findByPlaceholderText('docId or filename')).closest(
-      '.ant-card',
+    const searchForm = (await screen.findByPlaceholderText('docId or filename')).closest(
+      'form',
     ) as HTMLElement
-    await user.type(within(searchCard).getByPlaceholderText('docId or filename'), '5052')
-    await user.click(within(searchCard).getByRole('button', { name: /search/i }))
+    await user.type(within(searchForm).getByPlaceholderText('docId or filename'), '5052')
+    await user.click(within(searchForm).getByRole('button', { name: /search/i }))
     await waitFor(() =>
       expect(adminApi.fetchAdminDocuments).toHaveBeenCalledWith(
         expect.objectContaining({ docId: '5052' }),
         expect.anything(),
       ),
     )
+  })
+
+  it('keeps document search unboxed and removes ingestion actions', async () => {
+    renderPage()
+    const search = await screen.findByPlaceholderText('docId or filename')
+    expect(search.closest('form')).toBeInTheDocument()
+    expect(search.closest('.ant-card')).not.toBeInTheDocument()
+    expect(screen.queryByText('Pipeline progress')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /Re-ingest missing classification/i }),
+    ).not.toBeInTheDocument()
   })
 
   it('searches documents by filename', async () => {
@@ -175,11 +186,11 @@ describe('IngestionOverviewPage', () => {
   it('applies failed-only filter', async () => {
     const user = userEvent.setup()
     renderPage()
-    const searchCard = (await screen.findByPlaceholderText('docId or filename')).closest(
-      '.ant-card',
+    const searchForm = (await screen.findByPlaceholderText('docId or filename')).closest(
+      'form',
     ) as HTMLElement
-    await user.click(within(searchCard).getByRole('checkbox', { name: 'Failed only' }))
-    await user.click(within(searchCard).getByRole('button', { name: /search/i }))
+    await user.click(within(searchForm).getByRole('checkbox', { name: 'Failed only' }))
+    await user.click(within(searchForm).getByRole('button', { name: /search/i }))
     await waitFor(() =>
       expect(adminApi.fetchAdminDocuments).toHaveBeenCalledWith(
         expect.objectContaining({ lifecycleStatus: 'FAILED' }),
