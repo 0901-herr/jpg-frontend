@@ -487,7 +487,7 @@ export default function Sidebar({
               the section level, and via the overflow-y-auto list below)
               rather than pushing Files — or itself — off-screen. */}
           <div
-            className={`flex flex-col flex-1 min-h-[270px] overflow-y-auto overflow-x-hidden ${spacing.sectionY}`}
+            className={`flex flex-col flex-1 min-h-[270px] overflow-y-auto overflow-x-hidden pt-3`}
           >
             <div className="flex items-center justify-between">
               <span className={sectionLabel}>
