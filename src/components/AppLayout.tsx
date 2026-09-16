@@ -69,6 +69,16 @@ const CATEGORIZE_ERROR_FALLBACKS: Record<string, string> = {
   categorize_unavailable: 'Categorization is temporarily unavailable. Please try again.',
 }
 
+/** A follower can't choose documents in a shared chat at all (owner
+ * decision, 2026-09-16) — but `selection` is global state that outlives
+ * switching chats, so a document still selected from the viewer's OWN chat
+ * must not be usable to run Summarize/Categorize/Extract metadata against
+ * the shared conversation (it would post that content into it via
+ * `persistTurn`/`chatStore.recordUserMessage`, regardless of what's shown
+ * locally). Takes priority over every other disabled reason for these
+ * three actions. */
+const SHARED_CHAT_ACTION_DISABLED_REASON = 'Not available in a shared chat'
+
 /** Never a fatal screen: every categorize failure — a mapped adapter error,
  * an unmapped status, or a plain network/JS error — resolves to a message
  * safe to show in chat instead of propagating. Prefers the server's own
@@ -686,6 +696,12 @@ export default function AppLayout() {
         filenames: scopeFilenames,
       })
       let coverage: CoverageInfo | undefined
+      // Captured from whichever branch below actually persists the
+      // assistant turn (success, stopped, or error) — awaited in
+      // `finally` before a shared-chat refresh, so that refresh's GET can
+      // never race this POST and clobber the just-finished answer with a
+      // detail fetched before it landed server-side.
+      let assistantPersistPromise: Promise<void> | undefined
 
       try {
         const response = await sendQuery.mutateAsync({
@@ -813,7 +829,7 @@ export default function AppLayout() {
         // at session creation — no longer overwritten with the first
         // question.
         updateChatMessages(activeChatId, (messages) => [...messages.slice(0, -1), assistantMsg])
-        chatStore.recordAssistantMessage(activeChatId, assistantMsg)
+        assistantPersistPromise = chatStore.recordAssistantMessage(activeChatId, assistantMsg)
       } catch (err) {
         if (controller.signal.aborted) {
           // A "new chat" / "select another chat" abort (reason ===
@@ -829,7 +845,7 @@ export default function AppLayout() {
               liveText: '',
               thinkingSeconds: elapsedSeconds(),
             }))
-            if (stopped) chatStore.recordAssistantMessage(activeChatId, stopped)
+            if (stopped) assistantPersistPromise = chatStore.recordAssistantMessage(activeChatId, stopped)
           }
           return
         }
@@ -845,7 +861,7 @@ export default function AppLayout() {
           progressLabel: formatProgressStage(lastProgressStageRef.current),
           thinkingSeconds: elapsedSeconds(),
         }))
-        if (errored) chatStore.recordAssistantMessage(activeChatId, errored)
+        if (errored) assistantPersistPromise = chatStore.recordAssistantMessage(activeChatId, errored)
       } finally {
         if (abortControllerRef.current === controller) {
           abortControllerRef.current = null
@@ -854,8 +870,17 @@ export default function AppLayout() {
         // activation-time fetch (`useChatStore`'s `ensureMessagesLoaded`)
         // only runs when the viewer switches TO this chat, so a follower
         // who stays on one shared chat and keeps asking otherwise never
-        // sees a scope the host changed after the initial load.
-        if (isSharedChat) chatStore.refreshSharedChat(activeChatId)
+        // sees a scope the host changed after the initial load. Awaits the
+        // assistant-message persist first (if this turn produced one) so
+        // the refresh GET can never race that POST — firing concurrently
+        // could fetch a detail from before the just-finished answer landed
+        // server-side and briefly clobber it back out of local state.
+        if (isSharedChat) {
+          void (async () => {
+            await assistantPersistPromise
+            chatStore.refreshSharedChat(activeChatId)
+          })()
+        }
       }
     },
     [
@@ -898,16 +923,19 @@ export default function AppLayout() {
 
   const summarizeDisabledReason = useMemo(
     () =>
-      getSummarizeDisabledReason({
-        selectedCount: selection.selectedCount,
-        document: selectedDocument,
-        isResponding: sendQuery.isPending || isSummarizing || isExtracting || isCategorizing,
-        disabled: browse.sessionExpired,
-      }),
+      isSharedChat
+        ? SHARED_CHAT_ACTION_DISABLED_REASON
+        : getSummarizeDisabledReason({
+            selectedCount: selection.selectedCount,
+            document: selectedDocument,
+            isResponding: sendQuery.isPending || isSummarizing || isExtracting || isCategorizing,
+            disabled: browse.sessionExpired,
+          }),
     [
       browse.sessionExpired,
       isCategorizing,
       isExtracting,
+      isSharedChat,
       isSummarizing,
       selectedDocument,
       selection.selectedCount,
@@ -917,16 +945,19 @@ export default function AppLayout() {
 
   const extractMetadataDisabledReason = useMemo(
     () =>
-      getExtractMetadataDisabledReason({
-        selectedCount: selection.selectedCount,
-        document: selectedDocument,
-        isResponding: sendQuery.isPending || isSummarizing || isExtracting || isCategorizing,
-        disabled: browse.sessionExpired,
-      }),
+      isSharedChat
+        ? SHARED_CHAT_ACTION_DISABLED_REASON
+        : getExtractMetadataDisabledReason({
+            selectedCount: selection.selectedCount,
+            document: selectedDocument,
+            isResponding: sendQuery.isPending || isSummarizing || isExtracting || isCategorizing,
+            disabled: browse.sessionExpired,
+          }),
     [
       browse.sessionExpired,
       isCategorizing,
       isExtracting,
+      isSharedChat,
       isSummarizing,
       selectedDocument,
       selection.selectedCount,
@@ -936,17 +967,20 @@ export default function AppLayout() {
 
   const categorizeDisabledReason = useMemo(
     () =>
-      getCategorizeDisabledReason({
-        selectedCount: selection.selectedCount,
-        document: selectedDocument,
-        folder: selectedDocumentFolder,
-        isResponding: sendQuery.isPending || isSummarizing || isExtracting || isCategorizing,
-        disabled: browse.sessionExpired,
-      }),
+      isSharedChat
+        ? SHARED_CHAT_ACTION_DISABLED_REASON
+        : getCategorizeDisabledReason({
+            selectedCount: selection.selectedCount,
+            document: selectedDocument,
+            folder: selectedDocumentFolder,
+            isResponding: sendQuery.isPending || isSummarizing || isExtracting || isCategorizing,
+            disabled: browse.sessionExpired,
+          }),
     [
       browse.sessionExpired,
       isCategorizing,
       isExtracting,
+      isSharedChat,
       isSummarizing,
       selectedDocument,
       selectedDocumentFolder,
@@ -956,6 +990,11 @@ export default function AppLayout() {
   )
 
   const handleSummarize = useCallback(() => {
+    // Hard guard, not just the disabled-reason short-circuit above: never
+    // run this against a shared chat even if some future caller reaches
+    // the handler directly (e.g. a keyboard shortcut bypassing the
+    // button's own disabled state).
+    if (isSharedChat) return
     if (summarizeDisabledReason) {
       message.warning(summarizeDisabledReason)
       return
@@ -1003,9 +1042,10 @@ export default function AppLayout() {
         setIsSummarizing(false)
       }
     })()
-  }, [activeChatId, persistTurn, scrollToBottom, selectedDocument, summarizeDisabledReason])
+  }, [activeChatId, isSharedChat, persistTurn, scrollToBottom, selectedDocument, summarizeDisabledReason])
 
   const handleExtractMetadata = useCallback(() => {
+    if (isSharedChat) return
     if (extractMetadataDisabledReason) {
       message.warning(extractMetadataDisabledReason)
       return
@@ -1109,11 +1149,13 @@ export default function AppLayout() {
     chatStore.recordUserMessage,
     chatStore.recordAssistantMessage,
     extractMetadataDisabledReason,
+    isSharedChat,
     scrollToBottom,
     selectedDocument,
   ])
 
   const handleCategorize = useCallback(() => {
+    if (isSharedChat) return
     if (categorizeDisabledReason) {
       message.warning(categorizeDisabledReason)
       return
@@ -1165,7 +1207,14 @@ export default function AppLayout() {
       categorizingRef.current = false
       setIsCategorizing(false)
     })()
-  }, [activeChatId, categorizeDisabledReason, persistTurn, scrollToBottom, selectedDocument])
+  }, [
+    activeChatId,
+    categorizeDisabledReason,
+    isSharedChat,
+    persistTurn,
+    scrollToBottom,
+    selectedDocument,
+  ])
 
   return (
     <div
@@ -1207,6 +1256,7 @@ export default function AppLayout() {
                 sharedSessions={sharedSessions}
                 projects={chatStore.projects}
                 activeChatId={activeChatId}
+                isSharedChat={isSharedChat}
                 browse={browse}
                 selection={selection}
                 onSelectChat={handleSelectChat}
@@ -1351,6 +1401,7 @@ export default function AppLayout() {
             sharedSessions={sharedSessions}
             projects={chatStore.projects}
             activeChatId={activeChatId}
+            isSharedChat={isSharedChat}
             browse={browse}
             selection={selection}
             onSelectChat={handleSelectChat}

@@ -388,6 +388,10 @@ describe('AppLayout — shared link (?share=token)', () => {
     // left behind so it can't leak into this one's own activation fetch.
     getChatSession.mockReset()
     getChatSession.mockResolvedValue({})
+    // Same reasoning for postChatMessage — a test below controls when its
+    // promise resolves, which must not leak into a later test's default.
+    postChatMessage.mockReset()
+    postChatMessage.mockResolvedValue(undefined)
   })
 
   afterEach(() => {
@@ -771,6 +775,69 @@ describe('AppLayout — shared link (?share=token)', () => {
       expect(count).toBeGreaterThan(beforeCount)
     })
   })
+
+  it('awaits the assistant-message persist before refreshing, so the refresh cannot race the just-finished answer', async () => {
+    const user = userEvent.setup()
+    initialSelectedIds = new Set()
+    window.history.pushState({}, '', '/chat?share=tok-order')
+    getSharedChatSession.mockResolvedValueOnce({
+      id: 'shared-7',
+      title: 'Shared Ordering Chat',
+      project_id: null,
+      visibility: 'query',
+      share_token: null,
+      created_at: '2026-09-01T00:00:00Z',
+      updated_at: '2026-09-01T00:00:00Z',
+      message_count: 0,
+      owner_username: 'alice',
+      is_owner: false,
+      can_query: true,
+      scope_document_ids: ['doc-9'],
+      messages: [],
+    })
+    nextSendQueryResolution = { messageId: 'm1', content: 'The answer.' }
+
+    // The assistant-message POST hangs until `resolvePost` is called
+    // below — proves the refresh GET waits for it rather than firing
+    // concurrently (a race that could clobber the just-persisted answer
+    // with a detail fetched before it landed).
+    let resolvePost: (() => void) | undefined
+    postChatMessage.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolvePost = resolve
+        }),
+    )
+
+    render(<AppLayout />)
+
+    const textarea = await screen.findByPlaceholderText('Ask about the shared files')
+    await waitFor(() =>
+      expect(
+        getChatSession.mock.calls.filter(([id]) => id === 'shared-7').length,
+      ).toBeGreaterThanOrEqual(1),
+    )
+    const beforeCount = getChatSession.mock.calls.filter(([id]) => id === 'shared-7').length
+
+    await user.type(textarea, 'What do these say?')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    expect(await screen.findByText('The answer.')).toBeInTheDocument()
+
+    // Flush pending microtasks — the refresh GET must NOT have fired yet,
+    // because the assistant-message POST above is still unresolved.
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(getChatSession.mock.calls.filter(([id]) => id === 'shared-7').length).toBe(beforeCount)
+
+    resolvePost?.()
+
+    await waitFor(() => {
+      const count = getChatSession.mock.calls.filter(([id]) => id === 'shared-7').length
+      expect(count).toBeGreaterThan(beforeCount)
+    })
+  })
 })
 
 describe('AppLayout — Summarize', () => {
@@ -1119,6 +1186,70 @@ describe('AppLayout — Categorize', () => {
         }),
       )
     })
+  })
+})
+
+describe('AppLayout — Summarize/Categorize/Extract metadata blocked in a shared chat', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    currentSignal = null
+    // A leftover selection from the viewer's OWN chat, still resolvable
+    // (doc-1 is READY/queryable) — the bug this guards against: switching
+    // into a shared chat must not let this selection drive these actions
+    // there too.
+    initialSelectedIds = new Set(['doc-1'])
+    initialDocumentMeta = defaultDocumentMeta()
+    getChatSession.mockReset()
+    getChatSession.mockResolvedValue({})
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+    window.history.pushState({}, '', '/')
+  })
+
+  it('disables Summarize/Categorize/Extract metadata and never posts anything for a shared chat with a leftover own-chat selection', async () => {
+    const user = userEvent.setup()
+    window.history.pushState({}, '', '/chat?share=tok-actions')
+    getSharedChatSession.mockResolvedValueOnce({
+      id: 'shared-6',
+      title: 'Shared Actions Chat',
+      project_id: null,
+      visibility: 'query',
+      share_token: null,
+      created_at: '2026-09-01T00:00:00Z',
+      updated_at: '2026-09-01T00:00:00Z',
+      message_count: 0,
+      owner_username: 'alice',
+      is_owner: false,
+      can_query: true,
+      scope_document_ids: ['doc-9'],
+      messages: [],
+    })
+
+    render(<AppLayout />)
+
+    // Wait for the shared chat to actually become active — the buttons
+    // exist from the very first render (against the default own chat),
+    // so asserting on them before this would race the `?share=` load.
+    await waitFor(() => expect(screen.getByTestId('active-chat-id').textContent).toBe('shared-6'))
+
+    const summarizeBtn = screen.getByRole('button', { name: 'Summarize selected document' })
+    const categorizeBtn = screen.getByRole('button', { name: 'Categorize selected document' })
+    const extractBtn = screen.getByRole('button', { name: 'Extract MQA metadata' })
+
+    await waitFor(() => expect(summarizeBtn).toBeDisabled())
+    expect(categorizeBtn).toBeDisabled()
+    expect(extractBtn).toBeDisabled()
+
+    await user.click(summarizeBtn)
+    await user.click(categorizeBtn)
+    await user.click(extractBtn)
+
+    expect(fetchDocumentSummary).not.toHaveBeenCalled()
+    expect(categorizeDocument).not.toHaveBeenCalled()
+    expect(extractMqaMetadata).not.toHaveBeenCalled()
+    expect(postChatMessage).not.toHaveBeenCalled()
   })
 })
 
