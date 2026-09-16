@@ -17,6 +17,7 @@ import { useBrowseTree } from '../hooks/useBrowseTree'
 import { useDocumentSelection } from '../hooks/useDocumentSelection'
 import { useResizableWidth } from '../hooks/useResizableWidth'
 import { useMediaQuery } from '../hooks/useMediaQuery'
+import { useVisualViewportHeight } from '../hooks/useVisualViewportHeight'
 import { type, typeColor } from '../styles/typography'
 import { citationsToSources, mergeCitations } from '../utils/citations'
 import { appendStreamDelta } from '../utils/appendStreamDelta'
@@ -153,6 +154,13 @@ export default function AppLayout() {
   const { width: sidebarWidth, isResizing, startResize, sidebarRef } = useResizableWidth(280)
   const isNarrowLayout = useMediaQuery(NARROW_LAYOUT_QUERY)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  // Round 6, Item B: `.docu-app-shell`'s CSS `100dvh` (index.css) is the
+  // fallback for every browser; this refines it live for the one case
+  // `dvh` doesn't cover — the on-screen keyboard shrinks the *visual*
+  // viewport without changing `dvh` — so the shell shrinks and the
+  // composer sits directly above the keyboard. `undefined` on desktop and
+  // in any environment without `visualViewport` leaves the CSS rule alone.
+  const visualViewportHeight = useVisualViewportHeight()
   const sendQuery = useSendQuery()
   const selection = useDocumentSelection()
 
@@ -319,6 +327,15 @@ export default function AppLayout() {
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
     messagesEndRef.current?.scrollIntoView({ behavior, block: 'end' })
   }, [])
+
+  // Round 6, Item B: with the keyboard open, Safari shrinks the visual
+  // viewport and can leave the chat pane scrolled to a position that no
+  // longer shows the latest turn above the composer. Scrolls to the
+  // bottom once, on focus, rather than on every keystroke/resize — so it
+  // never fights the user's own scroll afterward.
+  const handleComposerFocus = useCallback(() => {
+    scrollToBottom('auto')
+  }, [scrollToBottom])
 
   useEffect(() => {
     const container = scrollContainerRef.current
@@ -1021,7 +1038,10 @@ export default function AppLayout() {
   }, [activeChatId, categorizeDisabledReason, scrollToBottom, selectedDocument])
 
   return (
-    <div className="h-screen flex flex-col min-h-0">
+    <div
+      className="docu-app-shell flex flex-col min-h-0"
+      style={visualViewportHeight != null ? { height: `${visualViewportHeight}px` } : undefined}
+    >
       {isNarrowLayout && (
         <div
           className="flex items-center gap-2 h-12 px-3 shrink-0 border-b border-[#ececec] bg-[var(--docu-bg-surface)] pt-[env(safe-area-inset-top,0px)]"
@@ -1123,6 +1143,7 @@ export default function AppLayout() {
               onCategorize={handleCategorize}
               onExtractMetadata={handleExtractMetadata}
               onStop={handleStop}
+              onComposerFocus={handleComposerFocus}
               isResponding={sendQuery.isPending}
               disabled={browse.sessionExpired}
               disabledReason={inputBlockedReason}

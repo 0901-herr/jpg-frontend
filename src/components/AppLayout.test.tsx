@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -845,5 +845,89 @@ describe('.docu-mobile-drawer-close CSS contract', () => {
       else if (css[i] === '}') depth--
     }
     expect(depth).toBe(0)
+  })
+})
+
+// Round 6, Item B — root cause (verified in code): the shell was
+// `h-screen` (`height: 100vh`), and on iOS Safari 100vh is the height
+// with the browser chrome collapsed, so the shell was taller than the
+// visible area and the *document itself* scrolled; html/body had no
+// `overflow` rule to stop that. The fix: html/body never scroll, the
+// shell tracks the visible viewport (100dvh, refined live by
+// `useVisualViewportHeight` off `window.visualViewport` for the on-screen
+// keyboard), and `.docu-chat-scroll` stays the only scroll container.
+describe('html/body document-scroll CSS contract (Item B)', () => {
+  it('html and body never scroll — the chat pane is the only scroll container, not the document', () => {
+    const css = readFileSync(path.resolve(__dirname, '../index.css'), 'utf-8')
+    const match = css.match(/html,\s*\nbody\s*\{([^}]*)\}/)
+
+    expect(match).not.toBeNull()
+    const body = match![1]
+    expect(body).toMatch(/height\s*:\s*100%/)
+    expect(body).toMatch(/overflow\s*:\s*hidden/)
+    expect(body).toMatch(/overscroll-behavior\s*:\s*none/)
+  })
+})
+
+describe('.docu-app-shell CSS contract (Item B)', () => {
+  it('sizes to 100vh with a 100dvh fallback, so the shell follows the visible viewport (collapsed browser chrome) rather than the layout viewport', () => {
+    const css = readFileSync(path.resolve(__dirname, '../index.css'), 'utf-8')
+    const match = css.match(/\.docu-app-shell\s*\{([^}]*)\}/)
+
+    expect(match).not.toBeNull()
+    const body = match![1]
+    expect(body).toMatch(/height\s*:\s*100vh/)
+    expect(body).toMatch(/height\s*:\s*100dvh/)
+  })
+})
+
+describe('AppLayout shell (Item B — mobile viewport overlap)', () => {
+  it('the shell root carries the dvh-fallback sizing class instead of a bare h-screen', () => {
+    const { container } = render(<AppLayout />)
+    const shell = container.firstChild as HTMLElement
+
+    expect(shell.className).toMatch(/\bdocu-app-shell\b/)
+    expect(shell.className).not.toMatch(/\bh-screen\b/)
+  })
+
+  it('the top bar and the composer are shrink-0 children of the shell, so they stay visible when the chat pane shrinks', () => {
+    render(<AppLayout />)
+
+    const composerFooter = document.querySelector('.docu-chat-input-footer')
+    expect(composerFooter).not.toBeNull()
+    expect(composerFooter!.className).toMatch(/\bshrink-0\b/)
+  })
+
+  it('the composer clears the home indicator with a safe-area bottom inset', () => {
+    render(<AppLayout />)
+
+    const composerFooter = document.querySelector('.docu-chat-input-footer')
+    expect(composerFooter!.className).toMatch(/pb-\[env\(safe-area-inset-bottom,0px\)\]/)
+  })
+
+  it('scrolls the chat pane to the bottom once when the composer textarea gains focus', async () => {
+    const scrollIntoViewSpy = vi.spyOn(HTMLElement.prototype, 'scrollIntoView')
+
+    const { unmount } = render(<AppLayout />)
+    const textarea = screen.getByRole('textbox')
+
+    scrollIntoViewSpy.mockClear()
+    fireEvent.focus(textarea)
+
+    expect(scrollIntoViewSpy).toHaveBeenCalledTimes(1)
+
+    // rc-textarea's own autoSize measurement (unrelated to this fix)
+    // schedules React's own low-priority follow-up work on focus via
+    // `setImmediate` — flushing that macrotask here, and unmounting
+    // explicitly, keeps it from firing after this file's jsdom
+    // environment has already torn down (an intermittent "window is not
+    // defined" from inside react-dom's scheduler, seen without this).
+    await act(async () => {
+      for (let i = 0; i < 5; i++) {
+        await new Promise((resolve) => setImmediate(resolve))
+      }
+    })
+    unmount()
+    scrollIntoViewSpy.mockRestore()
   })
 })

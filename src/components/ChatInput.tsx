@@ -45,6 +45,11 @@ interface ChatInputProps {
   onCategorize: () => void
   onExtractMetadata: () => void
   onStop: () => void
+  /** Round 6, Item B: fired when the composer textarea gains focus, so
+   * AppLayout can scroll the chat pane to the bottom once — the on-screen
+   * keyboard opening shrinks the visible viewport and can leave the
+   * latest turn scrolled out of view above the composer. */
+  onComposerFocus?: () => void
   isResponding?: boolean
   disabled?: boolean
   disabledReason?: string
@@ -97,6 +102,7 @@ export default function ChatInput({
   onCategorize,
   onExtractMetadata,
   onStop,
+  onComposerFocus,
   isResponding = false,
   disabled = false,
   disabledReason,
@@ -279,7 +285,7 @@ export default function ChatInput({
   )
 
   return (
-    <div className="docu-chat-input-footer bg-[var(--docu-bg-app)]">
+    <div className="docu-chat-input-footer shrink-0 bg-[var(--docu-bg-app)] pb-[env(safe-area-inset-bottom,0px)]">
       {/* max-w-3xl matches the conversation column above (AppLayout.tsx) —
           one consistent column width for the whole page. */}
       <div className="max-w-3xl mx-auto docu-chat-input">
@@ -304,6 +310,7 @@ export default function ChatInput({
               value={value}
               onChange={(e) => setValue(e.target.value)}
               onKeyDown={handleKeyDown}
+              onFocus={onComposerFocus}
               placeholder={
                 selectedCount > 0
                   ? 'Ask a question about the selected documents'
