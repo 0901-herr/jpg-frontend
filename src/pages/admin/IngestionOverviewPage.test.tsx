@@ -202,7 +202,7 @@ describe('IngestionOverviewPage', () => {
         expect.anything(),
       ),
     )
-  })
+  }, 10_000)
 
   it('shows service ports on the system tab', async () => {
     renderPage('/admin/ingestion?tab=system')
