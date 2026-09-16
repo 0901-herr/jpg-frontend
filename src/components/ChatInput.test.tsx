@@ -419,3 +419,38 @@ describe('ChatInput — view-only (shared chat, view-only visibility)', () => {
     ).not.toBeDisabled()
   })
 })
+
+describe('ChatInput — shared queryable chat with no manual file selection', () => {
+  it('enables the composer with a scope-specific placeholder when allowEmptySelection is set', () => {
+    renderChatInput({
+      selectedCount: 0,
+      allowEmptySelection: true,
+      emptySelectionPlaceholder: 'Ask about the shared files',
+    })
+
+    const textarea = screen.getByPlaceholderText('Ask about the shared files')
+    expect(textarea).not.toBeDisabled()
+  })
+
+  it('still shows "Select documents first" and disables the composer when allowEmptySelection is off', () => {
+    renderChatInput({ selectedCount: 0 })
+
+    expect(screen.getByPlaceholderText('Select documents first')).toBeDisabled()
+  })
+
+  it('calls onSend with zero selected documents when allowEmptySelection is set', async () => {
+    const user = userEvent.setup()
+    const onSend = vi.fn()
+    renderChatInput({
+      selectedCount: 0,
+      allowEmptySelection: true,
+      emptySelectionPlaceholder: 'Ask about the shared files',
+      onSend,
+    })
+
+    const textarea = screen.getByPlaceholderText('Ask about the shared files')
+    await user.type(textarea, 'What is in these files?{Enter}')
+
+    expect(onSend).toHaveBeenCalledWith('What is in these files?')
+  })
+})

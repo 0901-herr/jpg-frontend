@@ -983,3 +983,44 @@ describe('author label', () => {
     expect(screen.getByText('ARCHE AI')).toBeInTheDocument()
   })
 })
+
+describe('user bubble file tags (shared-scope queries)', () => {
+  it('renders each file tag under the question', () => {
+    render(
+      <ChatMessageItem
+        message={{
+          id: 'u1',
+          role: 'user',
+          content: 'What is in these?',
+          fileTags: ['a.pdf', 'b.pdf'],
+        }}
+      />,
+    )
+
+    expect(screen.getByText('a.pdf')).toBeInTheDocument()
+    expect(screen.getByText('b.pdf')).toBeInTheDocument()
+  })
+
+  it('renders a fallback count tag when filenames could not be resolved', () => {
+    render(
+      <ChatMessageItem
+        message={{
+          id: 'u1',
+          role: 'user',
+          content: 'What is in these?',
+          fileTags: ['3 shared files'],
+        }}
+      />,
+    )
+
+    expect(screen.getByText('3 shared files')).toBeInTheDocument()
+  })
+
+  it('renders nothing extra when there are no file tags', () => {
+    const { container } = render(
+      <ChatMessageItem message={{ id: 'u1', role: 'user', content: 'Hi' }} />,
+    )
+
+    expect(container.querySelector('[data-testid="user-file-tags"]')).not.toBeInTheDocument()
+  })
+})

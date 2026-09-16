@@ -64,6 +64,13 @@ interface ChatInputProps {
    * the placeholder for `viewOnlyPlaceholder`. */
   viewOnly?: boolean
   viewOnlyPlaceholder?: string
+  /** True for a shared queryable chat with no manual file selection — the
+   * query uses the chat's own scope instead, so the composer behaves as if
+   * files were already selected (enabled, sendable). */
+  allowEmptySelection?: boolean
+  /** Placeholder shown when `allowEmptySelection` is set and nothing is
+   * manually selected. */
+  emptySelectionPlaceholder?: string
 }
 
 // Numbered, single-line-per-entry list (client feedback: "they should be
@@ -119,12 +126,14 @@ export default function ChatInput({
   onQueryTierChange,
   viewOnly = false,
   viewOnlyPlaceholder,
+  allowEmptySelection = false,
+  emptySelectionPlaceholder,
 }: ChatInputProps) {
   const [value, setValue] = useState('')
   const isPhone = useMediaQuery(PHONE_QUERY)
 
-  const canSend =
-    !isResponding && !disabled && !viewOnly && value.trim().length > 0 && selectedCount > 0
+  const hasScope = selectedCount > 0 || allowEmptySelection
+  const canSend = !isResponding && !disabled && !viewOnly && value.trim().length > 0 && hasScope
   const canSummarize = summarizeDisabledReason == null
   const canCategorize = categorizeDisabledReason == null
   const canExtractMetadata = extractMetadataDisabledReason == null
@@ -133,11 +142,12 @@ export default function ChatInput({
     hasMessage: value.trim().length > 0,
     isResponding,
     disabled: disabled || viewOnly,
+    allowEmptySelection,
   })
 
   const handleSend = () => {
     const trimmed = value.trim()
-    if (!trimmed || isResponding || disabled || viewOnly || selectedCount === 0) return
+    if (!trimmed || isResponding || disabled || viewOnly || !hasScope) return
     onSend(trimmed)
     setValue('')
   }
@@ -325,9 +335,11 @@ export default function ChatInput({
                   ? (viewOnlyPlaceholder ?? 'View only')
                   : selectedCount > 0
                     ? 'Ask a question about the selected documents'
-                    : 'Select documents first'
+                    : allowEmptySelection
+                      ? (emptySelectionPlaceholder ?? 'Ask a question')
+                      : 'Select documents first'
               }
-              disabled={disabled || viewOnly || selectedCount === 0}
+              disabled={disabled || viewOnly || !hasScope}
               autoSize={{ minRows: 1, maxRows: 6 }}
               variant="borderless"
               className={`w-full !px-0 !py-0 ${type.body} !shadow-none resize-none !leading-6`}

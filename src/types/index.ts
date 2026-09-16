@@ -117,6 +117,14 @@ export interface ChatSession {
    * counts without requiring every chat's messages to be loaded. Falls
    * back to `messages.length` once messages have been fetched. */
   messageCount?: number
+  /** The document ids this chat is scoped to server-side (its own
+   * `scope_document_ids`, set from the query that started or last updated
+   * it) — only populated once the full session detail has loaded (`GET
+   * /chat/sessions/{id}` or `/chat/shared/{token}`), never from the
+   * lighter list/summary endpoints. Used as the query scope for a shared
+   * queryable chat when the viewer hasn't manually selected any documents
+   * of their own (they may not even be able to browse these). */
+  scopeDocumentIds?: string[]
 }
 
 /** A named group a chat can be filed under (Sidebar's "New project"
