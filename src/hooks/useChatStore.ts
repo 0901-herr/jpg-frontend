@@ -247,24 +247,43 @@ export function useChatStore({
           ownerUsername: s.owner_username,
         }))
 
-        if (ownSessions.length === 0) {
-          const stored = loadChatHistory(chatUserId)
-          if (stored?.sessions.length) {
-            try {
-              ownSessions = await importLocalHistory(stored.sessions)
-              clearChatHistory(chatUserId)
-            } catch {
-              ownSessions = stored.sessions.map((s) => ({
+        // Gated on "localStorage still has history" rather than "the
+        // server has zero sessions": a session can already exist
+        // server-side (a prior import got partway through before failing)
+        // while others are still stranded locally. Re-running the full
+        // import is safe — `createChatSession`/`postChatMessage` upsert by
+        // the client-supplied id, so an already-imported session is a
+        // no-op 200, not a duplicate — and it's the only way a partial
+        // failure ever gets a chance to finish on a later load. Once the
+        // whole batch succeeds, `clearChatHistory` stops this from running
+        // again.
+        const stored = loadChatHistory(chatUserId)
+        if (stored?.sessions.length) {
+          try {
+            const imported = await importLocalHistory(stored.sessions)
+            const importedIds = new Set(imported.map((s) => s.id))
+            ownSessions = [...imported, ...ownSessions.filter((s) => !importedIds.has(s.id))]
+            clearChatHistory(chatUserId)
+          } catch {
+            // Still partially (or entirely) stuck locally — keep showing
+            // whatever's already confirmed server-side, plus whichever
+            // local sessions haven't made it there yet, so nothing
+            // disappears. localStorage is deliberately left alone so the
+            // next load retries.
+            const ownIds = new Set(ownSessions.map((s) => s.id))
+            const localOnly = stored.sessions
+              .filter((s) => !ownIds.has(s.id))
+              .map((s) => ({
                 ...s,
                 isOwner: true,
                 visibility: 'private' as const,
                 projectId: null,
                 canQuery: true,
               }))
-              message.warning(IMPORT_FAILURE_MESSAGE)
-            }
-            for (const s of ownSessions) loadedMessagesRef.current.add(s.id)
+            ownSessions = [...ownSessions, ...localOnly]
+            message.warning(IMPORT_FAILURE_MESSAGE)
           }
+          for (const s of ownSessions) loadedMessagesRef.current.add(s.id)
         }
 
         if (ownSessions.length === 0) {

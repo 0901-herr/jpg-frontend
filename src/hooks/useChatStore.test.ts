@@ -109,6 +109,65 @@ describe('hydration', () => {
     expect(localStorage.getItem(`docu_chat_history_${chatUserId}`)).not.toBeNull()
   })
 
+  it('resumes a partially failed import on the next load (gated on localStorage, not on server session count) and stops once cleared', async () => {
+    // Models the state right after a previous load's import partially
+    // failed: session-1 made it to the server (so listChatSessions no
+    // longer returns zero sessions), but localStorage was never cleared
+    // because the whole import still threw on session-2. The old gate
+    // ("server has zero sessions") would skip retrying here entirely,
+    // stranding session-2 forever.
+    vi.mocked(chatApi.listChatSessions).mockResolvedValue({
+      sessions: [
+        {
+          id: 'local-1',
+          title: 'Old chat 1',
+          project_id: null,
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-01T00:00:00Z',
+          updated_at: '2026-09-01T00:00:00Z',
+          message_count: 1,
+        },
+      ],
+      shared: [],
+    })
+    vi.mocked(chatApi.createChatSession).mockResolvedValue({} as never)
+    vi.mocked(chatApi.postChatMessage).mockResolvedValue(undefined)
+
+    const localSessions: ChatSession[] = [
+      {
+        id: 'local-1',
+        title: 'Old chat 1',
+        messages: [{ id: 'm1', role: 'user', content: 'Hello' }],
+        createdAt: '2026-09-01T00:00:00Z',
+      },
+      {
+        id: 'local-2',
+        title: 'Old chat 2',
+        messages: [{ id: 'm2', role: 'user', content: 'Hi again' }],
+        createdAt: '2026-09-01T00:00:00Z',
+      },
+    ]
+    persistChatHistory(chatUserId, localSessions, localSessions[0].id)
+
+    const { result } = renderHook(() => useChatStore(baseParams()))
+
+    await waitFor(() => expect(result.current.hydrated).toBe(true))
+
+    // Re-POSTs BOTH sessions with their client-supplied local ids — the
+    // already-existing one included, relying on the adapter's upsert
+    // (200 for an existing owned id) rather than skipping it.
+    expect(chatApi.createChatSession).toHaveBeenCalledWith({ id: 'local-1', title: 'Old chat 1' })
+    expect(chatApi.createChatSession).toHaveBeenCalledWith({ id: 'local-2', title: 'Old chat 2' })
+
+    // Both sessions present, no duplicates.
+    expect(result.current.sessions.map((s) => s.id).sort()).toEqual(['local-1', 'local-2'])
+
+    // The import finished this time — localStorage is cleared, so a third
+    // load would not retry again.
+    expect(localStorage.getItem(`docu_chat_history_${chatUserId}`)).toBeNull()
+  })
+
   it('falls back to a fresh empty session when there is nothing to hydrate', async () => {
     vi.mocked(chatApi.listChatSessions).mockResolvedValue({ sessions: [], shared: [] })
 
