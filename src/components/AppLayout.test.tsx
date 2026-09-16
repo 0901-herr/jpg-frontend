@@ -1530,7 +1530,7 @@ describe('AppLayout — responsive layout', () => {
     // synchronous render in the file, which is exactly what would surface
     // an un-awaited update as a stray "not wrapped in act" warning.
     expect(await screen.findByLabelText('Open menu')).toBeInTheDocument()
-    expect(screen.getByText('ARCHE AI')).toBeInTheDocument()
+    expect(screen.getByText('Arche AI')).toBeInTheDocument()
     expect(screen.queryByRole('separator', { name: 'Resize sidebar' })).not.toBeInTheDocument()
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
@@ -1575,7 +1575,7 @@ describe('AppLayout — responsive layout', () => {
 
     expect(await screen.findByRole('separator', { name: 'Resize sidebar' })).toBeInTheDocument()
     expect(screen.queryByLabelText('Open menu')).not.toBeInTheDocument()
-    expect(screen.queryByText('ARCHE AI')).not.toBeInTheDocument()
+    expect(screen.queryByText('Arche AI')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'New chat' })).toBeInTheDocument()
   })
 })

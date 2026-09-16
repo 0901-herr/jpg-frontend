@@ -128,7 +128,7 @@ function getShareTokenFromLocation(): string | null {
 }
 
 // Below 768px the resizable desktop sidebar is replaced by a slim top bar
-// (hamburger + "ARCHE AI" + current session title) and the sidebar itself
+// (hamburger + "Arche AI" + current session title) and the sidebar itself
 // moves into an antd Drawer opened from that hamburger — see the Task 5
 // brief. 767.98px (not 768) so a device reporting exactly 768px CSS pixels
 // lands on the desktop side of the breakpoint, matching a `max-width: 767px`
@@ -1236,7 +1236,7 @@ export default function AppLayout() {
           >
             <ChatMenuIcon />
           </button>
-          <span className={`shrink-0 font-semibold ${typeColor.primary}`}>ARCHE AI</span>
+          <span className={`shrink-0 font-semibold ${typeColor.primary}`}>Arche AI</span>
           <span className={`truncate min-w-0 flex-1 ${type.caption} ${typeColor.muted}`}>
             {activeSession?.title}
           </span>
@@ -1386,7 +1386,7 @@ export default function AppLayout() {
           closeIcon={<ChatCloseIcon />}
           classNames={{ close: 'docu-mobile-drawer-close' }}
           // Fix round 1: the close button used to be the header's only
-          // content — an empty ~56px strip above Sidebar's own "ARCHE AI"
+          // content — an empty ~56px strip above Sidebar's own "Arche AI"
           // row. `title` puts the wordmark in antd's own header slot
           // (which already lays out title + close button as one flex
           // row), so they share a row instead; Sidebar itself skips its
@@ -1395,7 +1395,7 @@ export default function AppLayout() {
           // matches the sidebar body's own inset (`spacing.panelLg`,
           // 0.625rem) for a continuous left/right edge between the header
           // row and the "New chat" row directly under it.
-          title={<span className={`text-lg font-semibold ${typeColor.primary}`}>ARCHE AI</span>}
+          title={<span className={`text-lg font-semibold ${typeColor.primary}`}>Arche AI</span>}
           styles={{ header: { padding: '0.625rem' }, body: { padding: 0 } }}
         >
           <Sidebar

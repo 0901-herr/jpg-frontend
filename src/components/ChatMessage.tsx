@@ -298,7 +298,7 @@ function AssistantLabel() {
   return (
     <div className="flex items-center gap-1.5 mb-2" aria-hidden="true">
       <ChatBubbleIcon sx={{ fontSize: 16 }} className={typeColor.muted} />
-      <span className={`${type.caption} font-medium ${typeColor.muted}`}>ARCHE AI</span>
+      <span className={`${type.caption} font-medium ${typeColor.muted}`}>Arche AI</span>
     </div>
   )
 }

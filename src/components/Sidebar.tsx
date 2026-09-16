@@ -328,13 +328,13 @@ export default function Sidebar({
             full-width secondary button — mainstream placement (client
             feedback: UI polish pass), rather than pinned at the very
             bottom below the chat list. Skipped when `inDrawer`: the
-            Drawer (AppLayout.tsx) renders "ARCHE AI" itself, in its own
+            Drawer (AppLayout.tsx) renders "Arche AI" itself, in its own
             header, on the same row as the close button (fix round 1) —
             rendering it again here would duplicate it right below that
             header instead of sharing its row. */}
         {!inDrawer && (
           <div className="shrink-0 mb-3 text-left">
-            <span className={`text-lg font-semibold ${typeColor.primary}`}>ARCHE AI</span>
+            <span className={`text-lg font-semibold ${typeColor.primary}`}>Arche AI</span>
           </div>
         )}
 

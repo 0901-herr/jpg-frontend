@@ -147,7 +147,7 @@ export interface FolderLoadError {
 
 export const FOLDER_LOAD_PERMISSION_ERROR: FolderLoadError = {
   title: 'You do not have access',
-  body: 'Your LogicalDOC session does not allow browsing these folders. Reopen ARCHE AI from LogicalDOC.',
+  body: 'Your LogicalDOC session does not allow browsing these folders. Reopen Arche AI from LogicalDOC.',
 }
 
 export const FOLDER_LOAD_SERVER_ERROR: FolderLoadError = {

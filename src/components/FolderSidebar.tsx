@@ -505,7 +505,7 @@ export default function FolderSidebar({ browse, selection, disabled = false }: F
         type="error"
         showIcon
         message="Session expired"
-        description="Reopen ARCHE AI from LogicalDOC to continue."
+        description="Reopen Arche AI from LogicalDOC to continue."
         className="!text-xs !m-0"
       />
     )
