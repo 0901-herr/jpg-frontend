@@ -1676,6 +1676,92 @@ describe('.docu-app-shell CSS contract (Item B)', () => {
   })
 })
 
+describe('AppLayout — message pane skeleton while a chat is loading messages', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    currentSignal = null
+    initialSelectedIds = new Set(['doc-1'])
+    initialDocumentMeta = defaultDocumentMeta()
+    listChatSessions.mockReset()
+    getChatSession.mockReset()
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+    listChatSessions.mockResolvedValue({ sessions: [], shared: [] })
+    getChatSession.mockResolvedValue({})
+  })
+
+  it('shows a skeleton in the message pane and disables the composer while the active (not-yet-loaded) chat is fetching messages, then reveals the composer once it resolves', async () => {
+    // A real, previously-created own chat coming back from the server —
+    // unlike the auto-created empty first chat, this one is NOT pre-marked
+    // as already loaded, so mounting triggers `ensureMessagesLoaded`'s
+    // fetch and `messagesLoading` picks up its id for the duration.
+    listChatSessions.mockResolvedValueOnce({
+      sessions: [
+        {
+          id: 's1',
+          title: 'Old chat',
+          project_id: null,
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-01T00:00:00Z',
+          updated_at: '2026-09-01T00:00:00Z',
+          message_count: 1,
+        },
+      ],
+      shared: [],
+    })
+    let resolveDetail: ((value: unknown) => void) | undefined
+    getChatSession.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveDetail = resolve
+        }),
+    )
+
+    render(<AppLayout />)
+
+    await waitFor(() => expect(screen.getByTestId('active-chat-id').textContent).toBe('s1'))
+
+    // `activeChatId` and `messagesLoading` are set by two separate state
+    // updates (the latter one effect-render later, inside
+    // `ensureMessagesLoaded`) — re-query rather than assert synchronously
+    // right after the activeChatId waitFor above settles, or this can race
+    // a still-in-flight second render.
+    await waitFor(() => {
+      expect(screen.getByTestId('messages-skeleton')).toBeInTheDocument()
+    })
+    expect(
+      screen.getByPlaceholderText('Ask a question about the selected documents'),
+    ).toBeDisabled()
+
+    await act(async () => {
+      resolveDetail?.({
+        id: 's1',
+        title: 'Old chat',
+        messages: [],
+        created_at: '2026-09-01T00:00:00Z',
+        project_id: null,
+        visibility: 'private',
+        share_token: null,
+        is_owner: true,
+        can_query: true,
+        scope_document_ids: [],
+      })
+    })
+
+    // Re-queries on every retry rather than asserting a single node
+    // reference (see Task 7's flaky-node note for this same transition).
+    await waitFor(() => {
+      expect(screen.queryByTestId('messages-skeleton')).not.toBeInTheDocument()
+    })
+    expect(
+      screen.getByPlaceholderText('Ask a question about the selected documents'),
+    ).not.toBeDisabled()
+  })
+})
+
 describe('AppLayout shell (Item B — mobile viewport overlap)', () => {
   it('the shell root carries the dvh-fallback sizing class instead of a bare h-screen', () => {
     const { container } = render(<AppLayout />)

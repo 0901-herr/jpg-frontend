@@ -1,4 +1,4 @@
-import { Drawer, Layout, message } from 'antd'
+import { Drawer, Layout, Skeleton, message } from 'antd'
 import { ChatBubbleIconLg, ChatCloseIcon, ChatMenuIcon } from '../icons/chat'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -153,8 +153,15 @@ export default function AppLayout() {
     initialSession: initialSessionRef.current,
     hasPendingShare: shareToken != null,
   })
-  const { sessions, setSessions, activeChatId, setActiveChatId, sharedSessions, setSharedSessions } =
-    chatStore
+  const {
+    sessions,
+    setSessions,
+    activeChatId,
+    setActiveChatId,
+    sharedSessions,
+    setSharedSessions,
+    messagesLoading,
+  } = chatStore
   const chatHydrated = chatStore.hydrated
   // Read (never written to trigger a render) wherever a callback needs the
   // latest `sessions` synchronously right after calling `setSessions` —
@@ -344,6 +351,13 @@ export default function AppLayout() {
       sessions[0],
     [sessions, sharedSessions, activeChatId],
   )
+
+  // True while `useChatStore`'s `ensureMessagesLoaded` is fetching the
+  // active chat's own history (first-open of an existing chat, or a
+  // shared chat re-syncing) — drives the message-pane skeleton below and
+  // ORs into ChatInput's `disabled`, alongside the pre-existing
+  // `sessionExpired` reason, rather than replacing it.
+  const isActiveChatMessagesLoading = Boolean(activeChatId && messagesLoading.has(activeChatId))
 
   // A shared chat the viewer doesn't own: the owner's chosen visibility
   // decides whether the composer accepts new questions.
@@ -1288,7 +1302,15 @@ export default function AppLayout() {
                   messagePairs.length === 0 ? 'justify-center' : ''
                 }`}
               >
-                {messagePairs.length === 0 ? (
+                {isActiveChatMessagesLoading ? (
+                  <div
+                    data-testid="messages-skeleton"
+                    className="flex flex-col gap-4 px-6 py-4"
+                  >
+                    <Skeleton active paragraph={{ rows: 2 }} />
+                    <Skeleton active paragraph={{ rows: 3 }} />
+                  </div>
+                ) : messagePairs.length === 0 ? (
                   <div className="flex flex-col items-center justify-center text-center px-4 py-8">
                     <div className="w-12 h-12 rounded-xl bg-[var(--docu-bg-muted)] flex items-center justify-center mb-4 text-[var(--docu-text-muted)]">
                       <ChatBubbleIconLg />
@@ -1337,7 +1359,7 @@ export default function AppLayout() {
               onStop={handleStop}
               onComposerFocus={handleComposerFocus}
               isResponding={sendQuery.isPending}
-              disabled={browse.sessionExpired}
+              disabled={browse.sessionExpired || isActiveChatMessagesLoading}
               disabledReason={inputBlockedReason}
               summarizeDisabledReason={summarizeDisabledReason}
               categorizeDisabledReason={categorizeDisabledReason}

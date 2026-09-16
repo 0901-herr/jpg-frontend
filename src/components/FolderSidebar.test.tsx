@@ -77,6 +77,7 @@ function createBrowseFixture(overrides: Partial<BrowseTreeState> = {}): BrowseTr
       has_more_documents: false,
     },
     isInitializing: false,
+    initialLoading: false,
     initError: null,
     sessionExpired: false,
     isActiveFolderLoading: false,
@@ -535,6 +536,41 @@ describe('FolderSidebar file row status icon', () => {
     // The filename keeps its own native title attribute — a separate
     // element/mechanism from the antd Tooltip asserted above.
     expect(screen.getByText('contract.pdf')).toHaveAttribute('title', 'contract.pdf')
+  })
+})
+
+describe('FolderSidebar initial loading', () => {
+  beforeEach(() => {
+    vi.mocked(useBrowseCategoriesModule.useBrowseCategories).mockReturnValue({
+      serverCategories: null,
+      categoriesLoading: false,
+    })
+  })
+
+  it('shows a skeleton instead of the file tree while initialLoading is true, and disables the refresh button', () => {
+    render(
+      <FolderSidebar
+        browse={createBrowseFixture({ isInitializing: true, initialLoading: true })}
+        selection={createSelectionFixture()}
+      />,
+    )
+
+    expect(screen.getByTestId('files-skeleton')).toBeInTheDocument()
+    expect(screen.queryByRole('tree')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Refresh document status' })).toBeDisabled()
+  })
+
+  it('renders the file tree (no skeleton) once initialLoading turns false', async () => {
+    render(
+      <FolderSidebar
+        browse={createBrowseFixture({ isInitializing: false, initialLoading: false })}
+        selection={createSelectionFixture()}
+      />,
+    )
+
+    expect(screen.queryByTestId('files-skeleton')).not.toBeInTheDocument()
+    expect(await screen.findByText('contract.pdf')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Refresh document status' })).not.toBeDisabled()
   })
 })
 
