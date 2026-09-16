@@ -1,20 +1,29 @@
-// Known category keys as of the current deployment's seeded taxonomy — kept
-// in sync manually via `manage_categories.py`, not fetched at runtime. An
-// unrecognized key (a category added later, or 'unknown') still renders,
-// just without a curated label/color.
-export const CATEGORY_LABELS: Record<string, string> = {
-  daily_field_report: 'Daily Field Report',
-  harvesting_record: 'Harvesting Record',
-  planting_replanting_record: 'Planting & Replanting Record',
-  yield_analysis_report: 'Yield Analysis Report',
+// Optional per-deployment category label/color overrides, supplied at
+// build time via VITE_CATEGORY_LABELS / VITE_CATEGORY_COLORS (each a
+// JSON object string, e.g. '{"harvesting_record": "Harvesting Record"}').
+// Categories with no override still render — via titleCase()/hash-based
+// color below — so an unconfigured deployment (or an unrecognized key
+// within a configured one) degrades gracefully rather than failing.
+function parseJsonRecordEnv(raw: string | undefined): Record<string, string> {
+  if (!raw) return {}
+  try {
+    const parsed = JSON.parse(raw)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, string>
+    }
+    return {}
+  } catch {
+    return {}
+  }
 }
 
-export const CATEGORY_COLORS: Record<string, string> = {
-  daily_field_report: 'blue',
-  harvesting_record: 'green',
-  planting_replanting_record: 'gold',
-  yield_analysis_report: 'purple',
-}
+export const CATEGORY_LABELS: Record<string, string> = parseJsonRecordEnv(
+  import.meta.env.VITE_CATEGORY_LABELS as string | undefined,
+)
+
+export const CATEGORY_COLORS: Record<string, string> = parseJsonRecordEnv(
+  import.meta.env.VITE_CATEGORY_COLORS as string | undefined,
+)
 
 const FALLBACK_COLORS = ['cyan', 'geekblue', 'magenta', 'volcano', 'lime'] as const
 
