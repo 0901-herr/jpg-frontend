@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
 import { afterEach, beforeEach, vi } from 'vitest'
@@ -215,6 +215,24 @@ describe('FolderSidebar manual status refresh', () => {
     await user.hover(screen.getByRole('button', { name: 'Refresh document status' }))
 
     expect(await screen.findByRole('tooltip')).toHaveTextContent('Refresh document status')
+  })
+
+  it('keeps the refresh button visible by truncating the section label instead of letting it overflow', () => {
+    // 240px matches the documented minimum sidebar width
+    // (src/hooks/useResizableWidth.ts) — jsdom doesn't compute real layout,
+    // so this is a DOM-structure assertion that the label can shrink/ellipsis
+    // and the button never does.
+    const { container } = render(
+      <div style={{ width: 240 }}>
+        <FolderSidebar browse={createBrowseFixture()} selection={createSelectionFixture()} />
+      </div>,
+    )
+
+    const label = within(container).getByText('Files', { selector: 'span' })
+    expect(label.className).toMatch(/truncate/)
+
+    const refreshButton = screen.getByRole('button', { name: 'Refresh document status' })
+    expect(refreshButton.className).toMatch(/shrink-0/)
   })
 })
 

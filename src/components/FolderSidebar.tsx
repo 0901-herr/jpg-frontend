@@ -573,11 +573,11 @@ export default function FolderSidebar({ browse, selection, disabled = false }: F
 
       <div className="flex flex-col min-h-0 flex-1 gap-1.5 pt-1">
         <div className="flex items-center justify-between shrink-0 gap-2">
-          <span className={`${sectionLabel} !mb-0`}>
+          <span className={`${sectionLabel} !mb-0 min-w-0 flex-1`}>
             {viewMode === 'folder' ? <ChatFolderIcon /> : <ChatDescriptionIcon />}
             {viewMode === 'folder' ? 'Files' : 'Documents'}
           </span>
-          <div className="flex min-w-0 items-center gap-1.5">
+          <div className="flex min-w-0 items-center gap-1.5 shrink-0">
             {isTreeBusy && <Spin size="small" />}
             {viewMode === 'folder' && (
               <Tooltip title="Refresh document status" mouseEnterDelay={0.3}>
