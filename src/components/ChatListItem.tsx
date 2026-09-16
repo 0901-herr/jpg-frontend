@@ -1,4 +1,4 @@
-import { Dropdown, Input, Modal } from 'antd'
+import { Dropdown, Input, Modal, Spin } from 'antd'
 import { ChatDeleteIcon, ChatEditIcon, ChatMoreIcon, ChatMoveIcon, ChatShareIcon } from '../icons/chat'
 import type { InputRef, MenuProps } from 'antd'
 import type { MouseEvent } from 'react'
@@ -18,16 +18,25 @@ const NO_PROJECT_KEY = '__no_project__'
 function ChatOptionsButton({
   menuOpen,
   onClick,
+  disabled = false,
 }: {
   menuOpen: boolean
   onClick: (e: MouseEvent) => void
+  /** True while this row's own rename or move is in flight (Task 11
+   * follow-up) — blocks opening the menu again (and so starting a second
+   * overlapping rename/delete/move/share) until it settles. Delete itself
+   * needs no such guard here: its confirm modal already closes instantly
+   * and the row is gone from the list the moment the optimistic removal
+   * lands, so there's nothing left on this row to disable by then. */
+  disabled?: boolean
 }) {
   return (
     <button
       type="button"
       aria-label="Chat options"
       onClick={onClick}
-      className={`shrink-0 px-2 py-1.5 rounded-lg ${typeColor.muted} hover:text-[#404040] ${surface.hover} transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0084ff]/35 ${
+      disabled={disabled}
+      className={`shrink-0 px-2 py-1.5 rounded-lg ${typeColor.muted} hover:text-[#404040] ${surface.hover} transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0084ff]/35 disabled:opacity-50 disabled:cursor-not-allowed ${
         menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
       }`}
     >
@@ -40,7 +49,11 @@ interface ChatListItemProps {
   chat: ChatSession
   isActive: boolean
   onSelect: () => void
-  onRename: (chatId: string, title: string) => void
+  /** Task 11 follow-up: `useChatStore.renameChat` stayed optimistic but
+   * now returns the PATCH's own promise instead of firing it
+   * fire-and-forget — this row awaits it locally to show a pending
+   * spinner next to the (already-updated) title while it settles. */
+  onRename: (chatId: string, title: string) => Promise<void>
   onDelete: (chatId: string) => void
   /** Omitted for a read-only row (the Shared group) — the whole options
    * menu is hidden and `subtitle` is shown instead of the question
@@ -60,6 +73,14 @@ interface ChatListItemProps {
    * ever used on a `readOnly` row. Omitted entirely (rather than passed
    * as `undefined`) hides that row's menu, same as before this existed. */
   onRemove?: (chatId: string) => void
+  /** True while `Sidebar`'s own `moveChat` call for this exact chat id is
+   * in flight (Task 11 follow-up) — driven from the parent, not local
+   * state, because a move relocates this row to a different project's
+   * list (a different subtree entirely), which unmounts and remounts a
+   * fresh `ChatListItem` instance losing any of its own local state. A
+   * parent-owned flag survives that remount and keeps showing correctly
+   * at the row's new location. */
+  moving?: boolean
 }
 
 export default function ChatListItem({
@@ -74,11 +95,13 @@ export default function ChatListItem({
   subtitle,
   readOnly = false,
   onRemove,
+  moving = false,
 }: ChatListItemProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [draftTitle, setDraftTitle] = useState(chat.title)
+  const [renaming, setRenaming] = useState(false)
   const inputRef = useRef<InputRef>(null)
 
   useEffect(() => {
@@ -96,7 +119,18 @@ export default function ChatListItem({
     const trimmed = draftTitle.trim()
     setIsEditing(false)
     if (trimmed && trimmed !== chat.title) {
-      onRename(chat.id, trimmed)
+      // The rename input closes immediately either way (unchanged) — the
+      // title itself already shows the new value (optimistic update in
+      // `useChatStore.renameChat`) by the time this row next renders.
+      // `renaming` only drives the spinner below, alongside the title,
+      // for the still-invisible network round-trip.
+      setRenaming(true)
+      // `Promise.resolve(...)` (not a bare `.finally()`) so a test double
+      // or future caller that doesn't actually return a promise — the
+      // prop is typed to — doesn't throw here instead of merely skipping
+      // the spinner; same defensive idiom `Sidebar.tsx` already uses for
+      // `createProject`/`deleteProject`.
+      void Promise.resolve(onRename(chat.id, trimmed)).finally(() => setRenaming(false))
     } else {
       setDraftTitle(chat.title)
     }
@@ -224,16 +258,20 @@ export default function ChatListItem({
           onClick={onSelect}
           className="flex-1 min-w-0 flex flex-col gap-0.5 text-left px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0084ff]/35 rounded-[10px]"
         >
-          {isShared ? (
+          {isShared || renaming || moving ? (
             <span className="flex items-center gap-1 min-w-0">
               {titleSpan}
-              <span
-                role="img"
-                aria-label="Shared chat"
-                className="shrink-0 inline-flex items-center leading-none text-[#8e8e8e]"
-              >
-                <ChatShareIcon />
-              </span>
+              {isShared && (
+                <span
+                  role="img"
+                  aria-label="Shared chat"
+                  className="shrink-0 inline-flex items-center leading-none text-[#8e8e8e]"
+                >
+                  <ChatShareIcon />
+                </span>
+              )}
+              {renaming && <Spin size="small" data-testid="rename-spinner" />}
+              {moving && <Spin size="small" data-testid="move-chat-spinner" />}
             </span>
           ) : (
             titleSpan
@@ -255,7 +293,11 @@ export default function ChatListItem({
           open={menuOpen}
           onOpenChange={setMenuOpen}
         >
-          <ChatOptionsButton menuOpen={menuOpen} onClick={(e) => e.stopPropagation()} />
+          <ChatOptionsButton
+            menuOpen={menuOpen}
+            onClick={(e) => e.stopPropagation()}
+            disabled={renaming || moving}
+          />
         </Dropdown>
       )}
 

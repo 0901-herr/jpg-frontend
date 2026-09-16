@@ -344,6 +344,90 @@ describe('Sidebar — project grouping', () => {
       expect(screen.queryByTestId('delete-project-spinner')).not.toBeInTheDocument(),
     )
   })
+
+  it('shows a "Deleting chat" spinner near the Chats header while a chat delete is in flight', async () => {
+    const user = userEvent.setup()
+    let resolveDelete: () => void
+    const onDeleteChat = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveDelete = () => resolve()
+        }),
+    )
+    renderSidebar({ onDeleteChat })
+
+    const optionButtons = screen.getAllByRole('button', { name: 'Chat options' })
+    await user.click(optionButtons[0]) // Chat A
+    await user.click(screen.getByText('Delete'))
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
+
+    expect(onDeleteChat).toHaveBeenCalledWith('c1')
+    // Same reasoning as the project-delete spinner above: `deleteChat`
+    // optimistically removes the chat's own row synchronously, so a
+    // row-local spinner would never be seen — this indicator lives at
+    // the Sidebar level instead.
+    expect(screen.getByTestId('delete-chat-spinner')).toBeInTheDocument()
+    expect(screen.getByText('Deleting chat')).toBeInTheDocument()
+
+    resolveDelete!()
+    await waitFor(() =>
+      expect(screen.queryByTestId('delete-chat-spinner')).not.toBeInTheDocument(),
+    )
+  })
+
+  it('shows a spinner on the row and disables its options button while a move is in flight', async () => {
+    const user = userEvent.setup()
+    let resolveMove: () => void
+    const onMoveChat = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveMove = () => resolve()
+        }),
+    )
+    renderSidebar({ onMoveChat })
+
+    const optionButtons = screen.getAllByRole('button', { name: 'Chat options' })
+    await user.click(optionButtons[1]) // Chat B, the ungrouped one
+    await user.hover(screen.getByText('Move to'))
+    await user.click(await screen.findByRole('menuitem', { name: 'Research' }))
+
+    expect(onMoveChat).toHaveBeenCalledWith('c2', 'p1')
+    // Unlike delete, `moveChat` keeps the chat in `sessions` (just under a
+    // different `projectId`) — the row relocates rather than vanishing,
+    // so this is a genuine per-row spinner (driven by Sidebar's own
+    // `movingChatIds`, not the row's local state, which a relocation
+    // would reset — see ChatListItem's `moving` prop doc).
+    expect(screen.getByTestId('move-chat-spinner')).toBeInTheDocument()
+
+    resolveMove!()
+    await waitFor(() => expect(screen.queryByTestId('move-chat-spinner')).not.toBeInTheDocument())
+  })
+
+  it('shows a spinner next to the project name and disables Project options while a rename is in flight', async () => {
+    const user = userEvent.setup()
+    let resolveRename: () => void
+    const onRenameProject = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveRename = () => resolve()
+        }),
+    )
+    renderSidebar({ onRenameProject })
+
+    await user.click(screen.getByRole('button', { name: 'Project options' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Rename' }))
+    await user.type(screen.getByDisplayValue('Research'), ' updated{Enter}')
+
+    expect(onRenameProject).toHaveBeenCalledWith('p1', 'Research updated')
+    expect(screen.getByTestId('rename-project-spinner')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Project options' })).toBeDisabled()
+
+    resolveRename!()
+    await waitFor(() =>
+      expect(screen.queryByTestId('rename-project-spinner')).not.toBeInTheDocument(),
+    )
+    expect(screen.getByRole('button', { name: 'Project options' })).not.toBeDisabled()
+  })
 })
 
 describe('Sidebar — share modal', () => {

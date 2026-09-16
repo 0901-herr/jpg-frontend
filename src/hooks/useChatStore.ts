@@ -190,9 +190,21 @@ export interface UseChatStoreResult {
   setActiveChatId: (id: string) => void
   hydrated: boolean
   createChat: () => void
-  renameChat: (chatId: string, title: string) => void
-  deleteChat: (chatId: string) => void
-  moveChat: (chatId: string, projectId: string | null) => void
+  /** Stays optimistic (the title updates locally before the PATCH below
+   * settles), but — unlike before Task 11 — now returns the PATCH's own
+   * promise instead of firing it with `void ... .catch()` and discarding
+   * it, so a caller (`ChatListItem`) that wants to show a pending
+   * indicator while it's still in flight can await it. */
+  renameChat: (chatId: string, title: string) => Promise<void>
+  /** Same optimistic-but-now-awaitable change as `renameChat`, for the
+   * same reason (`Sidebar` tracks the in-flight delete to show a pending
+   * indicator, since the chat's own row is gone from `sessions` the
+   * instant this is called). */
+  deleteChat: (chatId: string) => Promise<void>
+  /** Same optimistic-but-now-awaitable change as `renameChat`/`deleteChat`
+   * — the rollback-on-failure behavior below is completely unchanged,
+   * this only exposes the settle point to an awaiting caller. */
+  moveChat: (chatId: string, projectId: string | null) => Promise<void>
   shareChat: (chatId: string, visibility: ChatVisibility) => Promise<void>
   createProject: (name: string) => Promise<void>
   renameProject: (id: string, name: string) => Promise<void>
@@ -537,18 +549,20 @@ export function useChatStore({
   }, [enabled])
 
   const renameChat = useCallback(
-    (chatId: string, title: string) => {
+    async (chatId: string, title: string) => {
       setSessions((prev) => prev.map((s) => (s.id === chatId ? { ...s, title } : s)))
       if (!enabled) return
-      void patchChatSession(chatId, { title }).catch(() => {
+      try {
+        await patchChatSession(chatId, { title })
+      } catch {
         message.error('Could not save the new chat name.')
-      })
+      }
     },
     [enabled],
   )
 
   const deleteChat = useCallback(
-    (chatId: string) => {
+    async (chatId: string) => {
       setSessions((prev) => {
         const next = prev.filter((s) => s.id !== chatId)
         if (next.length === 0) {
@@ -563,15 +577,17 @@ export function useChatStore({
         return next
       })
       if (!enabled) return
-      void deleteChatSession(chatId).catch(() => {
+      try {
+        await deleteChatSession(chatId)
+      } catch {
         message.error('Could not delete this chat.')
-      })
+      }
     },
     [enabled],
   )
 
   const moveChat = useCallback(
-    (chatId: string, projectId: string | null) => {
+    async (chatId: string, projectId: string | null) => {
       // Read the pre-update value off the ref (same idiom `createChat`,
       // `deleteChat` and `removeSharedChat` already use for "current state
       // outside a setState updater") so it's available to roll back to if
@@ -579,7 +595,9 @@ export function useChatStore({
       const previousProjectId = sessionsRef.current.find((s) => s.id === chatId)?.projectId ?? null
       setSessions((prev) => prev.map((s) => (s.id === chatId ? { ...s, projectId } : s)))
       if (!enabled) return
-      void patchChatSession(chatId, { project_id: projectId }).catch(() => {
+      try {
+        await patchChatSession(chatId, { project_id: projectId })
+      } catch {
         // The PATCH silently failing while the optimistic update stands is
         // exactly what made a failed move look like it "needed a re-login
         // to take effect" — only a later re-hydration would revert it.
@@ -588,7 +606,7 @@ export function useChatStore({
           prev.map((s) => (s.id === chatId ? { ...s, projectId: previousProjectId } : s)),
         )
         message.error('Could not move this chat. It has been moved back.')
-      })
+      }
     },
     [enabled],
   )

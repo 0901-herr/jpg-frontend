@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
 import { vi } from 'vitest'
@@ -193,5 +193,58 @@ describe('ChatListItem', () => {
     )
 
     expect(screen.queryByLabelText(/shared/i)).not.toBeInTheDocument()
+  })
+
+  it('shows a spinner next to the title and disables the options button while a rename request is in flight', async () => {
+    const user = userEvent.setup()
+    let resolveRename: () => void
+    const onRename = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveRename = () => resolve()
+        }),
+    )
+    render(
+      <ChatListItem
+        chat={session()}
+        isActive={false}
+        onSelect={vi.fn()}
+        onRename={onRename}
+        onDelete={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Chat options' }))
+    await user.click(screen.getByText('Rename'))
+    await user.type(screen.getByDisplayValue('Session 15 Sep 2026 (1)'), ' updated{Enter}')
+
+    expect(onRename).toHaveBeenCalledWith('s1', 'Session 15 Sep 2026 (1) updated')
+    expect(screen.getByTestId('rename-spinner')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Chat options' })).toBeDisabled()
+
+    resolveRename!()
+    await waitFor(() => expect(screen.queryByTestId('rename-spinner')).not.toBeInTheDocument())
+    expect(screen.getByRole('button', { name: 'Chat options' })).not.toBeDisabled()
+  })
+
+  it('shows a spinner next to the title and disables the options button while `moving` is true', () => {
+    // `moving` is driven by `Sidebar` (see ChatListItemProps' doc for why:
+    // a move relocates this row to a different project's list, which
+    // unmounts/remounts the component and would lose any local state) —
+    // this row-level unit test only needs to assert the prop is honoured,
+    // not the actual move round-trip (covered in Sidebar.test.tsx).
+    render(
+      <ChatListItem
+        chat={session()}
+        isActive={false}
+        onSelect={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+        moving
+      />,
+    )
+
+    expect(screen.getByTestId('move-chat-spinner')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Chat options' })).toBeDisabled()
   })
 })

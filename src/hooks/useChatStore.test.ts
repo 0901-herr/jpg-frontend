@@ -424,7 +424,17 @@ describe('chat CRUD', () => {
     const result = await hydrated()
     vi.mocked(chatApi.patchChatSession).mockResolvedValue({} as never)
 
-    act(() => result.current.moveChat('s1', 'proj-1'))
+    // Not `act(() => result.current.moveChat(...))` — `moveChat` now
+    // returns a promise (Task 11 follow-up), and an implicit-return arrow
+    // would hand that promise back to `act` itself, which then switches
+    // to its async overload and defers flushing the optimistic update
+    // past this assertion instead of synchronously before it. `void`
+    // inside a block body keeps `act`'s callback synchronous (`void`),
+    // matching the "assert the optimistic update, before the PATCH
+    // settles" intent this test actually has.
+    act(() => {
+      void result.current.moveChat('s1', 'proj-1')
+    })
 
     expect(result.current.sessions[0].projectId).toBe('proj-1')
     expect(chatApi.patchChatSession).toHaveBeenCalledWith('s1', { project_id: 'proj-1' })
@@ -498,7 +508,11 @@ describe('chat CRUD', () => {
     const result = await hydrated()
     vi.mocked(chatApi.patchChatSession).mockRejectedValueOnce(new Error('network error'))
 
-    act(() => result.current.moveChat('s1', 'proj-1'))
+    // See the sibling "moves a chat between projects" test above for why
+    // this is a block body, not `act(() => result.current.moveChat(...))`.
+    act(() => {
+      void result.current.moveChat('s1', 'proj-1')
+    })
 
     // Optimistic update applied immediately.
     expect(result.current.sessions.find((s) => s.id === 's1')?.projectId).toBe('proj-1')
@@ -679,6 +693,108 @@ describe('chat CRUD', () => {
     expect(result.current.sessions.some((s) => s.id === 's3')).toBe(true)
 
     expect(errorSpy).toHaveBeenCalledWith('1 of 2 chats could not be deleted. Please try again.')
+  })
+
+  // Task 11 follow-up: `renameChat`/`deleteChat`/`moveChat` stayed
+  // optimistic (the state update below still happens synchronously,
+  // before any network round-trip) but now also return the PATCH/DELETE
+  // call's own promise — previously fired with `void ... .catch()` and
+  // discarded — so a caller like `ChatListItem`/`Sidebar` can await it to
+  // show a pending indicator, without changing what happens on success or
+  // failure.
+
+  it('returns a promise from renameChat that resolves once the PATCH settles', async () => {
+    const result = await hydrated()
+    let resolvePatch: () => void
+    vi.mocked(chatApi.patchChatSession).mockReturnValue(
+      new Promise((resolve) => {
+        resolvePatch = () => resolve({} as never)
+      }),
+    )
+
+    let renamePromise: Promise<void> | undefined
+    act(() => {
+      renamePromise = result.current.renameChat('s1', 'New title')
+    })
+
+    // Optimistic update already applied, before the PATCH has settled.
+    expect(result.current.sessions[0].title).toBe('New title')
+
+    let settled = false
+    void renamePromise!.then(() => {
+      settled = true
+    })
+    expect(settled).toBe(false)
+
+    await act(async () => {
+      resolvePatch!()
+      await renamePromise
+    })
+
+    expect(settled).toBe(true)
+  })
+
+  it('returns a promise from deleteChat that resolves once the DELETE settles', async () => {
+    const result = await hydrated()
+    let resolveDelete: () => void
+    vi.mocked(chatApi.deleteChatSession).mockReturnValue(
+      new Promise((resolve) => {
+        resolveDelete = () => resolve(undefined)
+      }),
+    )
+
+    let deletePromise: Promise<void> | undefined
+    act(() => {
+      deletePromise = result.current.deleteChat('s1')
+    })
+
+    // Optimistic removal already applied (a fresh empty chat replaces the
+    // only session, same as the existing "never end up with zero
+    // sessions" behaviour), before the DELETE has settled.
+    expect(result.current.sessions.some((s) => s.id === 's1')).toBe(false)
+
+    let settled = false
+    void deletePromise!.then(() => {
+      settled = true
+    })
+    expect(settled).toBe(false)
+
+    await act(async () => {
+      resolveDelete!()
+      await deletePromise
+    })
+
+    expect(settled).toBe(true)
+  })
+
+  it('returns a promise from moveChat that resolves once the PATCH settles', async () => {
+    const result = await hydrated()
+    let resolvePatch: () => void
+    vi.mocked(chatApi.patchChatSession).mockReturnValue(
+      new Promise((resolve) => {
+        resolvePatch = () => resolve({} as never)
+      }),
+    )
+
+    let movePromise: Promise<void> | undefined
+    act(() => {
+      movePromise = result.current.moveChat('s1', 'proj-1')
+    })
+
+    expect(result.current.sessions[0].projectId).toBe('proj-1')
+
+    let settled = false
+    void movePromise!.then(() => {
+      settled = true
+    })
+    expect(settled).toBe(false)
+
+    await act(async () => {
+      resolvePatch!()
+      await movePromise
+    })
+
+    expect(settled).toBe(true)
   })
 })
 
