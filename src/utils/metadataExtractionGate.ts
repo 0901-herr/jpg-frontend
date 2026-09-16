@@ -4,7 +4,7 @@ import { getDocumentSelectionHint, isDocumentSelectable } from '../components/In
 /** Extract Metadata needs a document the RAG engine can query — the same
  * rule that makes a row selectable (Ready, Partial or still Indexing, and
  * queryable). It does not depend on the summary being available. */
-export function isMqaMetadataReady(document: BrowseDocumentItem | undefined): boolean {
+export function isMetadataExtractionReady(document: BrowseDocumentItem | undefined): boolean {
   if (!document) return false
   return isDocumentSelectable(document.indexing_status, document.queryable)
 }
@@ -22,6 +22,6 @@ export function getExtractMetadataDisabledReason(options: {
   if (selectedCount === 0) return 'Select one document'
   if (selectedCount > 1) return 'Select only one document'
   if (!document) return 'Select one document'
-  if (isMqaMetadataReady(document)) return null
+  if (isMetadataExtractionReady(document)) return null
   return getDocumentSelectionHint(document) ?? 'Document not ready yet'
 }

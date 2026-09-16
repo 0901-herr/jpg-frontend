@@ -103,32 +103,26 @@ export interface BrowseStatusResponse {
   documents: BrowseStatusItem[]
 }
 
-/** The six MQA fields, always present in this order (a value may be the
- * literal string "Not stated" when the document doesn't state it). */
-export interface MqaMetadataFields {
-  'Document Title': string
-  Faculty: string
-  'Programme name and code': string
-  'Academic year': string
-  'Accreditation body': string
-  'Programme Coordinator': string
-  /** Any labels beyond the fixed six — the document's (or the MQA set's)
-   * own extended attribute definitions, in the order the adapter reported
-   * them (see `extra_fields`). */
-  [key: string]: string
-}
-
-export interface MqaMetadataResponse {
+export interface MetadataExtractionResponse {
   document_id: string
   filename: string
-  fields: MqaMetadataFields
+  /** Extracted field values, keyed by label. A value may be the literal
+   * string "Not stated" when the document doesn't state it. */
+  fields: Record<string, string>
+  /** Display order for `fields` — the deployment's configured field
+   * labels, in order, followed by any extra labels resolved from the
+   * document's own LogicalDOC template. Always present (unlike the old
+   * `extra_fields`-optional contract, this field is required — see
+   * jpg-adapter Task 3 Step 6). */
+  field_order: string[]
   /** Full "Arche AI extracted metadata — ..." comment text pushed to LogicalDOC. */
   comment: string
   /** Whether `comment` was successfully saved as a LogicalDOC document comment. */
   pushed: boolean
   push_error: string | null
-  /** Labels in `fields` beyond the six fixed ones, in the order they were
-   * asked for and parsed — absent/omitted on an older adapter response. */
+  /** Labels in `fields` beyond the deployment's fixed configured set —
+   * the document's (or the attribute set's) own extended attribute
+   * definitions, in the order the adapter reported them. */
   extra_fields?: string[]
   /** Extra attribute names the adapter found but couldn't ask about (a
    * non-string type) — informational only, never rendered as a field row. */

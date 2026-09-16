@@ -3,7 +3,7 @@ import { ChatBubbleIconLg, ChatCloseIcon, ChatMenuIcon } from '../icons/chat'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   categorizeDocument,
-  extractMqaMetadata,
+  extractMetadata,
   fetchDocumentSummary,
   validateQueryScope,
 } from '../api/browse'
@@ -25,13 +25,16 @@ import { appendStreamDelta } from '../utils/appendStreamDelta'
 import { formatProgressStage, formatRouteLabel, resolveProgressScope } from '../utils/queryProgress'
 import { persistChatHistory } from '../utils/chatPersistence'
 import { getSummarizeDisabledReason, isSummaryReady } from '../utils/summaryGate'
-import { getExtractMetadataDisabledReason, isMqaMetadataReady } from '../utils/mqaMetadataGate'
+import {
+  getExtractMetadataDisabledReason,
+  isMetadataExtractionReady,
+} from '../utils/metadataExtractionGate'
 import { getCategorizeDisabledReason } from '../utils/categorizeGate'
 import { buildSummaryMessages } from '../utils/summaryMessages'
-import { buildMqaMetadataAnswer } from '../utils/mqaMetadataMessage'
+import { buildMetadataExtractionAnswer } from '../utils/metadataExtractionMessage'
 import { buildCategorizeMessages } from '../utils/categorizeMessages'
 import { DEFAULT_QUERY_TIER } from '../utils/queryTier'
-import { toUserFacingMqaMetadataError, toUserFacingQueryError } from '../utils/userFacingErrors'
+import { toUserFacingMetadataExtractionError, toUserFacingQueryError } from '../utils/userFacingErrors'
 import type { QueryTier } from '../api/types/query'
 import { isCitationDemoEnabled, isCitationLoadingDemoEnabled } from '../config/demo'
 import {
@@ -1050,7 +1053,7 @@ export default function AppLayout() {
       message.warning(extractMetadataDisabledReason)
       return
     }
-    if (!selectedDocument || !isMqaMetadataReady(selectedDocument)) return
+    if (!selectedDocument || !isMetadataExtractionReady(selectedDocument)) return
     if (extractingRef.current) return
 
     const documentId = selectedDocument.document_id
@@ -1065,7 +1068,7 @@ export default function AppLayout() {
     const userMsg: ChatMessage = {
       id: crypto.randomUUID(),
       role: 'user',
-      content: `Extract MQA metadata from ${filename}`,
+      content: `Extract metadata from ${filename}`,
     }
     const assistantId = crypto.randomUUID()
     const thinkingMsg: ChatMessage = {
@@ -1094,10 +1097,10 @@ export default function AppLayout() {
 
     void (async () => {
       try {
-        const response = await extractMqaMetadata(documentId, controller.signal)
+        const response = await extractMetadata(documentId, controller.signal)
         if (controller.signal.aborted) return
 
-        const content = buildMqaMetadataAnswer(response)
+        const content = buildMetadataExtractionAnswer(response)
         const finalAssistantMsg: ChatMessage = {
           ...thinkingMsg,
           content,
@@ -1123,12 +1126,12 @@ export default function AppLayout() {
         const detail =
           httpStatus === 401
             ? toUserFacingQueryError(undefined, { httpStatus })
-            : toUserFacingMqaMetadataError(err instanceof ApiError ? err.detail : undefined)
+            : toUserFacingMetadataExtractionError(err instanceof ApiError ? err.detail : undefined)
         message.error(detail, 8)
 
         // Remove the thinking placeholder — the failed request appended
         // no answer, so nothing should linger where it was shown. The
-        // user's "Extract MQA metadata from <filename>" message stays.
+        // user's "Extract metadata from <filename>" message stays.
         setSessions((prev) =>
           prev.map((s) =>
             s.id === activeChatId

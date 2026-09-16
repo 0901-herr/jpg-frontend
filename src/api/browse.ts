@@ -9,7 +9,7 @@ import type {
   BrowseSubtreeDocumentsResponse,
   DocumentCategorizeResponse,
   DocumentSummaryResponse,
-  MqaMetadataResponse,
+  MetadataExtractionResponse,
   QueryScopeRequest,
   QueryScopeResponse,
 } from './types/browse'
@@ -122,16 +122,16 @@ export async function fetchDocumentSummary(
   return apiGet<DocumentSummaryResponse>(`/browse/documents/${documentId}/summary`, true, signal)
 }
 
-/** Runs Arche AI MQA metadata extraction for a document and (best effort,
+/** Runs Arche AI metadata extraction for a document and (best effort,
  * reflected in `pushed`/`push_error`) saves it back to LogicalDOC as a
  * comment. Empty body per the contract — the document id in the path is
  * all the backend needs. Takes 20-90s on the CPU-only extraction server. */
-export async function extractMqaMetadata(
+export async function extractMetadata(
   documentId: string,
   signal?: AbortSignal,
-): Promise<MqaMetadataResponse> {
-  return apiPost<MqaMetadataResponse>(
-    `/browse/documents/${documentId}/mqa-metadata`,
+): Promise<MetadataExtractionResponse> {
+  return apiPost<MetadataExtractionResponse>(
+    `/browse/documents/${documentId}/extract-metadata`,
     {},
     true,
     signal,
@@ -140,7 +140,7 @@ export async function extractMqaMetadata(
 
 /** Runs Arche AI categorization for a document: the model picks one of the
  * current folder's subfolders as a destination, or abstains. Empty body
- * per the contract, same shape as `extractMqaMetadata`. The user still
+ * per the contract, same shape as `extractMetadata`. The user still
  * moves the file by hand in LogicalDOC — this only suggests where. */
 export async function categorizeDocument(
   documentId: string,

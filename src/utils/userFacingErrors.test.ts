@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   FOLDER_LOAD_PERMISSION_ERROR,
   FOLDER_LOAD_SERVER_ERROR,
-  MQA_METADATA_GENERIC_ERROR,
+  METADATA_EXTRACTION_GENERIC_ERROR,
   QUERY_ALMOST_DONE_ERROR,
   QUERY_NO_HOST_SCOPE_ERROR,
   QUERY_PARTIAL_ANSWER_ERROR,
@@ -10,7 +10,7 @@ import {
   QUERY_SERVER_ERROR,
   QUERY_SESSION_EXPIRED_ERROR,
   toUserFacingFolderLoadError,
-  toUserFacingMqaMetadataError,
+  toUserFacingMetadataExtractionError,
   toUserFacingQueryError,
 } from './userFacingErrors'
 
@@ -83,7 +83,7 @@ describe('toUserFacingFolderLoadError', () => {
   })
 })
 
-describe('toUserFacingMqaMetadataError', () => {
+describe('toUserFacingMetadataExtractionError', () => {
   // The contract's own detail strings are matched by their raw (technical)
   // wording, but never shown verbatim — plain-language sweep: each known
   // detail maps to its own jargon-free display line instead.
@@ -105,15 +105,17 @@ describe('toUserFacingMqaMetadataError', () => {
       'That did not work. Please try again.',
     ],
   ])('maps the contract detail "%s" to a plain-language line', (detail, expected) => {
-    expect(toUserFacingMqaMetadataError(detail)).toBe(expected)
+    expect(toUserFacingMetadataExtractionError(detail)).toBe(expected)
   })
 
   it('falls back to the generic message for an unrecognized detail', () => {
-    expect(toUserFacingMqaMetadataError('Internal Server Error')).toBe(MQA_METADATA_GENERIC_ERROR)
+    expect(toUserFacingMetadataExtractionError('Internal Server Error')).toBe(
+      METADATA_EXTRACTION_GENERIC_ERROR,
+    )
   })
 
   it('falls back to the generic message when there is no detail at all', () => {
-    expect(toUserFacingMqaMetadataError(undefined)).toBe(MQA_METADATA_GENERIC_ERROR)
+    expect(toUserFacingMetadataExtractionError(undefined)).toBe(METADATA_EXTRACTION_GENERIC_ERROR)
   })
 
   // Regression guard: an earlier version looked the detail up with the `in`
@@ -125,9 +127,9 @@ describe('toUserFacingMqaMetadataError', () => {
   it.each(['constructor', 'toString', 'valueOf', 'hasOwnProperty', 'toLocaleString'])(
     'treats an adapter detail of "%s" as unrecognized, not an Object.prototype member',
     (detail) => {
-      const result = toUserFacingMqaMetadataError(detail)
+      const result = toUserFacingMetadataExtractionError(detail)
       expect(typeof result).toBe('string')
-      expect(result).toBe(MQA_METADATA_GENERIC_ERROR)
+      expect(result).toBe(METADATA_EXTRACTION_GENERIC_ERROR)
     },
   )
 })

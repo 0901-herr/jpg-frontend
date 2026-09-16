@@ -7,7 +7,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { ApiError } from '../api/http'
 import type {
   DocumentCategorizeResponse,
-  MqaMetadataResponse,
+  MetadataExtractionResponse,
   QueryScopeResponse,
 } from '../api/types/browse'
 import type { SendMessageRequest, SendMessageResponse } from '../api/types/query'
@@ -15,8 +15,8 @@ import type { SendMessageRequest, SendMessageResponse } from '../api/types/query
 const validateQueryScope = vi.fn<
   (documents: string[], signal?: AbortSignal) => Promise<QueryScopeResponse>
 >()
-const extractMqaMetadata = vi.fn<
-  (documentId: string, signal?: AbortSignal) => Promise<MqaMetadataResponse>
+const extractMetadata = vi.fn<
+  (documentId: string, signal?: AbortSignal) => Promise<MetadataExtractionResponse>
 >()
 const categorizeDocument = vi.fn<
   (documentId: string, signal?: AbortSignal) => Promise<DocumentCategorizeResponse>
@@ -31,7 +31,7 @@ const getChatSession = vi.fn().mockResolvedValue({})
 vi.mock('../api/browse', () => ({
   validateQueryScope: (...args: [string[], AbortSignal?]) => validateQueryScope(...args),
   fetchDocumentSummary: (...args: [string]) => fetchDocumentSummary(...args),
-  extractMqaMetadata: (...args: [string, AbortSignal?]) => extractMqaMetadata(...args),
+  extractMetadata: (...args: [string, AbortSignal?]) => extractMetadata(...args),
   categorizeDocument: (...args: [string, AbortSignal?]) => categorizeDocument(...args),
 }))
 
@@ -915,19 +915,19 @@ describe('AppLayout — Extract metadata', () => {
 
   it('shows the thinking placeholder, then renders the metadata table on success', async () => {
     const user = userEvent.setup()
-    let resolveExtract: ((value: MqaMetadataResponse) => void) | undefined
-    extractMqaMetadata.mockImplementation(
+    let resolveExtract: ((value: MetadataExtractionResponse) => void) | undefined
+    extractMetadata.mockImplementation(
       () =>
-        new Promise<MqaMetadataResponse>((resolve) => {
+        new Promise<MetadataExtractionResponse>((resolve) => {
           resolveExtract = resolve
         }),
     )
 
     render(<AppLayout />)
 
-    await user.click(screen.getByRole('button', { name: 'Extract MQA metadata' }))
+    await user.click(screen.getByRole('button', { name: 'Extract metadata' }))
 
-    expect(screen.getByText('Extract MQA metadata from doc-1.pdf')).toBeInTheDocument()
+    expect(screen.getByText('Extract metadata from doc-1.pdf')).toBeInTheDocument()
     expect(
       screen.getByText('Extracting metadata. This can take up to a minute.'),
     ).toBeInTheDocument()
@@ -944,6 +944,14 @@ describe('AppLayout — Extract metadata', () => {
           'Accreditation body': 'Not stated',
           'Programme Coordinator': 'Not stated',
         },
+        field_order: [
+          'Document Title',
+          'Faculty',
+          'Programme name and code',
+          'Academic year',
+          'Accreditation body',
+          'Programme Coordinator',
+        ],
         comment: 'Arche AI extracted metadata — Document Title: Meeting Minutes; ...',
         pushed: true,
         push_error: null,
@@ -951,7 +959,7 @@ describe('AppLayout — Extract metadata', () => {
       await Promise.resolve()
     })
 
-    expect(await screen.findByText('MQA metadata — doc-1.pdf')).toBeInTheDocument()
+    expect(await screen.findByText('Extracted metadata — doc-1.pdf')).toBeInTheDocument()
     expect(screen.getByText('Meeting Minutes')).toBeInTheDocument()
     expect(screen.getByText('Saved to LogicalDOC as extended properties.')).toBeInTheDocument()
     expect(
@@ -962,16 +970,16 @@ describe('AppLayout — Extract metadata', () => {
   it('removes the placeholder and re-enables the button on a contract error', async () => {
     const user = userEvent.setup()
     let rejectExtract: ((err: unknown) => void) | undefined
-    extractMqaMetadata.mockImplementation(
+    extractMetadata.mockImplementation(
       () =>
-        new Promise<MqaMetadataResponse>((_resolve, reject) => {
+        new Promise<MetadataExtractionResponse>((_resolve, reject) => {
           rejectExtract = reject
         }),
     )
 
     render(<AppLayout />)
 
-    await user.click(screen.getByRole('button', { name: 'Extract MQA metadata' }))
+    await user.click(screen.getByRole('button', { name: 'Extract metadata' }))
     expect(
       await screen.findByText('Extracting metadata. This can take up to a minute.'),
     ).toBeInTheDocument()
@@ -992,20 +1000,20 @@ describe('AppLayout — Extract metadata', () => {
     expect(
       screen.queryByText('Extracting metadata. This can take up to a minute.'),
     ).not.toBeInTheDocument()
-    expect(screen.getByText('Extract MQA metadata from doc-1.pdf')).toBeInTheDocument()
-    expect(screen.queryByText(/MQA metadata —/)).not.toBeInTheDocument()
+    expect(screen.getByText('Extract metadata from doc-1.pdf')).toBeInTheDocument()
+    expect(screen.queryByText(/Extracted metadata —/)).not.toBeInTheDocument()
 
     // The composer is idle again — the button is enabled once more.
-    expect(await screen.findByRole('button', { name: 'Extract MQA metadata' })).toBeEnabled()
+    expect(await screen.findByRole('button', { name: 'Extract metadata' })).toBeEnabled()
   })
 
   it('aborts an in-flight extraction on New chat and marks it interrupted', async () => {
     const user = userEvent.setup()
-    extractMqaMetadata.mockImplementation(() => new Promise<MqaMetadataResponse>(() => {}))
+    extractMetadata.mockImplementation(() => new Promise<MetadataExtractionResponse>(() => {}))
 
     render(<AppLayout />)
 
-    await user.click(screen.getByRole('button', { name: 'Extract MQA metadata' }))
+    await user.click(screen.getByRole('button', { name: 'Extract metadata' }))
     expect(
       await screen.findByText('Extracting metadata. This can take up to a minute.'),
     ).toBeInTheDocument()
@@ -1016,12 +1024,12 @@ describe('AppLayout — Extract metadata', () => {
     await user.click(oldChatButtons[oldChatButtons.length - 1])
 
     expect(await screen.findByText('Answer interrupted.')).toBeInTheDocument()
-    expect(screen.getByText('Extract MQA metadata from doc-1.pdf')).toBeInTheDocument()
+    expect(screen.getByText('Extract metadata from doc-1.pdf')).toBeInTheDocument()
   })
 
   it('persists both the user request and the extracted metadata to the server', async () => {
     const user = userEvent.setup()
-    extractMqaMetadata.mockResolvedValueOnce({
+    extractMetadata.mockResolvedValueOnce({
       document_id: 'doc-1',
       filename: 'doc-1.pdf',
       fields: {
@@ -1032,6 +1040,14 @@ describe('AppLayout — Extract metadata', () => {
         'Accreditation body': 'Not stated',
         'Programme Coordinator': 'Not stated',
       },
+      field_order: [
+        'Document Title',
+        'Faculty',
+        'Programme name and code',
+        'Academic year',
+        'Accreditation body',
+        'Programme Coordinator',
+      ],
       comment: 'Arche AI extracted metadata — Document Title: Meeting Minutes; ...',
       pushed: true,
       push_error: null,
@@ -1039,13 +1055,13 @@ describe('AppLayout — Extract metadata', () => {
 
     render(<AppLayout />)
 
-    await user.click(screen.getByRole('button', { name: 'Extract MQA metadata' }))
-    expect(await screen.findByText('MQA metadata — doc-1.pdf')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Extract metadata' }))
+    expect(await screen.findByText('Extracted metadata — doc-1.pdf')).toBeInTheDocument()
 
     await waitFor(() => {
       expect(postChatMessage).toHaveBeenCalledWith(
         expect.any(String),
-        expect.objectContaining({ role: 'user', content: 'Extract MQA metadata from doc-1.pdf' }),
+        expect.objectContaining({ role: 'user', content: 'Extract metadata from doc-1.pdf' }),
       )
     })
     await waitFor(() => {
@@ -1053,7 +1069,7 @@ describe('AppLayout — Extract metadata', () => {
         expect.any(String),
         expect.objectContaining({
           role: 'assistant',
-          content: expect.stringContaining('MQA metadata — doc-1.pdf'),
+          content: expect.stringContaining('Extracted metadata — doc-1.pdf'),
           status: 'complete',
         }),
       )
