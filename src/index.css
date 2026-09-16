@@ -411,7 +411,7 @@ input.ant-input:focus-visible {
 
 .docu-chat-input-footer {
   padding: 0 1.5rem 1rem;
-  margin-top: -0.75rem;
+  margin-top: 0.75rem;
 }
 
 .docu-chat-input-stack {
