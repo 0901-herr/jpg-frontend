@@ -89,14 +89,15 @@ describe('formatProgressStage', () => {
     expect(formatProgressStage('assembling', { chunks: 2 })).toBe('Reading 2 passages')
   })
 
-  it('generating never names files — only "Writing your answer", regardless of context', () => {
+  it('generating never names files — only "Putting the answer together", regardless of context', () => {
     // Client feedback: naming files here read as if the model had already
     // decided its sources before writing anything. The retrieving stage
     // above still names what was searched; this one only says what's
-    // happening right now.
-    expect(formatProgressStage('generating')).toBe('Writing your answer')
+    // happening right now. ("Writing your answer" itself is gone — the
+    // owner wants that phrase off the ticker entirely.)
+    expect(formatProgressStage('generating')).toBe('Putting the answer together')
     expect(formatProgressStage('generating', {}, { filenames: ['A.pdf', 'B.pdf'] })).toBe(
-      'Writing your answer',
+      'Putting the answer together',
     )
   })
 
@@ -210,19 +211,35 @@ describe('progressTickerLabel', () => {
     expect(progressTickerLabel(5, ctx)).toBe('Searching A.pdf')
   })
 
-  it('uses "Reading <file>" instead of "Searching" during the generating stage, and never names a folder', () => {
+  it('uses "Reading <file>" instead of "Searching" during the generating stage, cycling every tick with no stage label', () => {
+    // Generating never shows the stage label while there's something to
+    // name — every tick (not just odd ticks) advances to the next line.
     const ctx = {
-      stageLabel: 'Writing your answer',
+      stageLabel: 'Putting the answer together',
       stage: 'generating',
-      files: ['A.pdf', 'B.pdf'],
+      files: ['file1', 'file2', 'file3'],
+      folders: [],
+    }
+    expect(progressTickerLabel(0, ctx)).toBe('Reading file1')
+    expect(progressTickerLabel(1, ctx)).toBe('Reading file2')
+    expect(progressTickerLabel(2, ctx)).toBe('Reading file3')
+    expect(progressTickerLabel(3, ctx)).toBe('Reading file1')
+  })
+
+  it('during generating, cycles files then folders as "Reading folder <name>" — files first, folders after', () => {
+    const ctx = {
+      stageLabel: 'Putting the answer together',
+      stage: 'generating',
+      files: ['file1'],
       folders: ['Reports'],
     }
-    expect(progressTickerLabel(1, ctx)).toBe('Reading A.pdf')
-    expect(progressTickerLabel(3, ctx)).toBe('Reading B.pdf')
+    expect(progressTickerLabel(0, ctx)).toBe('Reading file1')
+    expect(progressTickerLabel(1, ctx)).toBe('Reading folder Reports')
+    expect(progressTickerLabel(2, ctx)).toBe('Reading file1')
   })
 
   it('is case-insensitive about the "generating" stage name', () => {
-    const ctx = { stageLabel: 'Writing your answer', stage: 'Generating', files: ['A.pdf'], folders: [] }
+    const ctx = { stageLabel: 'Putting the answer together', stage: 'Generating', files: ['A.pdf'], folders: [] }
     expect(progressTickerLabel(1, ctx)).toBe('Reading A.pdf')
   })
 
@@ -233,9 +250,10 @@ describe('progressTickerLabel', () => {
     expect(progressTickerLabel(2, ctx)).toBe('Understanding your question')
   })
 
-  it('falls back to the stage label during generating when no files are known yet', () => {
-    const ctx = { stageLabel: 'Writing your answer', stage: 'generating', files: [], folders: ['Reports'] }
-    expect(progressTickerLabel(1, ctx)).toBe('Writing your answer')
+  it('falls back to "Putting the answer together" during generating when there is no file or folder to name', () => {
+    const ctx = { stageLabel: 'Putting the answer together', stage: 'generating', files: [], folders: [] }
+    expect(progressTickerLabel(0, ctx)).toBe('Putting the answer together')
+    expect(progressTickerLabel(1, ctx)).toBe('Putting the answer together')
   })
 
   it('de-duplicates file and folder names before cycling', () => {
@@ -257,7 +275,7 @@ describe('progressTickerLabel', () => {
 
   it('produces no ellipsis in any scope line', () => {
     const ctx = {
-      stageLabel: 'Writing your answer',
+      stageLabel: 'Putting the answer together',
       stage: 'generating',
       files: ['A.pdf'],
       folders: [],

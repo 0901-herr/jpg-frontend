@@ -37,9 +37,10 @@ function progressFilesFor(message: ChatMessage): string[] {
 }
 
 function progressFoldersFor(message: ChatMessage): string[] {
-  // `generating` never names a folder (`progressTickerLabel` already drops
-  // folders for that stage) — no point resolving them here either.
-  return message.progressStage === 'generating' ? [] : message.progressScopeFolders ?? []
+  // `generating` now names folders too (after the files) — owner request:
+  // cycle through every file/folder in scope while the answer is being
+  // written, since that stage is usually stuck the longest.
+  return message.progressScopeFolders ?? []
 }
 
 /** Drives one message's progress headline: ticks (via `useProgressTicker`)
