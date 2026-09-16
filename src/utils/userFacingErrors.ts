@@ -168,6 +168,12 @@ const MQA_METADATA_KNOWN_DETAILS: Record<string, string> = {
 }
 
 export function toUserFacingMqaMetadataError(detail: string | undefined): string {
-  if (detail && detail in MQA_METADATA_KNOWN_DETAILS) return MQA_METADATA_KNOWN_DETAILS[detail]
+  // `Object.hasOwn` (not `in`, which walks the prototype chain) — an
+  // adapter `detail` of exactly "constructor" or another Object.prototype
+  // member name must be treated as unrecognized, not resolve to that
+  // prototype function.
+  if (detail && Object.hasOwn(MQA_METADATA_KNOWN_DETAILS, detail)) {
+    return MQA_METADATA_KNOWN_DETAILS[detail]
+  }
   return MQA_METADATA_GENERIC_ERROR
 }

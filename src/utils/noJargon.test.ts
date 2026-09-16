@@ -100,8 +100,43 @@ const PREFIX_STEMS = [
   'passage',
 ]
 
+/** "metadata" is deliberately never a banned stem, on either list above —
+ * not an oversight, an explicit product-wording ruling (owner, round-5 fix
+ * round 1): it's the feature's own name ("Extract metadata"), and the
+ * client also names its own report after it ("MQA metadata — <file>",
+ * "Extract MQA metadata from <file>"), so "MQA metadata" is consistent
+ * product wording, not jargon leaking through. The rule is general — the
+ * word "metadata" is allowed anywhere on the client path, not only inside
+ * the exact phrase "Extract metadata" — while every *other* stem stays
+ * banned everywhere, feature name or not. Listed here (unused by
+ * `JARGON_PATTERN` — it was never on either stem list) purely so this
+ * decision is visible next to the stems it's an exception to, instead of
+ * being an absence a future maintainer has to notice and question. */
+const ALWAYS_ALLOWED_WORDS = ['metadata']
+
+/** A handful of prefix stems are also complete, common English words whose
+ * *letters* can continue into an unrelated word with no word boundary in
+ * between — "cache" into "cachet", "stream" into "streamline" — so a
+ * leading boundary alone isn't enough for these specific ones the way it
+ * is for e.g. "index" (no ordinary English word starts with "index" and
+ * continues into something unrelated). Each gets a negative lookahead for
+ * the exact continuation(s) known to cause a false positive, rather than a
+ * general trailing-boundary rule, which would also block the inflections
+ * this guard needs to keep catching (a trailing boundary on "index" would
+ * stop it matching "indexed"/"indexing"). Add another entry here the same
+ * way if a new collision like this turns up. */
+const PREFIX_FALSE_POSITIVE_GUARDS: Record<string, string> = {
+  cache: 't', // "cachet"
+  stream: 'line', // "streamline"
+}
+
+function withFalsePositiveGuard(stem: string): string {
+  const blocked = PREFIX_FALSE_POSITIVE_GUARDS[stem]
+  return blocked ? `${stem}(?!${blocked})` : stem
+}
+
 const JARGON_PATTERN = new RegExp(
-  `\\b(?:${ACRONYM_STEMS.join('|')})\\b|\\b(?:${PREFIX_STEMS.join('|')})`,
+  `\\b(?:${ACRONYM_STEMS.join('|')})\\b|\\b(?:${PREFIX_STEMS.map(withFalsePositiveGuard).join('|')})`,
   'i',
 )
 
@@ -250,6 +285,14 @@ describe('no jargon anywhere in shipped, non-admin UI copy', () => {
   it('self-test: a prefix stem still catches its natural inflections', () => {
     expect(findJargonViolations("const s = 'Still indexing your files'")).toHaveLength(1)
     expect(findJargonViolations("const s = 'Retrieving your documents'")).toHaveLength(1)
+    expect(findJargonViolations("const s = 'The answer is cached'")).toHaveLength(1)
+    expect(findJargonViolations("const s = 'Now streaming your answer'")).toHaveLength(1)
+  })
+
+  it('self-test: a prefix stem does not false-positive into an unrelated word that starts the same way', () => {
+    // The exact two collisions this guard was built to avoid.
+    expect(findJargonViolations("const s = 'Business casual, no cachet required'")).toHaveLength(0)
+    expect(findJargonViolations("const s = 'We streamlined the whole process'")).toHaveLength(0)
   })
 
   it('self-test: does not flag a module specifier on an import/require', () => {
@@ -284,6 +327,22 @@ describe('no jargon anywhere in shipped, non-admin UI copy', () => {
   it('self-test: the allowlist exempts an exact non-user-facing literal but not a lookalike', () => {
     expect(findJargonViolations("const s: Status = 'streaming'")).toHaveLength(0)
     expect(findJargonViolations("const s = 'Now streaming your answer'")).toHaveLength(1)
+  })
+
+  it('self-test: "metadata" is never banned — an explicit product-wording ruling, not merely absent', () => {
+    for (const word of ALWAYS_ALLOWED_WORDS) {
+      expect(JARGON_PATTERN.test(word)).toBe(false)
+    }
+    // The owner's own product wording ("MQA metadata" / "Extract MQA
+    // metadata"), not only the bare "Extract metadata" phrase, must pass —
+    // in a string literal, a template literal, and an aria-label.
+    expect(findJargonViolations("const s = '**MQA metadata — file.pdf**'")).toHaveLength(0)
+    expect(
+      findJargonViolations('const s = `Extract MQA metadata from ${filename}`'),
+    ).toHaveLength(0)
+    expect(
+      findJargonViolations('const el = <button aria-label="Extract MQA metadata" />'),
+    ).toHaveLength(0)
   })
 
   const files = listSourceFiles(SRC_DIR)

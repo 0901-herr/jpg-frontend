@@ -96,4 +96,19 @@ describe('toUserFacingMqaMetadataError', () => {
   it('falls back to the generic message when there is no detail at all', () => {
     expect(toUserFacingMqaMetadataError(undefined)).toBe(MQA_METADATA_GENERIC_ERROR)
   })
+
+  // Regression guard: an earlier version looked the detail up with the `in`
+  // operator on a plain object, which walks the prototype chain. An
+  // adapter `detail` of exactly "constructor" (or another Object.prototype
+  // member name) would then resolve to that prototype function instead of
+  // falling through to the generic string — a real crash risk wherever
+  // the result is rendered (e.g. as an antd `message.error` child).
+  it.each(['constructor', 'toString', 'valueOf', 'hasOwnProperty', 'toLocaleString'])(
+    'treats an adapter detail of "%s" as unrecognized, not an Object.prototype member',
+    (detail) => {
+      const result = toUserFacingMqaMetadataError(detail)
+      expect(typeof result).toBe('string')
+      expect(result).toBe(MQA_METADATA_GENERIC_ERROR)
+    },
+  )
 })
