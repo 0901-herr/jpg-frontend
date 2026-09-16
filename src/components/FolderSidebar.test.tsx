@@ -507,3 +507,36 @@ describe('FolderSidebar file row status icon', () => {
     expect(screen.getByText('contract.pdf')).toHaveAttribute('title', 'contract.pdf')
   })
 })
+
+describe('FolderSidebar disabled (shared chat, follower view)', () => {
+  it('renders a dimmed, non-interactive note instead of the file tree', () => {
+    render(
+      <FolderSidebar
+        browse={createBrowseFixture()}
+        selection={createSelectionFixture()}
+        disabled
+      />,
+    )
+
+    expect(
+      screen.getByText(
+        'Files are chosen by the chat owner. In a shared chat you can only ask about the files they picked.',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('tree')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Refresh document status' })).not.toBeInTheDocument()
+  })
+
+  it('takes priority over every other state (session expired, loading, etc.)', () => {
+    render(
+      <FolderSidebar
+        browse={createBrowseFixture({ sessionExpired: true })}
+        selection={createSelectionFixture()}
+        disabled
+      />,
+    )
+
+    expect(screen.getByText('Files are chosen by the chat owner.', { exact: false })).toBeInTheDocument()
+    expect(screen.queryByText('Session expired')).not.toBeInTheDocument()
+  })
+})

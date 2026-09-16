@@ -36,6 +36,12 @@ import {
 interface FolderSidebarProps {
   browse: BrowseTreeState
   selection: DocumentSelection
+  /** True for a shared chat the viewer doesn't own (owner decision,
+   * 2026-09-16): a follower can't choose documents at all, so the whole
+   * pane renders as a dimmed, non-interactive note instead of the file
+   * tree — takes priority over every other state (session-expired,
+   * loading, etc.). */
+  disabled?: boolean
 }
 
 const FOLDER_KEY_PREFIX = 'folder-'
@@ -54,7 +60,7 @@ function switcherIcon({ expanded, isLeaf }: AntTreeNodeProps) {
   )
 }
 
-export default function FolderSidebar({ browse, selection }: FolderSidebarProps) {
+export default function FolderSidebar({ browse, selection, disabled = false }: FolderSidebarProps) {
   const [viewMode, setViewMode] = useState<BrowseViewMode>('folder')
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
 
@@ -477,6 +483,21 @@ export default function FolderSidebar({ browse, selection }: FolderSidebarProps)
   )
 
   const isTreeBusy = pendingFolderIds.size > 0
+
+  if (disabled) {
+    return (
+      <div className="flex flex-col gap-2 opacity-50 pointer-events-none select-none" aria-disabled="true">
+        <span className={sectionLabel}>
+          <ChatFolderIcon />
+          Files
+        </span>
+        <p className={`${sidebar.caption} ${typeColor.muted} m-0 px-1`}>
+          Files are chosen by the chat owner. In a shared chat you can only ask about the files
+          they picked.
+        </p>
+      </div>
+    )
+  }
 
   if (sessionExpired) {
     return (
