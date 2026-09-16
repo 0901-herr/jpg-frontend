@@ -117,7 +117,7 @@ export default function PipelineProgressCard({
           loading={actionPending}
           aria-label="Pause pipeline"
           title="Pause pipeline"
-          className="admin-control-btn shrink-0"
+          className="admin-control-btn admin-control-btn--primary shrink-0"
           onClick={confirmPause}
         />
       )
@@ -136,7 +136,7 @@ export default function PipelineProgressCard({
         loading={actionPending}
         aria-label={label}
         title={label}
-        className="admin-control-btn shrink-0"
+        className="admin-control-btn admin-control-btn--primary shrink-0"
         onClick={onClick}
       />
     )

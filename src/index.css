@@ -1116,6 +1116,10 @@ button.docu-citation-pill:hover {
   --admin-border: #dfe4ea;
   --admin-surface: #ffffff;
   --admin-canvas: #f1f3f6;
+  --admin-button-bg: #e7e9ed;
+  --admin-button-hover: #dadddf;
+  --admin-button-border: #cfd5dd;
+  --admin-button-text: #111827;
   --admin-font-2xs: 0.75rem; /* 12px — timestamps, tags, micro labels */
   --admin-line-2xs: 1rem;
   --admin-font-sm: 0.8125rem; /* 13px — secondary/grouped text */
@@ -1312,17 +1316,45 @@ button.docu-citation-pill:hover {
   color: var(--admin-danger) !important;
 }
 
-/* Ant components share the same restrained semantic palette. */
+/* Admin buttons: gray by default, navy only for primary actions. */
+.admin-panel .ant-btn {
+  border: 1px solid var(--admin-button-border) !important;
+  border-radius: 0.5rem !important;
+  background: var(--admin-button-bg) !important;
+  color: var(--admin-button-text) !important;
+  box-shadow: none !important;
+  font-weight: 500;
+}
+
+.admin-panel .ant-btn:not(:disabled):hover {
+  border-color: #bcc4ce !important;
+  background: var(--admin-button-hover) !important;
+  color: var(--admin-button-text) !important;
+}
+
+.admin-panel .ant-btn:disabled {
+  border-color: #e0e4e9 !important;
+  background: #eef0f2 !important;
+  color: #8a94a3 !important;
+}
+
+.admin-panel .ant-btn-icon-only {
+  border-radius: 9999px !important;
+}
+
 .admin-panel .ant-btn-primary {
   border-color: var(--admin-accent) !important;
   background: var(--admin-accent) !important;
+  color: #fff !important;
 }
 
 .admin-panel .ant-btn-primary:not(:disabled):hover {
   border-color: var(--admin-accent-hover) !important;
   background: var(--admin-accent-hover) !important;
+  color: #fff !important;
 }
 
+/* Ant components share the same restrained semantic palette. */
 .admin-panel .ant-switch.ant-switch-checked {
   background: var(--admin-accent) !important;
 }
@@ -1363,22 +1395,36 @@ button.docu-citation-pill:hover {
   height: 2rem !important;
   padding: 0 !important;
   justify-content: center;
-  border: none !important;
+  border: 1px solid var(--admin-button-border) !important;
   border-radius: 9999px !important;
   box-shadow: none !important;
   font-size: 0.8125rem !important;
   line-height: 1.25rem !important;
+  background: var(--admin-button-bg) !important;
+  color: var(--admin-button-text) !important;
+}
+
+.admin-control-btn:not(:disabled):hover {
+  border-color: #bcc4ce !important;
+  background: var(--admin-button-hover) !important;
+  color: var(--admin-button-text) !important;
+}
+
+.admin-control-btn:disabled {
+  border-color: #e0e4e9 !important;
+  background: #eef0f2 !important;
+  color: #8a94a3 !important;
+}
+
+.admin-panel .admin-control-btn--primary {
+  border-color: var(--admin-accent) !important;
   background: var(--admin-accent) !important;
   color: #fff !important;
 }
 
-.admin-control-btn:not(:disabled):hover {
+.admin-panel .admin-control-btn--primary:not(:disabled):hover {
+  border-color: var(--admin-accent-hover) !important;
   background: var(--admin-accent-hover) !important;
-  color: #fff !important;
-}
-
-.admin-control-btn:disabled {
-  background: #a8b0bc !important;
   color: #fff !important;
 }
 
