@@ -64,4 +64,40 @@ describe('buildMqaMetadataAnswer', () => {
     )
     expect(markdown).toContain('| Faculty | Eng \\| Science |')
   })
+
+  it('appends extra fields after the six fixed ones, in the order the adapter reported them', () => {
+    const markdown = buildMqaMetadataAnswer(
+      response({
+        fields: {
+          ...response().fields,
+          'Delivery Mode': 'Full-time',
+          'Intake Semester': 'September',
+        },
+        extra_fields: ['Delivery Mode', 'Intake Semester'],
+      }),
+    )
+
+    const fixedLastIdx = markdown.indexOf('| Programme Coordinator | Dr. Jane Tan |')
+    const firstExtraIdx = markdown.indexOf('| Delivery Mode | Full-time |')
+    const secondExtraIdx = markdown.indexOf('| Intake Semester | September |')
+
+    expect(fixedLastIdx).toBeGreaterThan(-1)
+    expect(firstExtraIdx).toBeGreaterThan(fixedLastIdx)
+    expect(secondExtraIdx).toBeGreaterThan(firstExtraIdx)
+  })
+
+  it('falls back to the fields object order when extra_fields is absent (older adapter response)', () => {
+    const markdown = buildMqaMetadataAnswer(
+      response({ fields: { ...response().fields, 'Delivery Mode': 'Full-time' } }),
+    )
+
+    expect(markdown).toContain('| Delivery Mode | Full-time |')
+  })
+
+  it('renders no extra rows when there are none', () => {
+    const markdown = buildMqaMetadataAnswer(response({ extra_fields: [] }))
+    // Header + separator + the six fixed field rows, nothing more.
+    const rowCount = markdown.split('\n').filter((line) => line.startsWith('| ')).length
+    expect(rowCount).toBe(8)
+  })
 })

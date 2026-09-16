@@ -112,6 +112,10 @@ export interface MqaMetadataFields {
   'Academic year': string
   'Accreditation body': string
   'Programme Coordinator': string
+  /** Any labels beyond the fixed six — the document's (or the MQA set's)
+   * own extended attribute definitions, in the order the adapter reported
+   * them (see `extra_fields`). */
+  [key: string]: string
 }
 
 export interface MqaMetadataResponse {
@@ -123,6 +127,12 @@ export interface MqaMetadataResponse {
   /** Whether `comment` was successfully saved as a LogicalDOC document comment. */
   pushed: boolean
   push_error: string | null
+  /** Labels in `fields` beyond the six fixed ones, in the order they were
+   * asked for and parsed — absent/omitted on an older adapter response. */
+  extra_fields?: string[]
+  /** Extra attribute names the adapter found but couldn't ask about (a
+   * non-string type) — informational only, never rendered as a field row. */
+  skipped_fields?: string[]
 }
 
 /** One of the folder's current subfolders, offered to the model as a
