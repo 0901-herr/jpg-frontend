@@ -449,13 +449,34 @@ export function useChatStore({
     [],
   )
 
+  // Per-chat-id in-flight fetch count backing `messagesLoading` — the
+  // shared-chat branch of `ensureMessagesLoaded` below is deliberately not
+  // gated by `loadedMessagesRef` (it re-fetches every time that chat
+  // becomes active, so a host-side scope change is always picked up), so a
+  // quick A -> B -> A reselect can start a second, overlapping fetch for
+  // the same id while the first is still in flight. A plain delete-on-
+  // settle would let the FIRST fetch to resolve clear the id out from
+  // under the still-pending second one. Kept in a ref (not state) since
+  // it's only ever read/written from `trackMessagesLoading` itself —
+  // `messagesLoading` is the state that actually drives renders.
+  const messagesLoadingCountRef = useRef<Map<string, number>>(new Map())
+
   // Marks `chatId` as loading for the duration of `promise` — added
-  // immediately, removed in a `finally` regardless of outcome. Shared by
-  // both branches of `ensureMessagesLoaded` below; never touches
+  // immediately, removed in a `finally` once every overlapping in-flight
+  // fetch for that id (see the counter above) has settled. Shared by both
+  // branches of `ensureMessagesLoaded` below; never touches
   // `fetchAndApplyDetail` itself, which stays exactly as it was.
   const trackMessagesLoading = useCallback((chatId: string, promise: Promise<void>) => {
+    const counts = messagesLoadingCountRef.current
+    counts.set(chatId, (counts.get(chatId) ?? 0) + 1)
     setMessagesLoading((prev) => new Set(prev).add(chatId))
     void promise.finally(() => {
+      const remaining = (counts.get(chatId) ?? 1) - 1
+      if (remaining > 0) {
+        counts.set(chatId, remaining)
+        return
+      }
+      counts.delete(chatId)
       setMessagesLoading((prev) => {
         const next = new Set(prev)
         next.delete(chatId)

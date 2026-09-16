@@ -985,4 +985,82 @@ describe('messagesLoading', () => {
 
     await waitFor(() => expect(result.current.messagesLoading.has('s1')).toBe(false))
   })
+
+  it('does not clear a chat id from messagesLoading until every overlapping in-flight fetch for it has settled (shared-chat re-entry)', async () => {
+    vi.mocked(chatApi.listChatSessions).mockResolvedValue({
+      sessions: [
+        {
+          id: 's1',
+          title: 'Session 1',
+          project_id: null,
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-16T00:00:00Z',
+          updated_at: '2026-09-16T00:00:00Z',
+          message_count: 0,
+        },
+      ],
+      shared: [],
+    })
+
+    const pending: Array<{ chatId: string; resolve: (detail: unknown) => void }> = []
+    vi.mocked(chatApi.getChatSession).mockImplementation(
+      (chatId: string) =>
+        new Promise((resolve) => {
+          pending.push({ chatId, resolve })
+        }),
+    )
+    const extDetail = {
+      id: 'ext-1',
+      title: 'Ext',
+      project_id: null,
+      visibility: 'private' as const,
+      share_token: null,
+      created_at: '2026-09-16T00:00:00Z',
+      updated_at: '2026-09-16T00:00:00Z',
+      message_count: 0,
+      owner_username: 'alice',
+      is_owner: false,
+      can_query: true,
+      scope_document_ids: [],
+      messages: [],
+    }
+
+    const { result } = renderHook(() => useChatStore(baseParams()))
+    await waitFor(() => expect(result.current.hydrated).toBe(true))
+
+    // Hydration's own ensureMessagesLoaded('s1') call — not what this test
+    // is about, resolve it out of the way immediately.
+    await waitFor(() => expect(pending.some((p) => p.chatId === 's1')).toBe(true))
+    pending
+      .find((p) => p.chatId === 's1')
+      ?.resolve({ ...extDetail, id: 's1', is_owner: true })
+
+    // 'ext-1' isn't in `sessions` — `ensureMessagesLoaded` treats it as a
+    // shared chat, unconditionally re-fetched on every activation (not
+    // gated by `loadedMessagesRef`). Select it, then switch away and back
+    // before its first fetch settles — a realistic A -> B -> A reselect —
+    // starting a second, overlapping fetch for the same id.
+    act(() => result.current.setActiveChatId('ext-1'))
+    await waitFor(() => expect(pending.filter((p) => p.chatId === 'ext-1')).toHaveLength(1))
+    expect(result.current.messagesLoading.has('ext-1')).toBe(true)
+
+    act(() => result.current.setActiveChatId('s1'))
+    act(() => result.current.setActiveChatId('ext-1'))
+    await waitFor(() => expect(pending.filter((p) => p.chatId === 'ext-1')).toHaveLength(2))
+
+    const extFetches = pending.filter((p) => p.chatId === 'ext-1')
+
+    extFetches[0].resolve(extDetail)
+    // Still loading — the second overlapping fetch for the same id hasn't
+    // settled yet. A naive unconditional delete-on-settle would clear it
+    // here already.
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(result.current.messagesLoading.has('ext-1')).toBe(true)
+
+    extFetches[1].resolve(extDetail)
+    await waitFor(() => expect(result.current.messagesLoading.has('ext-1')).toBe(false))
+  })
 })
