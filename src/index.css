@@ -1348,6 +1348,17 @@ button.docu-citation-pill:hover {
   border-radius: 9999px !important;
 }
 
+.admin-panel .ant-btn:focus,
+.admin-panel .ant-btn:focus-visible,
+.admin-panel .ant-btn:active {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.admin-panel .ant-wave {
+  display: none !important;
+}
+
 .admin-panel .ant-btn-primary {
   background: var(--admin-accent) !important;
   color: #fff !important;
@@ -1390,6 +1401,22 @@ button.docu-citation-pill:hover {
   border-color: transparent !important;
   background: var(--admin-danger-soft) !important;
   color: var(--admin-danger) !important;
+}
+
+.admin-filter-popover,
+.admin-filter-popover .ant-popover-content,
+.admin-filter-popover .ant-popover-inner {
+  animation: none !important;
+  transition: none !important;
+}
+
+.admin-filter-popover .ant-popover-inner {
+  border-radius: 1rem !important;
+  padding: 1rem !important;
+}
+
+.admin-filter-popover .ant-select-selector {
+  border-radius: 0.75rem !important;
 }
 
 /* Admin control row actions — uniform size, right aligned */

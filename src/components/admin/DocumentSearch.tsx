@@ -82,7 +82,7 @@ export default function DocumentSearch({
       <Form.Item name="failedOnly" valuePropName="checked">
         <Checkbox aria-label="Failed only">Failed only</Checkbox>
       </Form.Item>
-      <Space>
+      <Space className="flex w-full justify-end">
         <Button
           type="primary"
           onClick={() => {
@@ -101,6 +101,7 @@ export default function DocumentSearch({
     <Form
       className="w-full"
       form={form}
+      layout="vertical"
       initialValues={{
         search: '',
         failedOnly: false,
@@ -109,7 +110,7 @@ export default function DocumentSearch({
       onFinish={() => submit()}
     >
       <div className="flex w-full items-center gap-2">
-        <Form.Item name="search" className="!mb-0 min-w-0 flex-1">
+        <Form.Item name="search" className="!mb-0 min-w-0 flex-1 md:max-w-md">
           <Input
             placeholder="LogicalDOC ID or filename"
             allowClear
@@ -121,8 +122,9 @@ export default function DocumentSearch({
           content={filterContent}
           title="Filter documents"
           trigger="click"
-          placement="bottomRight"
-          rootClassName="admin-panel"
+          placement="bottom"
+          arrow={false}
+          rootClassName="admin-panel admin-filter-popover"
           open={filtersOpen}
           onOpenChange={setFiltersOpen}
         >
