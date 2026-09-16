@@ -1129,6 +1129,123 @@ describe('recordAssistantMessage', () => {
   })
 })
 
+describe('ensureSessionCreated', () => {
+  async function hydratedEmpty() {
+    vi.mocked(chatApi.listChatSessions).mockResolvedValue({ sessions: [], shared: [] })
+    const { result } = renderHook(() => useChatStore(baseParams()))
+    await waitFor(() => expect(result.current.hydrated).toBe(true))
+    return result
+  }
+
+  it('resolves immediately for a chat id that was never createChat-ed (e.g. an already-hydrated or shared session)', async () => {
+    const result = await hydratedEmpty()
+
+    let resolved = false
+    await act(async () => {
+      await result.current.ensureSessionCreated('some-other-chat-id')
+      resolved = true
+    })
+
+    expect(resolved).toBe(true)
+  })
+
+  it('waits for createChat\'s own POST /chat/sessions to settle before resolving', async () => {
+    const result = await hydratedEmpty()
+
+    let resolveCreate: (() => void) | undefined
+    vi.mocked(chatApi.createChatSession).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveCreate = () => resolve({} as never)
+        }),
+    )
+
+    act(() => result.current.createChat())
+    const newChatId = result.current.activeChatId
+
+    let resolved = false
+    void result.current.ensureSessionCreated(newChatId).then(() => {
+      resolved = true
+    })
+
+    // Still pending — the mocked session-creation POST hasn't resolved yet.
+    await Promise.resolve()
+    expect(resolved).toBe(false)
+
+    resolveCreate?.()
+    await waitFor(() => expect(resolved).toBe(true))
+  })
+})
+
+describe('recordUserMessage', () => {
+  async function hydrated() {
+    vi.mocked(chatApi.listChatSessions).mockResolvedValue({
+      sessions: [
+        {
+          id: 's1',
+          title: 'Session 1',
+          project_id: null,
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-16T00:00:00Z',
+          updated_at: '2026-09-16T00:00:00Z',
+          message_count: 0,
+        },
+      ],
+      shared: [],
+    })
+    vi.mocked(chatApi.getChatSession).mockResolvedValue({
+      id: 's1',
+      title: 'Session 1',
+      project_id: null,
+      visibility: 'private',
+      share_token: null,
+      created_at: '2026-09-16T00:00:00Z',
+      updated_at: '2026-09-16T00:00:00Z',
+      message_count: 0,
+      owner_username: 'tester',
+      is_owner: true,
+      can_query: true,
+      scope_document_ids: [],
+      messages: [],
+    })
+    const { result } = renderHook(() => useChatStore(baseParams()))
+    await waitFor(() => expect(result.current.hydrated).toBe(true))
+    return result
+  }
+
+  it('retries once on failure, so a session-not-found race does not silently drop the scope', async () => {
+    const result = await hydrated()
+    vi.mocked(chatApi.postChatMessage)
+      .mockRejectedValueOnce(new Error('not found yet'))
+      .mockResolvedValueOnce(undefined)
+
+    act(() => {
+      result.current.recordUserMessage('s1', { id: 'm1', role: 'user', content: 'hi' }, ['doc-1'])
+    })
+
+    await waitFor(() => expect(chatApi.postChatMessage).toHaveBeenCalledTimes(2))
+    expect(chatApi.postChatMessage).toHaveBeenNthCalledWith(
+      2,
+      's1',
+      expect.objectContaining({ id: 'm1', scope_document_ids: ['doc-1'] }),
+    )
+  })
+
+  it('gives up quietly if the retry also fails (unchanged fire-and-forget contract)', async () => {
+    const result = await hydrated()
+    vi.mocked(chatApi.postChatMessage).mockRejectedValue(new Error('still down'))
+
+    expect(() => {
+      act(() => {
+        result.current.recordUserMessage('s1', { id: 'm1', role: 'user', content: 'hi' }, [])
+      })
+    }).not.toThrow()
+
+    await waitFor(() => expect(chatApi.postChatMessage).toHaveBeenCalledTimes(2))
+  })
+})
+
 describe('messagesLoading', () => {
   it('tracks a chat id while ensureMessagesLoaded has an in-flight fetch, and clears it once settled', async () => {
     vi.mocked(chatApi.listChatSessions).mockResolvedValue({

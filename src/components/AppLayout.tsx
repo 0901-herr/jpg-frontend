@@ -552,6 +552,16 @@ export default function AppLayout() {
 
   const handleSend = useCallback(
     async (text: string, options?: { displayText?: string }) => {
+      // A brand-new chat's own `POST /chat/sessions` (fired by `createChat`,
+      // not awaited there) may still be in flight the moment the owner
+      // sends their first message — awaiting it here (a no-op for any chat
+      // that isn't mid-creation) closes that race before the query and the
+      // message POST below fire, so the session row is guaranteed to exist
+      // when `persist_query_scope`/`_apply_scope` run. See
+      // `ensureSessionCreated`'s doc comment for why this matters
+      // specifically for a shared chat's scope.
+      await chatStore.ensureSessionCreated(activeChatId)
+
       const selectedDocs = [...selection.selectedIds]
       // A shared queryable chat always uses the host's own scope — the
       // follower can't choose documents at all (owner decision,
@@ -935,6 +945,7 @@ export default function AppLayout() {
       chatStore.recordUserMessage,
       chatStore.recordAssistantMessage,
       chatStore.refreshSharedChat,
+      chatStore.ensureSessionCreated,
       setSessions,
     ],
   )

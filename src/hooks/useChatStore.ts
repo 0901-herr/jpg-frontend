@@ -190,6 +190,18 @@ export interface UseChatStoreResult {
   setActiveChatId: (id: string) => void
   hydrated: boolean
   createChat: () => void
+  /** Resolves once `chatId`'s own `POST /chat/sessions` has settled (or
+   * immediately, if this id was never `createChat`'d in this session — an
+   * already-hydrated or shared chat has nothing to wait for). A brand-new
+   * chat's first send must await this before querying/persisting a message
+   * against it — `createChat` fires that POST without waiting on it, and an
+   * owner who types fast enough can otherwise send before the session row
+   * exists server-side, silently losing that first message's persisted
+   * scope (the adapter tolerates an unknown `conversation_id` by design —
+   * see jpg-adapter's `test_conversation_id_unknown_session_proceeds` —
+   * but that means no scope gets persisted for a query that races ahead of
+   * its own session's creation). */
+  ensureSessionCreated: (chatId: string) => Promise<void>
   /** Stays optimistic (the title updates locally before the PATCH below
    * settles), but — unlike before Task 11 — now returns the PATCH's own
    * promise instead of firing it with `void ... .catch()` and discarding
@@ -284,6 +296,10 @@ export function useChatStore({
   // GET-ted once per app load.
   const loadedMessagesRef = useRef<Set<string>>(new Set([initialSession.id]))
   const hydrationRanRef = useRef(false)
+  // Chat ids `createChat` has just POSTed for, still in flight — see
+  // `ensureSessionCreated`. Entries are removed once that POST settles
+  // (success or failure) so the map never grows across a session's life.
+  const sessionCreationRef = useRef<Map<string, Promise<void>>>(new Map())
 
   useEffect(() => {
     if (!enabled) {
@@ -554,9 +570,24 @@ export function useChatStore({
     setSessions((prev) => [newChat, ...prev])
     setActiveChatId(newChat.id)
     if (enabled) {
-      void createChatSession({ id: newChat.id, title: newChat.title }).catch(() => {})
+      const creation = createChatSession({ id: newChat.id, title: newChat.title })
+        .then(() => {})
+        .catch(() => {})
+      sessionCreationRef.current.set(newChat.id, creation)
+      void creation.finally(() => {
+        // Only clear this id's own entry — a later `createChat` for a
+        // DIFFERENT id must not have its in-flight promise deleted by an
+        // earlier one settling.
+        if (sessionCreationRef.current.get(newChat.id) === creation) {
+          sessionCreationRef.current.delete(newChat.id)
+        }
+      })
     }
   }, [enabled])
+
+  const ensureSessionCreated = useCallback((chatId: string): Promise<void> => {
+    return sessionCreationRef.current.get(chatId) ?? Promise.resolve()
+  }, [])
 
   const renameChat = useCallback(
     async (chatId: string, title: string) => {
@@ -778,12 +809,20 @@ export function useChatStore({
   const recordUserMessage = useCallback(
     (chatId: string, msg: ChatMessage, scopeDocumentIds: string[]) => {
       if (!enabled) return
-      void postChatMessage(chatId, {
+      const payload = {
         id: msg.id,
-        role: 'user',
+        role: 'user' as const,
         content: msg.content,
         scope_document_ids: scopeDocumentIds,
-      }).catch(() => {})
+      }
+      // One retry on failure: this POST is what actually persists the
+      // query's scope onto the session (`ChatService._apply_scope`) — a
+      // dropped one silently loses that scope for the rest of the chat's
+      // sharing lifetime (nothing else ever backfills it), so it's worth
+      // one more attempt before giving up quietly, same as before.
+      void postChatMessage(chatId, payload).catch(() =>
+        postChatMessage(chatId, payload).catch(() => {}),
+      )
     },
     [enabled],
   )
@@ -859,6 +898,7 @@ export function useChatStore({
     setActiveChatId,
     hydrated,
     createChat,
+    ensureSessionCreated,
     renameChat,
     deleteChat,
     moveChat,
