@@ -135,6 +135,11 @@ let lastSendQueryRequest: SendMessageRequest | null = null
 // immediately instead of only settling on abort — models a query call that
 // fails outright (e.g. a 403 before any streaming starts). Consumed once.
 let nextSendQueryRejection: unknown = null
+// Test-controlled, same one-shot pattern as `nextSendQueryRejection`: when
+// set, the next mutateAsync call resolves with this immediately instead of
+// hanging until abort — models a query that actually completes, for tests
+// that need the success path (e.g. the post-answer shared-chat refresh).
+let nextSendQueryResolution: SendMessageResponse | null = null
 
 vi.mock('../hooks/mutations/useSendQuery', () => ({
   useSendQuery: () => {
@@ -143,7 +148,7 @@ vi.mock('../hooks/mutations/useSendQuery', () => ({
       isPending,
       reset: () => setIsPending(false),
       mutateAsync: (request: SendMessageRequest) =>
-        new Promise<SendMessageResponse>((_resolve, reject) => {
+        new Promise<SendMessageResponse>((resolve, reject) => {
           setIsPending(true)
           currentSignal = request.signal ?? null
           lastSendQueryRequest = request
@@ -151,6 +156,12 @@ vi.mock('../hooks/mutations/useSendQuery', () => ({
             const err = nextSendQueryRejection
             nextSendQueryRejection = null
             reject(err)
+            return
+          }
+          if (nextSendQueryResolution) {
+            const res = nextSendQueryResolution
+            nextSendQueryResolution = null
+            resolve(res)
             return
           }
           request.signal?.addEventListener('abort', () => {
@@ -342,6 +353,25 @@ describe('AppLayout — query error messages', () => {
 
     expect(
       await screen.findByText("You don't have permission to query the selected documents."),
+    ).toBeInTheDocument()
+  })
+
+  it('surfaces the server message for a 409 (a shared chat whose host has not chosen files yet)', async () => {
+    const user = userEvent.setup()
+    nextSendQueryRejection = new ApiError(
+      'The chat owner has not chosen any files yet',
+      409,
+      'The chat owner has not chosen any files yet',
+    )
+
+    render(<AppLayout />)
+
+    const textarea = await screen.findByPlaceholderText(/ask a question/i)
+    await user.type(textarea, 'What is in the contract?')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    expect(
+      await screen.findByText('The chat owner has not chosen any files yet'),
     ).toBeInTheDocument()
   })
 })
@@ -625,6 +655,120 @@ describe('AppLayout — shared link (?share=token)', () => {
           scope_document_ids: ['doc-9', 'doc-10'],
         }),
       )
+    })
+  })
+
+  it('disables the composer with a distinct placeholder when the host has not chosen any files yet', async () => {
+    initialSelectedIds = new Set()
+    window.history.pushState({}, '', '/chat?share=tok-empty')
+    getSharedChatSession.mockResolvedValueOnce({
+      id: 'shared-3',
+      title: 'Shared Empty Chat',
+      project_id: null,
+      visibility: 'query',
+      share_token: null,
+      created_at: '2026-09-01T00:00:00Z',
+      updated_at: '2026-09-01T00:00:00Z',
+      message_count: 0,
+      owner_username: 'alice',
+      is_owner: false,
+      can_query: true,
+      scope_document_ids: [],
+      messages: [],
+    })
+
+    render(<AppLayout />)
+
+    const textarea = await screen.findByPlaceholderText(
+      'The chat owner has not chosen files yet',
+    )
+    expect(textarea).toBeDisabled()
+  })
+
+  it('renders read-only chips from scope_documents and omits the document list when a follower asks', async () => {
+    const user = userEvent.setup()
+    initialSelectedIds = new Set()
+    window.history.pushState({}, '', '/chat?share=tok-chips')
+    getSharedChatSession.mockResolvedValueOnce({
+      id: 'shared-4',
+      title: 'Shared Chat With Names',
+      project_id: null,
+      visibility: 'query',
+      share_token: null,
+      created_at: '2026-09-01T00:00:00Z',
+      updated_at: '2026-09-01T00:00:00Z',
+      message_count: 0,
+      owner_username: 'alice',
+      is_owner: false,
+      can_query: true,
+      scope_document_ids: ['doc-9', 'doc-10'],
+      scope_documents: [
+        { document_id: 'doc-9', filename: 'Contract.pdf' },
+        { document_id: 'doc-10', filename: null },
+      ],
+      messages: [],
+    })
+
+    render(<AppLayout />)
+
+    expect(await screen.findByText('Contract.pdf')).toBeInTheDocument()
+    expect(screen.getByText('File doc-10')).toBeInTheDocument()
+    expect(screen.getAllByText('Contract.pdf')).toHaveLength(1)
+
+    const textarea = screen.getByPlaceholderText('Ask about the shared files')
+    await user.type(textarea, 'What do these say?')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    await waitFor(() => expect(lastSendQueryRequest?.omitDocuments).toBe(true))
+    // The sent question's own file tags (user bubble) come from the
+    // resolved scope filenames too — a second "Contract.pdf" alongside
+    // the composer's own read-only chip.
+    await waitFor(() => expect(screen.getAllByText('Contract.pdf')).toHaveLength(2))
+  })
+
+  it("refreshes the shared chat's own detail after the follower's answer completes", async () => {
+    const user = userEvent.setup()
+    initialSelectedIds = new Set()
+    window.history.pushState({}, '', '/chat?share=tok-refresh')
+    getSharedChatSession.mockResolvedValueOnce({
+      id: 'shared-5',
+      title: 'Shared Refresh Chat',
+      project_id: null,
+      visibility: 'query',
+      share_token: null,
+      created_at: '2026-09-01T00:00:00Z',
+      updated_at: '2026-09-01T00:00:00Z',
+      message_count: 0,
+      owner_username: 'alice',
+      is_owner: false,
+      can_query: true,
+      scope_document_ids: ['doc-9'],
+      messages: [],
+    })
+    nextSendQueryResolution = { messageId: 'm1', content: 'The answer.' }
+
+    render(<AppLayout />)
+
+    const textarea = await screen.findByPlaceholderText('Ask about the shared files')
+    // The chat's own activation already triggers one refetch (`useChatStore`'s
+    // always-refetch-on-activation for a shared chat) — capture that count
+    // before sending so the assertion below proves an ADDITIONAL fetch, not
+    // just the one from activation.
+    await waitFor(() =>
+      expect(
+        getChatSession.mock.calls.filter(([id]) => id === 'shared-5').length,
+      ).toBeGreaterThanOrEqual(1),
+    )
+    const beforeCount = getChatSession.mock.calls.filter(([id]) => id === 'shared-5').length
+
+    await user.type(textarea, 'What do these say?')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    expect(await screen.findByText('The answer.')).toBeInTheDocument()
+
+    await waitFor(() => {
+      const count = getChatSession.mock.calls.filter(([id]) => id === 'shared-5').length
+      expect(count).toBeGreaterThan(beforeCount)
     })
   })
 })

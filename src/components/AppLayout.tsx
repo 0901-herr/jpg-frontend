@@ -344,6 +344,13 @@ export default function AppLayout() {
   // back to the chat's own `scopeDocumentIds` here instead of requiring a
   // manual selection.
   const isSharedQueryable = activeSession?.isOwner === false && activeSession?.canQuery === true
+  // Owner decision (2026-09-16): a follower can't choose documents at all
+  // in ANY shared chat (view-only or queryable) — used to disable the
+  // Files pane and to make sure a leftover selection from the viewer's own
+  // chat never leaks into the composer while a shared chat is active.
+  const isSharedChat = activeSession?.isOwner === false
+  const sharedScopeIds = activeSession?.scopeDocumentIds ?? []
+  const sharedScopeDocuments = activeSession?.scopeDocuments ?? []
 
   const messagePairs = useMemo(
     () => pairMessages(activeSession?.messages ?? []),
@@ -500,18 +507,22 @@ export default function AppLayout() {
   const handleSend = useCallback(
     async (text: string, options?: { displayText?: string }) => {
       const selectedDocs = [...selection.selectedIds]
-      // A shared queryable chat's own scope stands in for a manual
-      // selection — the viewer may not even be able to browse these files
-      // (that's the point of sharing), so there's nothing to validate
-      // client-side: send straight through, and if the adapter itself
-      // rejects it (403, a LogicalDOC permission problem), the normal
-      // error path below shows that.
-      const sharedScopeIds = activeSession?.scopeDocumentIds ?? []
-      const useSharedScope =
-        selectedDocs.length === 0 && isSharedQueryable && sharedScopeIds.length > 0
+      // A shared queryable chat always uses the host's own scope — the
+      // follower can't choose documents at all (owner decision,
+      // 2026-09-16), so any leftover selection from the viewer's own chat
+      // is ignored here, not just when nothing is selected. The viewer may
+      // not even be able to browse these files (that's the point of
+      // sharing), so there's nothing to validate client-side: send
+      // straight through, and if the adapter itself rejects it (403/409),
+      // the normal error path below shows that.
+      const useSharedScope = isSharedQueryable && sharedScopeIds.length > 0
 
-      if (selectedDocs.length === 0 && !useSharedScope) {
-        message.warning('Select at least one document before asking a question.')
+      if (!useSharedScope && selectedDocs.length === 0) {
+        message.warning(
+          isSharedQueryable
+            ? 'The chat owner has not chosen any files yet.'
+            : 'Select at least one document before asking a question.',
+        )
         return
       }
 
@@ -561,12 +572,25 @@ export default function AppLayout() {
           selection.documentMeta,
           browse.getFolderNode,
         )
-        scopeFilenames = resolvedScope.files
         scopeFolders = resolvedScope.folders
-        userFileTags =
-          scopeFilenames.length > 0
-            ? scopeFilenames
-            : [`${scopeDocuments.length} shared file${scopeDocuments.length === 1 ? '' : 's'}`]
+        // Prefer the adapter's own resolved filenames (`scope_documents`)
+        // over the viewer's local browse-tree metadata — the whole point
+        // of a shared chat is that the follower may not be able to browse
+        // these files at all, so the host-sent names are the only
+        // trustworthy source. Falls back to the old resolution (then a
+        // bare count) only for a chat whose detail predates that field.
+        if (sharedScopeDocuments.length > 0) {
+          userFileTags = sharedScopeDocuments.map(
+            (doc) => doc.filename ?? `File ${doc.documentId}`,
+          )
+          scopeFilenames = userFileTags
+        } else {
+          scopeFilenames = resolvedScope.files
+          userFileTags =
+            scopeFilenames.length > 0
+              ? scopeFilenames
+              : [`${scopeDocuments.length} shared file${scopeDocuments.length === 1 ? '' : 's'}`]
+        }
       } else {
         try {
           const scope = await validateQueryScope(selectedDocs, controller.signal)
@@ -668,6 +692,7 @@ export default function AppLayout() {
           chatId: activeChatId,
           message: text,
           documents: scopeDocuments,
+          omitDocuments: useSharedScope,
           tier: queryTier,
           signal: controller.signal,
           callbacks: {
@@ -825,12 +850,21 @@ export default function AppLayout() {
         if (abortControllerRef.current === controller) {
           abortControllerRef.current = null
         }
+        // Picks up a host scope change made mid-conversation — the chat's
+        // activation-time fetch (`useChatStore`'s `ensureMessagesLoaded`)
+        // only runs when the viewer switches TO this chat, so a follower
+        // who stays on one shared chat and keeps asking otherwise never
+        // sees a scope the host changed after the initial load.
+        if (isSharedChat) chatStore.refreshSharedChat(activeChatId)
       }
     },
     [
       activeChatId,
       activeSession,
+      isSharedChat,
       isSharedQueryable,
+      sharedScopeIds,
+      sharedScopeDocuments,
       queryTier,
       selection,
       browse,
@@ -839,6 +873,7 @@ export default function AppLayout() {
       scrollToBottom,
       chatStore.recordUserMessage,
       chatStore.recordAssistantMessage,
+      chatStore.refreshSharedChat,
       setSessions,
     ],
   )
@@ -1183,6 +1218,7 @@ export default function AppLayout() {
                 onCreateProject={chatStore.createProject}
                 onRenameProject={chatStore.renameProject}
                 onDeleteProject={chatStore.deleteProject}
+                onRemoveSharedChat={chatStore.removeSharedChat}
               />
             </div>
             <SidebarResizeHandle onPointerDown={startResize} isResizing={isResizing} />
@@ -1237,8 +1273,12 @@ export default function AppLayout() {
               </div>
             </div>
             <ChatInput
-              selectedCount={selection.selectedCount}
-              selectedFiles={selection.selectedFilenames}
+              // A leftover selection from the viewer's own chat must never
+              // apply to a shared one (owner decision, 2026-09-16) — the
+              // Files pane is disabled for it anyway, but the selection
+              // itself is global state that outlives switching chats.
+              selectedCount={isSharedChat ? 0 : selection.selectedCount}
+              selectedFiles={isSharedChat ? [] : selection.selectedFilenames}
               onClearSelection={selection.clearSelection}
               onSend={handleSend}
               onSummarize={handleSummarize}
@@ -1256,8 +1296,10 @@ export default function AppLayout() {
               onQueryTierChange={setQueryTier}
               viewOnly={isSharedViewOnly}
               viewOnlyPlaceholder="View only — the owner has not allowed questions here"
-              allowEmptySelection={isSharedQueryable}
+              allowEmptySelection={isSharedQueryable && sharedScopeIds.length > 0}
               emptySelectionPlaceholder="Ask about the shared files"
+              sharedScopeFiles={isSharedQueryable ? sharedScopeDocuments : undefined}
+              sharedScopeEmpty={isSharedQueryable && sharedScopeIds.length === 0}
             />
           </Content>
         </Layout>
@@ -1320,6 +1362,7 @@ export default function AppLayout() {
             onCreateProject={chatStore.createProject}
             onRenameProject={chatStore.renameProject}
             onDeleteProject={chatStore.deleteProject}
+            onRemoveSharedChat={chatStore.removeSharedChat}
             onNavigate={() => setDrawerOpen(false)}
             inDrawer
           />
