@@ -949,3 +949,37 @@ describe('answer-order citation numbering (client feedback: a second question us
     expect(highlighted.className).toContain('font-medium')
   })
 })
+
+describe('author label', () => {
+  it('shows the message authorUsername above a user bubble once it has one', () => {
+    render(
+      <ChatMessageItem
+        message={{ id: 'u1', role: 'user', content: 'Hi', authorUsername: 'alice' }}
+        currentUsername="bob"
+      />,
+    )
+
+    expect(screen.getByText('alice')).toBeInTheDocument()
+    expect(screen.queryByText('bob')).not.toBeInTheDocument()
+  })
+
+  it('falls back to the viewer own display name when authorUsername has not arrived yet', () => {
+    render(
+      <ChatMessageItem message={{ id: 'u1', role: 'user', content: 'Hi' }} currentUsername="bob" />,
+    )
+
+    expect(screen.getByText('bob')).toBeInTheDocument()
+  })
+
+  it('falls back to "You" when neither authorUsername nor currentUsername is available', () => {
+    render(<ChatMessageItem message={{ id: 'u1', role: 'user', content: 'Hi' }} />)
+
+    expect(screen.getByText('You')).toBeInTheDocument()
+  })
+
+  it('always labels the assistant "ARCHE AI", regardless of any author field', () => {
+    render(<ChatMessageItem message={assistantMessage({ content: 'Answer.' })} />)
+
+    expect(screen.getByText('ARCHE AI')).toBeInTheDocument()
+  })
+})

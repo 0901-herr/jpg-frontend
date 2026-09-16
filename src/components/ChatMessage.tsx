@@ -303,19 +303,41 @@ function AssistantLabel() {
   )
 }
 
+/** The equivalent label above a user bubble — who asked it, in a project
+ * or shared chat where more than one person's turns can show up in the
+ * same conversation. `message.authorUsername` is set once a message has
+ * round-tripped to the server (`src/api/chat.ts`); a message still only
+ * local (just sent, or from before this field existed) falls back to the
+ * viewer's own display name. */
+function UserLabel({ name }: { name: string }) {
+  return (
+    <span className={`block ${type.caption} font-medium ${typeColor.muted} mb-1`}>{name}</span>
+  )
+}
+
 interface ChatMessageItemProps {
   message: ChatMessage
   showDivider?: boolean
+  /** The signed-in viewer's own display name — shown above a user bubble
+   * whose `authorUsername` hasn't arrived from the server yet. */
+  currentUsername?: string
 }
 
-export default function ChatMessageItem({ message, showDivider }: ChatMessageItemProps) {
+export default function ChatMessageItem({
+  message,
+  showDivider,
+  currentUsername,
+}: ChatMessageItemProps) {
   return (
     <div className="min-w-0">
       {message.role === 'user' ? (
-        <div
-          className={`inline-block bg-[#f4f4f4] ${radius.lg} px-4 py-3 mt-6 mb-4 max-w-[min(36rem,100%)] min-w-0 break-words [overflow-wrap:anywhere]`}
-        >
-          <Text className={`${type.body} ${typeColor.body}`}>{message.content}</Text>
+        <div className="mt-6 mb-4">
+          <UserLabel name={message.authorUsername ?? currentUsername ?? 'You'} />
+          <div
+            className={`inline-block bg-[#f4f4f4] ${radius.lg} px-4 py-3 max-w-[min(36rem,100%)] min-w-0 break-words [overflow-wrap:anywhere]`}
+          >
+            <Text className={`${type.body} ${typeColor.body}`}>{message.content}</Text>
+          </div>
         </div>
       ) : (
         <div className="mb-4">
