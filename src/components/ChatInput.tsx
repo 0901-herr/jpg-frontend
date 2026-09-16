@@ -82,6 +82,20 @@ interface ChatInputProps {
    * placeholder distinct from `emptySelectionPlaceholder` (which implies
    * there IS a scope to fall back to). */
   sharedScopeEmpty?: boolean
+  /** True for the viewer of a shared chat they don't own — mirrors
+   * AppLayout's own `isSharedChat` (`activeSession?.isOwner === false`).
+   * Prefixes the disclaimer line with "This is a shared chat." (client
+   * feedback, "Sharing Query": add that prefix on top of the existing
+   * "not context-aware" line). */
+  isSharedChat?: boolean
+  /** True only for the OWNER of a chat currently shared with query ("view
+   * and ask") permission — shows a rooftop banner above the composer
+   * warning that sending a message updates what recipients can see and
+   * query (client feedback, "Sharing Input": "add an info panel... Maybe
+   * a rooftop banner on top of the textbox (only for chat shared with
+   * view and ask permissions)"). Never shown for a private chat, a
+   * view-only shared chat, or to a non-owner viewer. */
+  isHostOfQueryShare?: boolean
 }
 
 // Numbered, single-line-per-entry list (client feedback: "they should be
@@ -141,6 +155,8 @@ export default function ChatInput({
   emptySelectionPlaceholder,
   sharedScopeFiles,
   sharedScopeEmpty = false,
+  isSharedChat = false,
+  isHostOfQueryShare = false,
 }: ChatInputProps) {
   const [value, setValue] = useState('')
   const isPhone = useMediaQuery(PHONE_QUERY)
@@ -219,22 +235,22 @@ export default function ChatInput({
   // control, the viewer can't change these), rendered in place of
   // `filesChip` above. Only rendered when there's something to show;
   // `sharedScopeEmpty` gets its own disabled placeholder instead.
+  //
+  // Collapsed into one aggregate count pill rather than a chip per file
+  // (client feedback, "Sharing Input": "the pill that would show the
+  // files selected is good enough, don't enumerate the files out it's
+  // weird... the pill can be clicked but don't have the x button") —
+  // reuses the owner's own `docu-chat-composer-files` class so the two
+  // pills are visually identical ("standardise this into the normal text
+  // input"), just without `filesChip`'s clear/✕ button.
   const sharedFilesChip =
     sharedScopeFiles && sharedScopeFiles.length > 0 ? (
-      <div
-        className="docu-chat-composer-shared-files-wrap flex items-center gap-1 flex-wrap"
-        aria-label="Files chosen by the chat owner"
+      <span
+        className="docu-chat-composer-files"
+        aria-label={`${sharedScopeFiles.length} ${sharedScopeFiles.length === 1 ? 'file' : 'files'} selected by the chat owner`}
       >
-        {sharedScopeFiles.map((file) => (
-          <span
-            key={file.documentId}
-            className="docu-chat-composer-shared-file-chip inline-flex items-center max-w-[10rem] truncate px-2 py-1 rounded-full bg-[#f4f4f4] text-xs text-[#404040]"
-            title={file.filename ?? `File ${file.documentId}`}
-          >
-            {file.filename ?? `File ${file.documentId}`}
-          </span>
-        ))}
-      </div>
+        {sharedScopeFiles.length} {sharedScopeFiles.length === 1 ? 'file' : 'files'}
+      </span>
     ) : null
 
   const tierDropdown = (
@@ -353,6 +369,11 @@ export default function ChatInput({
         )}
 
         <div className="docu-chat-input-stack">
+        {isHostOfQueryShare && (
+          <div className="docu-chat-composer-host-banner text-center">
+            Sending a message will update what the recipients can see and query.
+          </div>
+        )}
         {/* Two rows at every width (fix round 1: at 1440px a single row
             squeezed the textarea to ~200px and wrapped the placeholder to
             three lines) — row 1 is the textarea alone, full width; row 2
@@ -432,6 +453,11 @@ export default function ChatInput({
             that (no forced truncation — this line carries real
             information about single-question mode, not just decoration). */}
         <p className={`docu-chat-input-disclaimer ${type.caption} ${typeColor.muted} text-center`}>
+          {isSharedChat && (
+            <>
+              This is a <span className={typeColor.primary}>shared chat</span>.{' '}
+            </>
+          )}
           This chat is <span className={typeColor.primary}>not context-aware</span>. Each
           question is a <span className={typeColor.primary}>separate question</span>, not a
           follow-up.

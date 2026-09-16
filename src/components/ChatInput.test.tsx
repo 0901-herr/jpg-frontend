@@ -454,7 +454,7 @@ describe('ChatInput — shared queryable chat with no manual file selection', ()
     expect(onSend).toHaveBeenCalledWith('What is in these files?')
   })
 
-  it('renders the host-chosen files as read-only chips instead of the editable files pill', () => {
+  it('renders one aggregate, read-only pill for the host-chosen files instead of per-file chips or the editable files pill', () => {
     renderChatInput({
       selectedCount: 0,
       allowEmptySelection: true,
@@ -465,11 +465,34 @@ describe('ChatInput — shared queryable chat with no manual file selection', ()
       ],
     })
 
-    expect(screen.getByText('Contract.pdf')).toBeInTheDocument()
-    expect(screen.getByText('File doc-10')).toBeInTheDocument()
+    expect(screen.getByText('2 files')).toBeInTheDocument()
+    // No per-file enumeration — neither the resolved filename nor the
+    // "File <id>" fallback for an unresolvable one.
+    expect(screen.queryByText('Contract.pdf')).not.toBeInTheDocument()
+    expect(screen.queryByText('File doc-10')).not.toBeInTheDocument()
     // The normal editable chip (with its own "Clear selection" control)
-    // never renders alongside the read-only ones.
+    // never renders alongside the read-only aggregate pill.
     expect(screen.queryByLabelText('Clear selection')).not.toBeInTheDocument()
+  })
+
+  it('renders "1 file" (singular) for a single host-chosen file, with no remove/x control on the pill', () => {
+    renderChatInput({
+      selectedCount: 0,
+      allowEmptySelection: true,
+      emptySelectionPlaceholder: 'Ask about the shared files',
+      sharedScopeFiles: [{ documentId: 'doc-9', filename: 'Contract.pdf' }],
+    })
+
+    const pill = screen.getByText('1 file')
+    expect(pill).toBeInTheDocument()
+    expect(pill).toHaveClass('docu-chat-composer-files')
+    expect(pill.tagName).toBe('SPAN')
+    // No sibling "clear" button, unlike the owner's own editable pill —
+    // queried by role/label (not DOM adjacency, which differs between the
+    // desktop and <480px phone toolbar layouts) so this holds at either
+    // width.
+    expect(screen.queryByLabelText('Clear selection')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Clear selection' })).not.toBeInTheDocument()
   })
 
   it('disables the composer with a distinct placeholder when the host has not chosen any files yet', () => {
@@ -483,5 +506,65 @@ describe('ChatInput — shared queryable chat with no manual file selection', ()
 
     const textarea = screen.getByPlaceholderText('The chat owner has not chosen files yet')
     expect(textarea).toBeDisabled()
+  })
+})
+
+describe('ChatInput — shared-chat disclaimer prefix', () => {
+  // "shared chat" is highlighted in its own <span> (same treatment as
+  // "not context-aware"/"separate question" elsewhere in this line), so
+  // the full phrase is split across sibling text nodes — `getByText`'s
+  // default matcher only looks at an element's own direct text nodes
+  // (testing-library's `getNodeText`), never the concatenated
+  // `textContent` of its descendants. Reading `.textContent` off the
+  // disclaimer `<p>` directly sidesteps that rather than fighting a
+  // custom matcher function.
+  function disclaimerText() {
+    return document.querySelector('.docu-chat-input-disclaimer')?.textContent ?? ''
+  }
+
+  it('shows the "This is a shared chat" prefix when isSharedChat is true', () => {
+    renderChatInput({ isSharedChat: true })
+
+    expect(disclaimerText()).toMatch(/this is a shared chat/i)
+    // The original disclaimer still follows it, unchanged.
+    expect(disclaimerText()).toMatch(/not context-aware/)
+  })
+
+  it('does not show the prefix for a normal (non-shared) chat', () => {
+    renderChatInput({ isSharedChat: false })
+
+    expect(disclaimerText()).not.toMatch(/this is a shared chat/i)
+  })
+
+  it('does not show the prefix when isSharedChat is omitted (defaults false)', () => {
+    renderChatInput()
+
+    expect(disclaimerText()).not.toMatch(/this is a shared chat/i)
+  })
+})
+
+describe('ChatInput — host rooftop banner for a query-shared chat', () => {
+  it('shows the banner when isHostOfQueryShare is true', () => {
+    renderChatInput({ isHostOfQueryShare: true })
+
+    expect(
+      screen.getByText(/sending a message will update what the recipients can see/i),
+    ).toBeInTheDocument()
+  })
+
+  it('hides the banner when isHostOfQueryShare is false', () => {
+    renderChatInput({ isHostOfQueryShare: false })
+
+    expect(
+      screen.queryByText(/sending a message will update what the recipients can see/i),
+    ).not.toBeInTheDocument()
+  })
+
+  it('hides the banner when isHostOfQueryShare is omitted (defaults false)', () => {
+    renderChatInput()
+
+    expect(
+      screen.queryByText(/sending a message will update what the recipients can see/i),
+    ).not.toBeInTheDocument()
   })
 })

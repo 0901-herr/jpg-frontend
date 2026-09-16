@@ -694,7 +694,7 @@ describe('AppLayout — shared link (?share=token)', () => {
     expect(textarea).toBeDisabled()
   })
 
-  it('renders read-only chips from scope_documents and omits the document list when a follower asks', async () => {
+  it('renders one aggregate count pill (not per-file chips) from scope_documents, and omits the document list when a follower asks', async () => {
     const user = userEvent.setup()
     initialSelectedIds = new Set()
     window.history.pushState({}, '', '/chat?share=tok-chips')
@@ -720,19 +720,22 @@ describe('AppLayout — shared link (?share=token)', () => {
 
     render(<AppLayout />)
 
-    expect(await screen.findByText('Contract.pdf')).toBeInTheDocument()
-    expect(screen.getByText('File doc-10')).toBeInTheDocument()
-    expect(screen.getAllByText('Contract.pdf')).toHaveLength(1)
+    // The composer's own pill is a count only (Task 10: "don't enumerate
+    // the files out it's weird") — no per-file names before sending.
+    expect(await screen.findByText('2 files')).toBeInTheDocument()
+    expect(screen.queryByText('Contract.pdf')).not.toBeInTheDocument()
+    expect(screen.queryByText('File doc-10')).not.toBeInTheDocument()
 
     const textarea = screen.getByPlaceholderText('Ask about the shared files')
     await user.type(textarea, 'What do these say?')
     await user.click(screen.getByRole('button', { name: 'Send message' }))
 
     await waitFor(() => expect(lastSendQueryRequest?.omitDocuments).toBe(true))
-    // The sent question's own file tags (user bubble) come from the
-    // resolved scope filenames too — a second "Contract.pdf" alongside
-    // the composer's own read-only chip.
-    await waitFor(() => expect(screen.getAllByText('Contract.pdf')).toHaveLength(2))
+    // The sent question's own file tags (user bubble) still resolve real
+    // filenames — unaffected by the composer pill's collapse to a count.
+    await waitFor(() => expect(screen.getAllByText('Contract.pdf')).toHaveLength(1))
+    // The composer's own pill stays a count, even after sending.
+    expect(screen.getByText('2 files')).toBeInTheDocument()
   })
 
   it("refreshes the shared chat's own detail after the follower's answer completes", async () => {
@@ -842,6 +845,97 @@ describe('AppLayout — shared link (?share=token)', () => {
       const count = getChatSession.mock.calls.filter(([id]) => id === 'shared-7').length
       expect(count).toBeGreaterThan(beforeCount)
     })
+  })
+})
+
+describe('AppLayout — host rooftop banner (isHostOfQueryShare gating)', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    currentSignal = null
+    initialSelectedIds = new Set(['doc-1'])
+    initialDocumentMeta = defaultDocumentMeta()
+    getChatSession.mockReset()
+    getChatSession.mockResolvedValue({})
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('shows the banner only for the host of a chat shared with query permission — not private, not view-only, not a non-owner viewer', async () => {
+    const user = userEvent.setup()
+    const baseFields = {
+      project_id: null,
+      share_token: null,
+      created_at: '2026-09-01T00:00:00Z',
+      updated_at: '2026-09-01T00:00:00Z',
+      message_count: 0,
+    }
+    listChatSessions.mockResolvedValueOnce({
+      sessions: [
+        { id: 'own-private', title: 'Own Private', visibility: 'private', ...baseFields },
+        { id: 'own-view', title: 'Own View', visibility: 'view', ...baseFields },
+        { id: 'own-query', title: 'Own Query', visibility: 'query', ...baseFields },
+      ],
+      shared: [
+        {
+          id: 'shared-query',
+          title: 'Shared Query',
+          owner_username: 'alice',
+          visibility: 'query',
+          opened_at: '2026-09-01T00:00:00Z',
+        },
+      ],
+    })
+    getChatSession.mockImplementation((id: string) => {
+      if (id === 'own-query') {
+        // Deliberately omits `is_owner` from the detail response — the
+        // DTO type promises `boolean`, but `ChatSession.isOwner`'s own doc
+        // comment allows "Absent/true" for a chat the viewer owns. The
+        // banner's gating must treat an absent `isOwner` as still-the-host
+        // (`!== false`), not silently hide the banner for the real owner.
+        return Promise.resolve({
+          id,
+          title: 'Own Query',
+          visibility: 'query',
+          messages: [],
+          ...baseFields,
+        })
+      }
+      if (id === 'shared-query') {
+        return Promise.resolve({
+          id,
+          title: 'Shared Query',
+          visibility: 'query',
+          owner_username: 'alice',
+          is_owner: false,
+          can_query: true,
+          messages: [],
+          ...baseFields,
+        })
+      }
+      return Promise.resolve({ id, title: id, visibility: 'private', messages: [], ...baseFields })
+    })
+
+    render(<AppLayout />)
+
+    const bannerText = /sending a message will update what the recipients can see/i
+
+    await user.click(await screen.findByRole('button', { name: 'select:Own Private' }))
+    await waitFor(() => expect(screen.getByTestId('active-chat-id').textContent).toBe('own-private'))
+    expect(screen.queryByText(bannerText)).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'select:Own View' }))
+    await waitFor(() => expect(screen.getByTestId('active-chat-id').textContent).toBe('own-view'))
+    expect(screen.queryByText(bannerText)).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'select:Own Query' }))
+    await waitFor(() => expect(screen.getByTestId('active-chat-id').textContent).toBe('own-query'))
+    expect(await screen.findByText(bannerText)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'shared:Shared Query' }))
+    await waitFor(() => expect(screen.getByTestId('active-chat-id').textContent).toBe('shared-query'))
+    expect(screen.queryByText(bannerText)).not.toBeInTheDocument()
   })
 })
 

@@ -366,6 +366,15 @@ export default function AppLayout() {
   // Files pane and to make sure a leftover selection from the viewer's own
   // chat never leaks into the composer while a shared chat is active.
   const isSharedChat = activeSession?.isOwner === false
+  // The host's own side of a query-shared chat: owner (absent/`true` for
+  // every chat the viewer created themselves — see `ChatSession.isOwner`'s
+  // doc comment, so this checks `!== false` rather than truthiness) AND
+  // currently shared with query ("view and ask") permission. Drives
+  // ChatInput's rooftop banner — never shown for a private chat, a
+  // view-shared chat, or to a non-owner viewer (client feedback, "Sharing
+  // Input": banner "only for chat shared with view and ask permissions").
+  const isHostOfQueryShare =
+    activeSession?.isOwner !== false && activeSession?.visibility === 'query'
   const sharedScopeIds = activeSession?.scopeDocumentIds ?? []
   const sharedScopeDocuments = activeSession?.scopeDocuments ?? []
 
@@ -1384,6 +1393,8 @@ export default function AppLayout() {
               emptySelectionPlaceholder="Ask about the shared files"
               sharedScopeFiles={isSharedQueryable ? sharedScopeDocuments : undefined}
               sharedScopeEmpty={isSharedQueryable && sharedScopeIds.length === 0}
+              isSharedChat={isSharedChat}
+              isHostOfQueryShare={isHostOfQueryShare}
             />
           </Content>
         </Layout>
