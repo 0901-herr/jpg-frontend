@@ -1118,7 +1118,6 @@ button.docu-citation-pill:hover {
   --admin-canvas: #f1f3f6;
   --admin-button-bg: #e7e9ed;
   --admin-button-hover: #dadddf;
-  --admin-button-border: #cfd5dd;
   --admin-button-text: #111827;
   --admin-font-2xs: 0.75rem; /* 12px — timestamps, tags, micro labels */
   --admin-line-2xs: 1rem;
@@ -1318,8 +1317,8 @@ button.docu-citation-pill:hover {
 
 /* Admin buttons: gray by default, navy only for primary actions. */
 .admin-panel .ant-btn {
-  border: 1px solid var(--admin-button-border) !important;
-  border-radius: 0.5rem !important;
+  border: none !important;
+  border-radius: 9999px !important;
   background: var(--admin-button-bg) !important;
   color: var(--admin-button-text) !important;
   box-shadow: none !important;
@@ -1327,13 +1326,11 @@ button.docu-citation-pill:hover {
 }
 
 .admin-panel .ant-btn:not(:disabled):hover {
-  border-color: #bcc4ce !important;
   background: var(--admin-button-hover) !important;
   color: var(--admin-button-text) !important;
 }
 
 .admin-panel .ant-btn:disabled {
-  border-color: #e0e4e9 !important;
   background: #eef0f2 !important;
   color: #8a94a3 !important;
 }
@@ -1343,13 +1340,11 @@ button.docu-citation-pill:hover {
 }
 
 .admin-panel .ant-btn-primary {
-  border-color: var(--admin-accent) !important;
   background: var(--admin-accent) !important;
   color: #fff !important;
 }
 
 .admin-panel .ant-btn-primary:not(:disabled):hover {
-  border-color: var(--admin-accent-hover) !important;
   background: var(--admin-accent-hover) !important;
   color: #fff !important;
 }
@@ -1395,7 +1390,7 @@ button.docu-citation-pill:hover {
   height: 2rem !important;
   padding: 0 !important;
   justify-content: center;
-  border: 1px solid var(--admin-button-border) !important;
+  border: none !important;
   border-radius: 9999px !important;
   box-shadow: none !important;
   font-size: 0.8125rem !important;
@@ -1405,25 +1400,21 @@ button.docu-citation-pill:hover {
 }
 
 .admin-control-btn:not(:disabled):hover {
-  border-color: #bcc4ce !important;
   background: var(--admin-button-hover) !important;
   color: var(--admin-button-text) !important;
 }
 
 .admin-control-btn:disabled {
-  border-color: #e0e4e9 !important;
   background: #eef0f2 !important;
   color: #8a94a3 !important;
 }
 
 .admin-panel .admin-control-btn--primary {
-  border-color: var(--admin-accent) !important;
   background: var(--admin-accent) !important;
   color: #fff !important;
 }
 
 .admin-panel .admin-control-btn--primary:not(:disabled):hover {
-  border-color: var(--admin-accent-hover) !important;
   background: var(--admin-accent-hover) !important;
   color: #fff !important;
 }
