@@ -36,7 +36,7 @@ describe('ChatInput', () => {
       extractMetadataDisabledReason: 'Select one document',
     })
 
-    const button = screen.getByRole('button', { name: 'Extract MQA metadata' })
+    const button = screen.getByRole('button', { name: 'Extract metadata' })
     expect(button).toBeDisabled()
   })
 
@@ -47,7 +47,7 @@ describe('ChatInput', () => {
       extractMetadataDisabledReason: 'Select only one document',
     })
 
-    const button = screen.getByRole('button', { name: 'Extract MQA metadata' })
+    const button = screen.getByRole('button', { name: 'Extract metadata' })
     expect(button).toBeDisabled()
 
     await user.hover(button.parentElement ?? button)
@@ -57,7 +57,7 @@ describe('ChatInput', () => {
   it('enables Extract metadata for exactly one ready file', () => {
     renderChatInput({ selectedCount: 1, extractMetadataDisabledReason: null })
 
-    expect(screen.getByRole('button', { name: 'Extract MQA metadata' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Extract metadata' })).toBeEnabled()
   })
 
   it('calls onExtractMetadata when clicked while enabled', async () => {
@@ -69,7 +69,7 @@ describe('ChatInput', () => {
       onExtractMetadata,
     })
 
-    await user.click(screen.getByRole('button', { name: 'Extract MQA metadata' }))
+    await user.click(screen.getByRole('button', { name: 'Extract metadata' }))
 
     expect(onExtractMetadata).toHaveBeenCalledTimes(1)
   })
@@ -170,7 +170,7 @@ describe('ChatInput — narrow phone widths (<480px)', () => {
 
     const summarize = screen.getByRole('button', { name: 'Summarize selected document' })
     const categorize = screen.getByRole('button', { name: 'Categorize selected document' })
-    const extract = screen.getByRole('button', { name: 'Extract MQA metadata' })
+    const extract = screen.getByRole('button', { name: 'Extract metadata' })
 
     expect(summarize).toHaveTextContent('Summarize')
     expect(categorize).toHaveTextContent('Categorize')
@@ -197,7 +197,7 @@ describe('ChatInput — narrow phone widths (<480px)', () => {
 
     renderChatInput({ selectedCount: 1, extractMetadataDisabledReason: null })
 
-    const extract = screen.getByRole('button', { name: 'Extract MQA metadata' })
+    const extract = screen.getByRole('button', { name: 'Extract metadata' })
     await user.hover(extract.parentElement ?? extract)
 
     expect(await screen.findByText('Extract metadata')).toBeInTheDocument()
@@ -231,7 +231,7 @@ describe('ChatInput — narrow phone widths (<480px)', () => {
     expect(
       screen.getByRole('button', { name: 'Categorize selected document' }),
     ).toHaveTextContent('Categorize')
-    expect(screen.getByRole('button', { name: 'Extract MQA metadata' })).toHaveTextContent(
+    expect(screen.getByRole('button', { name: 'Extract metadata' })).toHaveTextContent(
       'Extract metadata',
     )
   })
@@ -261,7 +261,7 @@ describe('ChatInput — narrow phone widths (<480px)', () => {
     expect(row2).toContainElement(
       screen.getByRole('button', { name: 'Categorize selected document' }),
     )
-    expect(row2).toContainElement(screen.getByRole('button', { name: 'Extract MQA metadata' }))
+    expect(row2).toContainElement(screen.getByRole('button', { name: 'Extract metadata' }))
     expect(row2).toHaveTextContent('Summarize')
     expect(row2).toHaveTextContent('Categorize')
   })

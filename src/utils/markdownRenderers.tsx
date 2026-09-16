@@ -131,8 +131,8 @@ const HEADING_CLASS = `font-medium ${PARAGRAPH_SPACING}`
 // src/index.css.
 const LIST_CLASS = 'pl-5 space-y-1'
 // `break-words` + `overflow-wrap: anywhere` so a long unbroken value (an
-// MQA metadata field, say) wraps inside its cell instead of forcing the
-// whole table — and with it the chat pane — wider. Width, border-collapse,
+// extracted metadata field, say) wraps inside its cell instead of forcing
+// the whole table — and with it the chat pane — wider. Width, border-collapse,
 // padding, and `th`'s bold/background live in the unlayered `.docu-answer
 // table` / `.docu-answer th` rules in `src/index.css` instead (see the
 // comment there) — this class only carries the per-cell border, alignment,
@@ -174,7 +174,7 @@ export function createAnswerMarkdownComponents(content: string, sources: Source[
       numbers,
       'bq',
     ),
-    // A wide table (the MQA metadata table, especially) must scroll inside
+    // A wide table (the metadata extraction table, especially) must scroll inside
     // its own box, never the whole chat pane — the wrapper carries the
     // overflow; the `<table>` itself picks up width/border-collapse from
     // the unlayered `.docu-answer table` rule (src/index.css).

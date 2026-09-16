@@ -303,7 +303,7 @@ export default function ChatInput({
           onClick={onExtractMetadata}
           disabled={!canExtractMetadata}
           className="docu-chat-composer-extract"
-          aria-label="Extract MQA metadata"
+          aria-label="Extract metadata"
         >
           <ChatMetadataIcon aria-hidden />
           <span>{extractLabel}</span>

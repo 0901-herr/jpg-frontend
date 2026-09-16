@@ -73,7 +73,7 @@ export interface ChatMessage {
    * from the acting `AISession` and echoed back on every message
    * (`src/api/chat.ts`). Rendered above every user bubble (see
    * `ChatMessage.tsx`'s `AssistantLabel`/user branch); assistant messages
-   * always render "ARCHE AI" regardless of this field. Absent for a
+   * always render "Arche AI" regardless of this field. Absent for a
    * message that hasn't round-tripped to the server yet (still in flight,
    * or a pre-persistence local session) — callers fall back to the
    * current viewer's own display name. */

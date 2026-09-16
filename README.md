@@ -44,6 +44,8 @@ VITE_AUTH_BYPASS=true
 | `VITE_AUTH_BYPASS=true` | Show chat UI without cookie login check (dev only) |
 | `VITE_ADMIN_API_KEY` | Optional — must match adapter `ADAPTER_QUERY_API_KEY` if set |
 | `VITE_FEATURE_CATEGORY_VIEW=true` | Build-time flag — turns the Folder/Category browse toggle back on (OFF by default; code stays in place, see `src/config/features.ts`) |
+| `VITE_CATEGORY_LABELS` | Optional — per-deployment category label overrides, as a JSON object string (e.g. `{"harvesting_record": "Harvesting Record"}`); unlisted categories fall back to a generic title-cased label |
+| `VITE_CATEGORY_COLORS` | Optional — per-deployment category color overrides, as a JSON object string (e.g. `{"harvesting_record": "green"}`); unlisted categories fall back to a deterministic hash-based color |
 
 **Chat session:** `VITE_AUTH_BYPASS` only bypasses the frontend login screen. Folder browse and queries still need an adapter `ai_session` cookie unless adapter has `AI_SESSION_DEV_BYPASS=true`.
 

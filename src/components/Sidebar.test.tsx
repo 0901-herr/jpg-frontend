@@ -66,7 +66,7 @@ function selectionFixture(): DocumentSelection {
 }
 
 describe('Sidebar branding', () => {
-  it('shows "ARCHE AI" as the app name in the header, not the old "Docu Arch AI" name', () => {
+  it('shows "Arche AI" as the app name in the header, not the old "Docu Arch AI" name', () => {
     render(
       <MemoryRouter>
         <Sidebar
@@ -83,7 +83,7 @@ describe('Sidebar branding', () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getByText('ARCHE AI')).toBeInTheDocument()
+    expect(screen.getByText('Arche AI')).toBeInTheDocument()
     expect(screen.queryByText('Docu Arch AI')).not.toBeInTheDocument()
   })
 })

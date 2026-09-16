@@ -977,10 +977,10 @@ describe('author label', () => {
     expect(screen.getByText('You')).toBeInTheDocument()
   })
 
-  it('always labels the assistant "ARCHE AI", regardless of any author field', () => {
+  it('always labels the assistant "Arche AI", regardless of any author field', () => {
     render(<ChatMessageItem message={assistantMessage({ content: 'Answer.' })} />)
 
-    expect(screen.getByText('ARCHE AI')).toBeInTheDocument()
+    expect(screen.getByText('Arche AI')).toBeInTheDocument()
   })
 })
 

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  extractMqaMetadata,
+  extractMetadata,
   fetchBrowseCategories,
   fetchBrowseStatus,
   fetchDocumentSummary,
@@ -178,8 +178,8 @@ describe('fetchDocumentSummary', () => {
   })
 })
 
-describe('extractMqaMetadata', () => {
-  it('posts an empty body to the mqa-metadata endpoint', async () => {
+describe('extractMetadata', () => {
+  it('posts an empty body to the extract-metadata endpoint', async () => {
     vi.mocked(apiPost).mockResolvedValue({
       document_id: '5003',
       filename: '01_Meeting_Minutes.pdf',
@@ -191,15 +191,23 @@ describe('extractMqaMetadata', () => {
         'Accreditation body': 'Not stated',
         'Programme Coordinator': 'Not stated',
       },
+      field_order: [
+        'Document Title',
+        'Faculty',
+        'Programme name and code',
+        'Academic year',
+        'Accreditation body',
+        'Programme Coordinator',
+      ],
       comment: 'Arche AI extracted metadata — Document Title: Meeting Minutes; ...',
       pushed: true,
       push_error: null,
     })
 
-    const result = await extractMqaMetadata('5003')
+    const result = await extractMetadata('5003')
 
     expect(apiPost).toHaveBeenCalledWith(
-      '/browse/documents/5003/mqa-metadata',
+      '/browse/documents/5003/extract-metadata',
       {},
       true,
       undefined,
@@ -220,16 +228,24 @@ describe('extractMqaMetadata', () => {
         'Accreditation body': 'Not stated',
         'Programme Coordinator': 'Not stated',
       },
+      field_order: [
+        'Document Title',
+        'Faculty',
+        'Programme name and code',
+        'Academic year',
+        'Accreditation body',
+        'Programme Coordinator',
+      ],
       comment: 'Arche AI extracted metadata — Document Title: Not stated; ...',
       pushed: false,
       push_error: 'LogicalDOC comment API unavailable',
     })
     const controller = new AbortController()
 
-    await extractMqaMetadata('5003', controller.signal)
+    await extractMetadata('5003', controller.signal)
 
     expect(apiPost).toHaveBeenCalledWith(
-      '/browse/documents/5003/mqa-metadata',
+      '/browse/documents/5003/extract-metadata',
       {},
       true,
       controller.signal,

@@ -147,7 +147,7 @@ export interface FolderLoadError {
 
 export const FOLDER_LOAD_PERMISSION_ERROR: FolderLoadError = {
   title: 'You do not have access',
-  body: 'Your LogicalDOC session does not allow browsing these folders. Reopen ARCHE AI from LogicalDOC.',
+  body: 'Your LogicalDOC session does not allow browsing these folders. Reopen Arche AI from LogicalDOC.',
 }
 
 export const FOLDER_LOAD_SERVER_ERROR: FolderLoadError = {
@@ -163,17 +163,17 @@ export function toUserFacingFolderLoadError(httpStatus: number | undefined): Fol
   return FOLDER_LOAD_SERVER_ERROR
 }
 
-export const MQA_METADATA_GENERIC_ERROR = 'Could not extract metadata. Please try again.'
+export const METADATA_EXTRACTION_GENERIC_ERROR = 'Could not extract metadata. Please try again.'
 
-/** The mqa-metadata contract's own error details (409/504/502) are matched
- * by their raw (technical) wording below, but plain-language sweep: never
- * shown verbatim — each known detail maps to its own jargon-free display
- * line. Anything else (network failure, an unrecognized detail string, no
- * detail at all) falls back to the generic message rather than surfacing
- * raw/technical text. 401 is not handled here: it goes through the same
- * session-expired path the query flow uses (`toUserFacingQueryError` with
- * httpStatus 401). */
-const MQA_METADATA_KNOWN_DETAILS: Record<string, string> = {
+/** The extract-metadata contract's own error details (409/504/502) are
+ * matched by their raw (technical) wording below, but plain-language
+ * sweep: never shown verbatim — each known detail maps to its own
+ * jargon-free display line. Anything else (network failure, an
+ * unrecognized detail string, no detail at all) falls back to the generic
+ * message rather than surfacing raw/technical text. 401 is not handled
+ * here: it goes through the same session-expired path the query flow uses
+ * (`toUserFacingQueryError` with httpStatus 401). */
+const METADATA_EXTRACTION_KNOWN_DETAILS: Record<string, string> = {
   'Document is still being indexed. Try again when it is Ready.':
     "This document isn't ready yet. Try again once it shows Ready.",
   'Document is not ready for extraction.':
@@ -182,13 +182,13 @@ const MQA_METADATA_KNOWN_DETAILS: Record<string, string> = {
   'Metadata extraction failed. Please try again.': 'That did not work. Please try again.',
 }
 
-export function toUserFacingMqaMetadataError(detail: string | undefined): string {
+export function toUserFacingMetadataExtractionError(detail: string | undefined): string {
   // `Object.hasOwn` (not `in`, which walks the prototype chain) — an
   // adapter `detail` of exactly "constructor" or another Object.prototype
   // member name must be treated as unrecognized, not resolve to that
   // prototype function.
-  if (detail && Object.hasOwn(MQA_METADATA_KNOWN_DETAILS, detail)) {
-    return MQA_METADATA_KNOWN_DETAILS[detail]
+  if (detail && Object.hasOwn(METADATA_EXTRACTION_KNOWN_DETAILS, detail)) {
+    return METADATA_EXTRACTION_KNOWN_DETAILS[detail]
   }
-  return MQA_METADATA_GENERIC_ERROR
+  return METADATA_EXTRACTION_GENERIC_ERROR
 }

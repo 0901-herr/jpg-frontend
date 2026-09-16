@@ -105,12 +105,12 @@ const PREFIX_STEMS = [
 /** "metadata" is deliberately never a banned stem, on either list above —
  * not an oversight, an explicit product-wording ruling (owner, round-5 fix
  * round 1): it's the feature's own name ("Extract metadata"), and the
- * client also names its own report after it ("MQA metadata — <file>",
- * "Extract MQA metadata from <file>"), so "MQA metadata" is consistent
- * product wording, not jargon leaking through. The rule is general — the
- * word "metadata" is allowed anywhere on the client path, not only inside
- * the exact phrase "Extract metadata" — while every *other* stem stays
- * banned everywhere, feature name or not. Listed here (unused by
+ * client also names its own report after it ("Extracted metadata — <file>",
+ * "Extract metadata from <file>"), so "metadata" is consistent product
+ * wording, not jargon leaking through. The rule is general — the word
+ * "metadata" is allowed anywhere on the client path, not only inside the
+ * exact phrase "Extract metadata" — while every *other* stem stays banned
+ * everywhere, feature name or not. Listed here (unused by
  * `JARGON_PATTERN` — it was never on either stem list) purely so this
  * decision is visible next to the stems it's an exception to, instead of
  * being an absence a future maintainer has to notice and question. */
@@ -172,10 +172,10 @@ const ALLOWLIST = new Set([
   "'streaming-cursor'",
   // A React Router path, not prose.
   '"/admin/ingestion"',
-  // `MQA_METADATA_KNOWN_DETAILS` in userFacingErrors.ts: the contract's own
-  // raw detail text, used only as a lookup key — the mapped *value* is
-  // what's actually shown, and that value is jargon-free (see the guard
-  // test for `toUserFacingMqaMetadataError`).
+  // `METADATA_EXTRACTION_KNOWN_DETAILS` in userFacingErrors.ts: the
+  // contract's own raw detail text, used only as a lookup key — the mapped
+  // *value* is what's actually shown, and that value is jargon-free (see
+  // the guard test for `toUserFacingMetadataExtractionError`).
   "'Document is still being indexed. Try again when it is Ready.'",
 ])
 
@@ -340,15 +340,15 @@ describe('no jargon anywhere in shipped, non-admin UI copy', () => {
     for (const word of ALWAYS_ALLOWED_WORDS) {
       expect(JARGON_PATTERN.test(word)).toBe(false)
     }
-    // The owner's own product wording ("MQA metadata" / "Extract MQA
-    // metadata"), not only the bare "Extract metadata" phrase, must pass —
+    // The owner's own product wording ("Extracted metadata" / "Extract
+    // metadata"), for any deployment's configured field set, must pass —
     // in a string literal, a template literal, and an aria-label.
-    expect(findJargonViolations("const s = '**MQA metadata — file.pdf**'")).toHaveLength(0)
+    expect(findJargonViolations("const s = '**Extracted metadata — file.pdf**'")).toHaveLength(0)
     expect(
-      findJargonViolations('const s = `Extract MQA metadata from ${filename}`'),
+      findJargonViolations('const s = `Extract metadata from ${filename}`'),
     ).toHaveLength(0)
     expect(
-      findJargonViolations('const el = <button aria-label="Extract MQA metadata" />'),
+      findJargonViolations('const el = <button aria-label="Extract metadata" />'),
     ).toHaveLength(0)
   })
 
