@@ -1286,7 +1286,8 @@ button.docu-citation-pill:hover {
   box-shadow: none !important;
 }
 
-.admin-activity-card.ant-card {
+.admin-activity-card.ant-card,
+.admin-failures-card.ant-card {
   border: none !important;
 }
 

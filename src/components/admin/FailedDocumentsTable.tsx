@@ -87,6 +87,7 @@ export default function FailedDocumentsTable({ onSelect }: FailedDocumentsTableP
 
   return (
     <AdminCard
+      className="admin-failures-card"
       title={`Failures (${totalFailed.toLocaleString()})`}
       extra={
         totalFailed > 0 ? (
