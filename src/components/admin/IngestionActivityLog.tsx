@@ -1,8 +1,8 @@
 import { AdminDescriptionIcon, AdminRefreshIcon } from '../../icons/admin'
-import { Alert, Button, Empty, Space, Statistic, Tag, Timeline, Typography } from 'antd'
+import { Alert, Button, Empty, Space, Tag, Timeline, Typography } from 'antd'
 import { useMemo } from 'react'
 import type { AdminDocumentSummary, IngestionActivityItem, IngestionOverview } from '../../api/types/admin'
-import { ADMIN_STACK_SPACE, ADMIN_STAT_TITLE, ADMIN_STAT_VALUE } from '../../config/adminStyles'
+import { ADMIN_STACK_SPACE } from '../../config/adminStyles'
 import {
   formatActivityTime,
   groupActivityByDay,
@@ -66,10 +66,6 @@ export default function IngestionActivityLog({
   const bulkFailed = overview.bulk_progress?.job_state === 'failed'
   const bulkError = overview.bulk_progress?.job_error
 
-  const { counts } = overview
-  const inFlight =
-    counts.preparing + counts.staged + counts.indexing + counts.discovered
-
   return (
     <div className={ADMIN_STACK_SPACE}>
       {bulkFailed && (
@@ -81,41 +77,6 @@ export default function IngestionActivityLog({
         />
       )}
 
-      <AdminCard>
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <Space wrap size="large">
-            <Statistic
-              title="In flight"
-              value={inFlight}
-              className={`${ADMIN_STAT_VALUE} ${ADMIN_STAT_TITLE}`}
-            />
-            <Statistic
-              title="Indexing"
-              value={counts.indexing}
-              valueStyle={{ color: 'var(--admin-warning)' }}
-              className={`${ADMIN_STAT_VALUE} ${ADMIN_STAT_TITLE}`}
-            />
-            <Statistic
-              title="Ready"
-              value={counts.ready}
-              valueStyle={{ color: 'var(--admin-success)' }}
-              className={`${ADMIN_STAT_VALUE} ${ADMIN_STAT_TITLE}`}
-            />
-            <Statistic
-              title="Failed"
-              value={counts.failed}
-              valueStyle={{ color: counts.failed ? 'var(--admin-danger)' : undefined }}
-              className={`${ADMIN_STAT_VALUE} ${ADMIN_STAT_TITLE}`}
-            />
-          </Space>
-          {onRefresh && (
-            <Button icon={<AdminRefreshIcon />} onClick={onRefresh} loading={loading}>
-              Refresh
-            </Button>
-          )}
-        </div>
-      </AdminCard>
-
       <AdminCard
         title={
           <Space size="small">
@@ -123,6 +84,13 @@ export default function IngestionActivityLog({
             <span>Activity log</span>
             <Tag className="!m-0">{entries.length}</Tag>
           </Space>
+        }
+        extra={
+          onRefresh ? (
+            <Button size="small" icon={<AdminRefreshIcon />} onClick={onRefresh} loading={loading}>
+              Refresh
+            </Button>
+          ) : null
         }
       >
         {entries.length === 0 ? (
