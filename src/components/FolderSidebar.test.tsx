@@ -228,8 +228,20 @@ describe('FolderSidebar manual status refresh', () => {
       </div>,
     )
 
-    const label = within(container).getByText('Files', { selector: 'span' })
-    expect(label.className).toMatch(/truncate/)
+    // `truncate` must sit on a span around the text run alone, not on the
+    // icon+text flex container itself — mixing an icon flex-item with a raw
+    // text node under `truncate` is a known CSS gotcha where browsers
+    // hard-clip without rendering the ellipsis glyph.
+    const textRun = within(container).getByText('Files', { selector: 'span.truncate' })
+    expect(textRun.className).toMatch(/truncate/)
+
+    // The label wrapper (icon + text run) — the text run's parent — must
+    // still be able to shrink within the header row, and must be distinct
+    // from the truncating text-run span itself.
+    const labelWrapper = textRun.parentElement as HTMLElement
+    expect(labelWrapper).not.toBe(textRun)
+    expect(labelWrapper.className).toMatch(/min-w-0/)
+    expect(labelWrapper.className).not.toMatch(/\btruncate\b/)
 
     const refreshButton = screen.getByRole('button', { name: 'Refresh document status' })
     expect(refreshButton.className).toMatch(/shrink-0/)

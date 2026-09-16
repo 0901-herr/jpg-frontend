@@ -575,7 +575,9 @@ export default function FolderSidebar({ browse, selection, disabled = false }: F
         <div className="flex items-center justify-between shrink-0 gap-2">
           <span className={`${sectionLabel} !mb-0 min-w-0 flex-1`}>
             {viewMode === 'folder' ? <ChatFolderIcon /> : <ChatDescriptionIcon />}
-            {viewMode === 'folder' ? 'Files' : 'Documents'}
+            <span className="truncate min-w-0 flex-1">
+              {viewMode === 'folder' ? 'Files' : 'Documents'}
+            </span>
           </span>
           <div className="flex min-w-0 items-center gap-1.5 shrink-0">
             {isTreeBusy && <Spin size="small" />}
