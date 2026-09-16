@@ -393,13 +393,25 @@ export function useChatStore({
     (chatId: string) => {
       if (!enabled || !chatId) return
       if (loadedMessagesRef.current.has(chatId)) return
-      if (sharedSessionsRef.current.some((s) => s.id === chatId)) return
+      // A shared chat already fully loaded via `loadSharedSession` (the
+      // `?share=` link flow) already has its messages/scope — no need to
+      // re-fetch. But a shared chat that only ever came from `GET
+      // /chat/sessions`'s `shared` list (a returning-viewer reload, or a
+      // click in the sidebar) is still a message-less summary at this
+      // point and needs the same detail fetch an owned chat gets — `GET
+      // /chat/sessions/{id}` is allowed for a non-owner viewer as long as
+      // the chat isn't private, same endpoint either way.
+      const isOwnSession = sessionsRef.current.some((s) => s.id === chatId)
       loadedMessagesRef.current.add(chatId)
       void (async () => {
         try {
           const detail = await getChatSession(chatId)
           const mapped = mapDetailToSession(detail)
-          setSessions((prev) => prev.map((s) => (s.id === chatId ? mapped : s)))
+          if (isOwnSession) {
+            setSessions((prev) => prev.map((s) => (s.id === chatId ? mapped : s)))
+          } else {
+            setSharedSessions((prev) => prev.map((s) => (s.id === chatId ? mapped : s)))
+          }
         } catch {
           // Leave the session as-is (empty messages) — best-effort only.
         }

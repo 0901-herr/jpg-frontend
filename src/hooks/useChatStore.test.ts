@@ -288,6 +288,75 @@ describe('hydration', () => {
     expect(result.current.activeChatId).toBe('shared-1')
   })
 
+  it('fetches a restored shared chat’s detail (messages + scope) instead of leaving it as a message-less summary', async () => {
+    vi.mocked(chatApi.listChatSessions).mockResolvedValue({
+      sessions: [
+        {
+          id: 's1',
+          title: 'Session 1',
+          project_id: null,
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-16T00:00:00Z',
+          updated_at: '2026-09-16T00:00:00Z',
+          message_count: 0,
+        },
+      ],
+      shared: [
+        {
+          id: 'shared-1',
+          title: 'Shared chat',
+          owner_username: 'alice',
+          visibility: 'query',
+          opened_at: '2026-09-16T00:00:00Z',
+        },
+      ],
+    })
+    // Last active chat, per the local mirror, was the shared one — its
+    // list entry above is a message-less/scope-less summary, same as what
+    // `GET /chat/sessions` always returns for `shared`.
+    persistChatHistory(chatUserId, [{ id: 's1', title: 'Session 1', messages: [] }], 'shared-1')
+    vi.mocked(chatApi.getChatSession).mockResolvedValue({
+      id: 'shared-1',
+      title: 'Shared chat',
+      project_id: null,
+      visibility: 'query',
+      share_token: null,
+      created_at: '2026-09-16T00:00:00Z',
+      updated_at: '2026-09-16T00:00:00Z',
+      message_count: 1,
+      owner_username: 'alice',
+      is_owner: false,
+      can_query: true,
+      scope_document_ids: ['doc-9'],
+      messages: [
+        {
+          id: 'm1',
+          seq: 1,
+          role: 'user',
+          content: 'Hi',
+          author_username: 'bob',
+          created_at: '2026-09-16T00:00:00Z',
+        },
+      ],
+    })
+
+    const { result } = renderHook(() => useChatStore(baseParams()))
+
+    await waitFor(() => expect(result.current.hydrated).toBe(true))
+    expect(result.current.activeChatId).toBe('shared-1')
+
+    await waitFor(() => expect(chatApi.getChatSession).toHaveBeenCalledWith('shared-1'))
+    await waitFor(() => {
+      const shared = result.current.sharedSessions.find((s) => s.id === 'shared-1')
+      expect(shared?.messages).toHaveLength(1)
+      expect(shared?.scopeDocumentIds).toEqual(['doc-9'])
+    })
+    // Never touched the OWN sessions list — the fetched detail belongs in
+    // `sharedSessions`.
+    expect(result.current.sessions.find((s) => s.id === 'shared-1')).toBeUndefined()
+  })
+
   it('never touches the network when disabled (citation-demo mode)', async () => {
     const initialSession = createEmptySession()
     const { result } = renderHook(() => useChatStore(baseParams({ enabled: false, initialSession })))
