@@ -1,4 +1,4 @@
-import { act, renderHook } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { useDocumentSelection } from './useDocumentSelection'
 import { persistSelection } from '../utils/browsePersistence'
@@ -52,6 +52,42 @@ describe('useDocumentSelection — default selection is empty, no auto-select', 
     const { result } = renderHook(() => useDocumentSelection())
 
     expect(result.current.selectedIds).toEqual(new Set())
+  })
+
+  it('keeps selections isolated by authenticated user and never restores the legacy shared key for an account', async () => {
+    // Simulates a browser that was previously used by an admin before the
+    // selection key gained an account scope. That old global value must not
+    // appear for the next person who signs in on the same browser.
+    persistSelection(new Set(['admin-doc-1', 'admin-doc-2']))
+    persistSelection(new Set(['admin-doc-1', 'admin-doc-2']), 'admin')
+
+    const { result, rerender } = renderHook(
+      ({ userId }: { userId: string | null }) => useDocumentSelection(userId),
+      { initialProps: { userId: 'member' } },
+    )
+
+    expect(result.current.selectedIds).toEqual(new Set())
+
+    // Account switching in one mounted app must load the right account's
+    // own saved selection, without exposing the prior one in between.
+    rerender({ userId: 'admin' })
+    await waitFor(() =>
+      expect(result.current.selectedIds).toEqual(new Set(['admin-doc-1', 'admin-doc-2'])),
+    )
+
+    rerender({ userId: 'member' })
+    expect(result.current.selectedIds).toEqual(new Set())
+  })
+
+  it('persists a selection across a reload for the same authenticated user', () => {
+    const first = renderHook(() => useDocumentSelection('user-1'))
+    act(() => {
+      first.result.current.toggleDocument('doc-1', true)
+    })
+    first.unmount()
+
+    const second = renderHook(() => useDocumentSelection('user-1'))
+    expect(second.result.current.selectedIds).toEqual(new Set(['doc-1']))
   })
 
   it('does not change the selection when documents load, on "load more" (page > 0) or otherwise', () => {

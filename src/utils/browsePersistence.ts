@@ -13,6 +13,10 @@ function readJsonArray(key: string): string[] {
   }
 }
 
+function selectedDocumentsKey(userId: string): string {
+  return `${SELECTED_DOCS_KEY}_${userId}`
+}
+
 function readJsonNumber(key: string): number | null {
   try {
     const raw = localStorage.getItem(key)
@@ -29,10 +33,20 @@ function readJsonNumber(key: string): number | null {
  * selection (`[]`, from clearing every document). Either way, the caller's
  * own default (an empty `Set`) is what a fresh browser starts with — by
  * design, nothing is selected until the user checks something. */
-export function loadPersistedSelection(): Set<string> | null {
+/**
+ * Selections belong to one authenticated account. Passing a user id reads
+ * that account's private browser slot; `null` deliberately restores nothing
+ * while auth is still unknown. The omitted argument keeps the legacy helper
+ * behaviour for isolated callers/tests, but production always supplies an
+ * authenticated id and never reads the old shared key.
+ */
+export function loadPersistedSelection(userId?: string | null): Set<string> | null {
   let raw: string | null
   try {
-    raw = localStorage.getItem(SELECTED_DOCS_KEY)
+    if (userId === null) return null
+    raw = localStorage.getItem(
+      typeof userId === 'string' ? selectedDocumentsKey(userId) : SELECTED_DOCS_KEY,
+    )
   } catch {
     return null
   }
@@ -45,8 +59,13 @@ export function loadPersistedSelection(): Set<string> | null {
   }
 }
 
-export function persistSelection(ids: Set<string>) {
-  localStorage.setItem(SELECTED_DOCS_KEY, JSON.stringify([...ids]))
+export function persistSelection(ids: Set<string>, userId?: string | null) {
+  // There is no safe owner to write against until authentication resolves.
+  if (userId === null) return
+  localStorage.setItem(
+    typeof userId === 'string' ? selectedDocumentsKey(userId) : SELECTED_DOCS_KEY,
+    JSON.stringify([...ids]),
+  )
 }
 
 export function loadPersistedExpandedFolders(): Set<number> {

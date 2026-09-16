@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { BrowseDocumentItem } from '../api/types/browse'
 import { getSelectableDocumentIds } from '../components/IndexingStatusBadge'
 import {
@@ -6,7 +6,14 @@ import {
   persistSelection,
 } from '../utils/browsePersistence'
 
-export function useDocumentSelection() {
+const EMPTY_SELECTION = new Set<string>()
+
+interface SelectionState {
+  userId: string | null | undefined
+  ids: Set<string>
+}
+
+export function useDocumentSelection(userId?: string | null) {
   // `loadPersistedSelection()` returns `null` when the key was never
   // written (this browser has never persisted a selection) and a Set
   // (possibly empty) when it has — including a deliberate "deselect all".
@@ -14,10 +21,34 @@ export function useDocumentSelection() {
   // nothing is checked, so a fresh browser never triggers loading every
   // document up front. Read via a lazy `useState` initializer so it's only
   // ever evaluated once, at mount.
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(
-    () => loadPersistedSelection() ?? new Set(),
-  )
+  const [selectionState, setSelectionState] = useState<SelectionState>(() => ({
+    userId,
+    ids: loadPersistedSelection(userId) ?? new Set(),
+  }))
   const [documentMeta, setDocumentMeta] = useState<Map<string, BrowseDocumentItem>>(new Map())
+
+  // Keep the account boundary in state as well as in localStorage. During
+  // the render where a login switches accounts, return an empty selection
+  // immediately; the effect then restores only the new account's slot.
+  // That avoids even a one-render flash of the previous user's files.
+  const selectedIds = selectionState.userId === userId ? selectionState.ids : EMPTY_SELECTION
+  useEffect(() => {
+    if (selectionState.userId === userId) return
+    setSelectionState({ userId, ids: loadPersistedSelection(userId) ?? new Set() })
+    setDocumentMeta(new Map())
+  }, [selectionState.userId, userId])
+
+  const updateSelection = useCallback(
+    (updater: (previous: Set<string>) => Set<string>) => {
+      setSelectionState((previous) => {
+        const current = previous.userId === userId ? previous.ids : new Set<string>()
+        const next = updater(current)
+        persistSelection(next, userId)
+        return { userId, ids: next }
+      })
+    },
+    [userId],
+  )
 
   const registerDocuments = useCallback((documents: BrowseDocumentItem[]) => {
     if (documents.length === 0) return
@@ -31,38 +62,34 @@ export function useDocumentSelection() {
   }, [])
 
   const toggleDocument = useCallback((documentId: string, checked: boolean) => {
-    setSelectedIds((prev) => {
+    updateSelection((prev) => {
       const next = new Set(prev)
       if (checked) next.add(documentId)
       else next.delete(documentId)
-      persistSelection(next)
       return next
     })
-  }, [])
+  }, [updateSelection])
 
   const setSelection = useCallback((ids: Iterable<string>) => {
     const next = new Set(ids)
-    setSelectedIds(next)
-    persistSelection(next)
-  }, [])
+    updateSelection(() => next)
+  }, [updateSelection])
 
   const mergeSelection = useCallback((ids: Iterable<string>) => {
-    setSelectedIds((prev) => {
+    updateSelection((prev) => {
       const next = new Set(prev)
       for (const id of ids) next.add(id)
-      persistSelection(next)
       return next
     })
-  }, [])
+  }, [updateSelection])
 
   const removeSelection = useCallback((ids: Iterable<string>) => {
-    setSelectedIds((prev) => {
+    updateSelection((prev) => {
       const next = new Set(prev)
       for (const id of ids) next.delete(id)
-      persistSelection(next)
       return next
     })
-  }, [])
+  }, [updateSelection])
 
   const selectAllSelectable = useCallback(
     (documents: BrowseDocumentItem[], { replace = false }: { replace?: boolean } = {}) => {
@@ -78,27 +105,24 @@ export function useDocumentSelection() {
 
   const deselectAllInView = useCallback((documents: BrowseDocumentItem[]) => {
     const viewIds = new Set(documents.map((doc) => doc.document_id))
-    setSelectedIds((prev) => {
+    updateSelection((prev) => {
       const next = new Set([...prev].filter((id) => !viewIds.has(id)))
-      persistSelection(next)
       return next
     })
-  }, [])
+  }, [updateSelection])
 
   const clearSelection = useCallback(() => {
-    setSelectedIds(new Set())
-    persistSelection(new Set())
-  }, [])
+    updateSelection(() => new Set())
+  }, [updateSelection])
 
   const trimSelection = useCallback((accessibleIds: string[]) => {
     const allowed = new Set(accessibleIds)
-    setSelectedIds((prev) => {
+    updateSelection((prev) => {
       const next = new Set([...prev].filter((id) => allowed.has(id)))
-      persistSelection(next)
       return next
     })
     return allowed
-  }, [])
+  }, [updateSelection])
 
   const selectedFilenames = useMemo(
     () =>

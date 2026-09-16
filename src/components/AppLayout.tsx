@@ -207,7 +207,7 @@ export default function AppLayout() {
   // in any environment without `visualViewport` leaves the CSS rule alone.
   const visualViewportHeight = useVisualViewportHeight()
   const sendQuery = useSendQuery()
-  const selection = useDocumentSelection()
+  const selection = useDocumentSelection(chatUserId)
 
   const handleDocumentsLoaded = useCallback(
     ({ documents }: DocumentsLoadedEvent) => {
