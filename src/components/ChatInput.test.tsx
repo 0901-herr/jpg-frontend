@@ -495,6 +495,23 @@ describe('ChatInput — shared queryable chat with no manual file selection', ()
     expect(screen.queryByRole('button', { name: 'Clear selection' })).not.toBeInTheDocument()
   })
 
+  it('shows the same file-list tooltip for the host-selected scope pill', async () => {
+    const user = userEvent.setup()
+    renderChatInput({
+      selectedCount: 0,
+      allowEmptySelection: true,
+      sharedScopeFiles: [
+        { documentId: 'doc-9', filename: 'Contract.pdf' },
+        { documentId: 'doc-10', filename: null },
+      ],
+    })
+
+    await user.hover(screen.getByText('2 files'))
+
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Contract.pdf')
+    expect(screen.getByRole('tooltip')).toHaveTextContent('File doc-10')
+  })
+
   it('disables the composer with a distinct placeholder when the host has not chosen any files yet', () => {
     renderChatInput({
       selectedCount: 0,

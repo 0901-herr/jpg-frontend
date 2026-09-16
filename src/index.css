@@ -209,6 +209,15 @@ input.ant-input:focus-visible {
   outline: none !important;
 }
 
+/* Keep the switcher hit area comfortably tappable (20 × 24px), while
+   suppressing Ant's large hover/focus surface. The chevron itself is only
+   12px; an oversized rounded outline makes it look like a mismatched button
+   beside the checkbox rather than a disclosure affordance. */
+.docu-file-tree .ant-tree-switcher::before,
+.docu-file-tree .ant-tree-switcher::after {
+  display: none !important;
+}
+
 .docu-file-tree .ant-tree-switcher .anticon:not(.docu-tree-chevron) {
   display: none !important;
 }
@@ -927,6 +936,63 @@ button.docu-citation-pill:hover {
    width and defeat `truncate`'s `overflow: hidden`). */
 .docu-selected-files-tooltip .docu-selected-files-item > span {
   min-width: 0;
+}
+
+/* Sharing is a permission decision, so each choice needs enough space to
+   scan its consequence before a user commits—not three radio labels packed
+   into one visual run. The native radio remains the control for keyboard
+   and screen-reader semantics; the row supplies the grouping and target. */
+.docu-share-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.docu-share-option.ant-radio-wrapper {
+  align-items: flex-start;
+  width: 100%;
+  margin-inline-start: 0;
+  margin-inline-end: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--docu-border);
+  border-radius: 0.75rem;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.docu-share-option.ant-radio-wrapper:hover {
+  background: var(--docu-bg-hover);
+  border-color: #d4d4d4;
+}
+
+.docu-share-option.ant-radio-wrapper-checked {
+  background: #f5f9ff;
+  border-color: #91caff;
+}
+
+.docu-share-option .ant-radio {
+  margin-top: 0.175rem;
+}
+
+.docu-share-option .ant-radio + * {
+  min-width: 0;
+}
+
+.docu-share-option-label,
+.docu-share-option-description {
+  display: block;
+}
+
+.docu-share-option-label {
+  color: var(--docu-text-primary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.25rem;
+}
+
+.docu-share-option-description {
+  margin-top: 0.125rem;
+  line-height: 1.25rem;
 }
 
 .docu-document-checklist .ant-checkbox-wrapper {

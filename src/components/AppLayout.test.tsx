@@ -651,8 +651,8 @@ describe('AppLayout — shared link (?share=token)', () => {
     await user.click(screen.getByRole('button', { name: 'Send message' }))
 
     expect(await screen.findByText('What do these say?')).toBeInTheDocument()
-    // Filenames couldn't be resolved locally — falls back to a count.
-    expect(await screen.findByText('2 shared files')).toBeInTheDocument()
+    // Shared-turn scope is intentionally not repeated below the bubble.
+    expect(screen.queryByText('2 shared files')).not.toBeInTheDocument()
     expect(lastSendQueryRequest?.documents).toEqual(['doc-9', 'doc-10'])
 
     await waitFor(() => {
@@ -731,9 +731,10 @@ describe('AppLayout — shared link (?share=token)', () => {
     await user.click(screen.getByRole('button', { name: 'Send message' }))
 
     await waitFor(() => expect(lastSendQueryRequest?.omitDocuments).toBe(true))
-    // The sent question's own file tags (user bubble) still resolve real
-    // filenames — unaffected by the composer pill's collapse to a count.
-    await waitFor(() => expect(screen.getAllByText('Contract.pdf')).toHaveLength(1))
+    // Shared turns deliberately do not repeat the scope as a filename pill
+    // beneath the bubble; hover the composer count when the file list is
+    // needed. This keeps shared and normal chat history visually identical.
+    await waitFor(() => expect(screen.queryByText('Contract.pdf')).not.toBeInTheDocument())
     // The composer's own pill stays a count, even after sending.
     expect(screen.getByText('2 files')).toBeInTheDocument()
   })

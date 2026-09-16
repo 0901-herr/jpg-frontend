@@ -245,12 +245,24 @@ export default function ChatInput({
   // input"), just without `filesChip`'s clear/✕ button.
   const sharedFilesChip =
     sharedScopeFiles && sharedScopeFiles.length > 0 ? (
-      <span
-        className="docu-chat-composer-files"
-        aria-label={`${sharedScopeFiles.length} ${sharedScopeFiles.length === 1 ? 'file' : 'files'} selected by the chat owner`}
+      <Tooltip
+        title={
+          <SelectedFilesTooltip
+            files={sharedScopeFiles.map((file) => file.filename ?? `File ${file.documentId}`)}
+          />
+        }
+        placement="top"
+        mouseEnterDelay={0.2}
+        overlayClassName="docu-selected-files-tooltip"
+        styles={{ root: { maxWidth: isPhone ? 'calc(100vw - 32px)' : 440 } }}
       >
-        {sharedScopeFiles.length} {sharedScopeFiles.length === 1 ? 'file' : 'files'}
-      </span>
+        <span
+          className="docu-chat-composer-files"
+          aria-label={`${sharedScopeFiles.length} ${sharedScopeFiles.length === 1 ? 'file' : 'files'} selected by the chat owner`}
+        >
+          {sharedScopeFiles.length} {sharedScopeFiles.length === 1 ? 'file' : 'files'}
+        </span>
+      </Tooltip>
     ) : null
 
   const tierDropdown = (

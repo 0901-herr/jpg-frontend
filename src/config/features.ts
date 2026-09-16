@@ -15,9 +15,10 @@ export const FEATURES = {
 
   /**
    * "Share…" on a chat's options menu, and the share link/modal it opens.
-   * Projects and server-side chat persistence are always on regardless of
-   * this flag — it gates sharing specifically. Set
-   * `VITE_FEATURE_CHAT_SHARING=true` to turn it on.
+   * Sharing is a core chat workflow, so it is on unless a deployment
+   * explicitly opts out with `VITE_FEATURE_CHAT_SHARING=false`. Projects
+   * and server-side chat persistence are always on regardless of this
+   * flag — it gates sharing specifically.
    */
-  chatSharing: import.meta.env.VITE_FEATURE_CHAT_SHARING === 'true',
+  chatSharing: import.meta.env.VITE_FEATURE_CHAT_SHARING !== 'false',
 }

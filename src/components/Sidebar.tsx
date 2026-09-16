@@ -14,7 +14,7 @@ import type { InputRef, MenuProps } from 'antd'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { sectionLabel, spacing, surface } from '../styles/theme'
-import { sidebar, typeColor } from '../styles/typography'
+import { sidebar, type, typeColor } from '../styles/typography'
 import type { BrowseTreeState } from '../hooks/useBrowseTree'
 import type { DocumentSelection } from '../hooks/useDocumentSelection'
 import type { ChatProject, ChatSession, ChatVisibility } from '../types'
@@ -494,26 +494,6 @@ export default function Sidebar({
               )}
             </div>
 
-            {creatingProject && (
-              <Input
-                ref={newProjectInputRef}
-                size="small"
-                placeholder="Project name"
-                value={newProjectName}
-                onChange={(e) => setNewProjectName(e.target.value)}
-                onBlur={commitNewProject}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') commitNewProject()
-                  if (e.key === 'Escape') {
-                    setNewProjectName('')
-                    setCreatingProject(false)
-                  }
-                }}
-                className={`mb-3 ${sidebar.body} !rounded-lg`}
-                maxLength={200}
-              />
-            )}
-
             {deletingProjectIds.size > 0 && (
               <span
                 className={`flex items-center gap-1.5 mb-1.5 ${sidebar.caption} ${typeColor.muted}`}
@@ -602,6 +582,43 @@ export default function Sidebar({
             </div>
           </div>
         </div>
+
+        <Modal
+          open={creatingProject}
+          title="New project"
+          centered
+          width={400}
+          okText="Create project"
+          cancelText="Cancel"
+          confirmLoading={creatingProjectPending}
+          okButtonProps={{ disabled: !newProjectName.trim() }}
+          onOk={commitNewProject}
+          onCancel={() => {
+            if (creatingProjectPending) return
+            setNewProjectName('')
+            setCreatingProject(false)
+          }}
+        >
+          <p className={`mb-3 ${type.body} ${typeColor.secondary}`}>
+            Group related chats together.
+          </p>
+          <Input
+            ref={newProjectInputRef}
+            size="large"
+            placeholder="Project name"
+            value={newProjectName}
+            onChange={(e) => setNewProjectName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && newProjectName.trim()) commitNewProject()
+              if (e.key === 'Escape') {
+                setNewProjectName('')
+                setCreatingProject(false)
+              }
+            }}
+            className={`${sidebar.body} !rounded-lg`}
+            maxLength={200}
+          />
+        </Modal>
 
         <div className="shrink-0 pt-2 mt-1">
           <div className="border-t border-[#ececec] pt-2">

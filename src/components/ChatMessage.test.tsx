@@ -997,8 +997,8 @@ describe('author label', () => {
   })
 })
 
-describe('user bubble file tags (shared-scope queries)', () => {
-  it('renders each file tag under the question', () => {
+describe('user bubble shared-scope metadata', () => {
+  it('does not add file tags under a shared-chat question', () => {
     render(
       <ChatMessageItem
         message={{
@@ -1010,11 +1010,11 @@ describe('user bubble file tags (shared-scope queries)', () => {
       />,
     )
 
-    expect(screen.getByText('a.pdf')).toBeInTheDocument()
-    expect(screen.getByText('b.pdf')).toBeInTheDocument()
+    expect(screen.queryByText('a.pdf')).not.toBeInTheDocument()
+    expect(screen.queryByText('b.pdf')).not.toBeInTheDocument()
   })
 
-  it('renders a fallback count tag when filenames could not be resolved', () => {
+  it('does not add a fallback count tag when filenames could not be resolved', () => {
     render(
       <ChatMessageItem
         message={{
@@ -1026,10 +1026,10 @@ describe('user bubble file tags (shared-scope queries)', () => {
       />,
     )
 
-    expect(screen.getByText('3 shared files')).toBeInTheDocument()
+    expect(screen.queryByText('3 shared files')).not.toBeInTheDocument()
   })
 
-  it('renders nothing extra when there are no file tags', () => {
+  it('renders no file-tag container', () => {
     const { container } = render(
       <ChatMessageItem message={{ id: 'u1', role: 'user', content: 'Hi' }} />,
     )

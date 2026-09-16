@@ -24,7 +24,7 @@ describe('ShareChatModal', () => {
     expect(screen.getByRole('radio', { name: 'Anyone with the link can view and ask' })).toBeInTheDocument()
   })
 
-  it('shows the private explanation when Private is selected', () => {
+  it('makes the private consequence clear', () => {
     render(
       <ShareChatModal
         chat={chat({ visibility: 'private' })}
@@ -33,10 +33,10 @@ describe('ShareChatModal', () => {
       />,
     )
 
-    expect(screen.getByText(/no longer be able to see this chat/i)).toBeInTheDocument()
+    expect(screen.getByText(/only you can access this chat/i)).toBeInTheDocument()
   })
 
-  it('shows the view explanation when "Anyone with the link can view" is selected', () => {
+  it('makes the view-only consequence clear', () => {
     render(
       <ShareChatModal
         chat={chat({ visibility: 'view', shareToken: 'tok123' })}
@@ -45,7 +45,7 @@ describe('ShareChatModal', () => {
       />,
     )
 
-    expect(screen.getByText(/^the other users can see your chat history\.$/i)).toBeInTheDocument()
+    expect(screen.getByText(/can read the chat, but cannot send messages/i)).toBeInTheDocument()
   })
 
   it('shows the query explanation and says scope updates when a message is sent, not on selection', () => {

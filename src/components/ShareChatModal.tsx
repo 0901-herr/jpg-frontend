@@ -13,11 +13,20 @@ function shareLinkFor(token: string): string {
   return `${window.location.origin}/chat?share=${token}`
 }
 
-const EXPLANATIONS: Record<ChatVisibility, string> = {
-  private: 'The other users will no longer be able to see this chat.',
-  view: 'The other users can see your chat history.',
-  query:
-    'The other users can see your chat history and ask questions. The files they can query update when you send a message, not when you change your file selection.',
+const OPTIONS: Record<ChatVisibility, { label: string; description: string }> = {
+  private: {
+    label: 'Private',
+    description: 'Only you can access this chat. Anyone with an existing link loses access.',
+  },
+  view: {
+    label: 'Anyone with the link can view',
+    description: 'People with the link can read the chat, but cannot send messages.',
+  },
+  query: {
+    label: 'Anyone with the link can view and ask',
+    description:
+      'People with the link can read and ask about your selected files. The shared file scope updates when you send a message.',
+  },
 }
 
 /** Radio Private / "Anyone with the link can view" / "...and ask" — owner
@@ -53,24 +62,34 @@ export default function ShareChatModal({ chat, onClose, onChangeVisibility }: Sh
 
   return (
     <Modal open title="Share this chat" footer={null} onCancel={onClose} width={420} centered>
-      <div className="flex items-start gap-2 mt-2">
+      <div className="mt-3">
         <Radio.Group
           onChange={(e) => handleChange(e.target.value as ChatVisibility)}
           value={visibility}
           disabled={updating}
-          className="flex flex-col gap-3"
+          className="docu-share-options"
         >
-          <Radio value="private">Private</Radio>
-          <Radio value="view">Anyone with the link can view</Radio>
-          <Radio value="query">Anyone with the link can view and ask</Radio>
+          {(Object.keys(OPTIONS) as ChatVisibility[]).map((option) => (
+            <Radio
+              key={option}
+              value={option}
+              aria-label={OPTIONS[option].label}
+              className="docu-share-option"
+            >
+              <span className="docu-share-option-label">{OPTIONS[option].label}</span>
+              <span className={`docu-share-option-description ${type.caption} ${typeColor.muted}`}>
+                {OPTIONS[option].description}
+              </span>
+            </Radio>
+          ))}
         </Radio.Group>
         {updating && <Spin size="small" data-testid="visibility-spinner" />}
       </div>
 
-      <p className={`mt-2 ${type.caption} ${typeColor.muted}`}>{EXPLANATIONS[visibility]}</p>
-
       {visibility !== 'private' && chat.shareToken && (
-        <div className="mt-4 flex items-center gap-2">
+        <div className="mt-5">
+          <p className={`mb-2 ${type.caption} ${typeColor.secondary}`}>Share link</p>
+          <div className="flex items-center gap-2">
           <Input readOnly value={shareLinkFor(chat.shareToken)} className="flex-1 min-w-0" />
           <button
             type="button"
@@ -79,11 +98,12 @@ export default function ShareChatModal({ chat, onClose, onChangeVisibility }: Sh
           >
             {copied ? 'Copied' : 'Copy'}
           </button>
+          </div>
         </div>
       )}
 
       {visibility !== 'private' && !chat.shareToken && (
-        <p className={`mt-4 ${type.caption} ${typeColor.muted}`}>Creating the link</p>
+        <p className={`mt-5 ${type.caption} ${typeColor.muted}`}>Creating the link…</p>
       )}
     </Modal>
   )

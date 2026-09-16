@@ -44,6 +44,7 @@ VITE_AUTH_BYPASS=true
 | `VITE_AUTH_BYPASS=true` | Show chat UI without cookie login check (dev only) |
 | `VITE_ADMIN_API_KEY` | Optional — must match adapter `ADAPTER_QUERY_API_KEY` if set |
 | `VITE_FEATURE_CATEGORY_VIEW=true` | Build-time flag — turns the Folder/Category browse toggle back on (OFF by default; code stays in place, see `src/config/features.ts`) |
+| `VITE_FEATURE_CHAT_SHARING=false` | Build-time opt-out for chat sharing. Sharing is enabled by default. |
 | `VITE_CATEGORY_LABELS` | Optional — per-deployment category label overrides, as a JSON object string (e.g. `{"harvesting_record": "Harvesting Record"}`); unlisted categories fall back to a generic title-cased label |
 | `VITE_CATEGORY_COLORS` | Optional — per-deployment category color overrides, as a JSON object string (e.g. `{"harvesting_record": "green"}`); unlisted categories fall back to a deterministic hash-based color |
 

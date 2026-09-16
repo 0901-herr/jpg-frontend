@@ -312,33 +312,11 @@ function AssistantLabel() {
 function UserLabel({ name }: { name: string }) {
   const initial = name.trim().charAt(0).toUpperCase() || '?'
   return (
-    <div className="flex items-center gap-1.5 mb-1" aria-label={name}>
+    <div className="flex items-center gap-1.5 mb-0.5" aria-label={name}>
       <Avatar size={20} className="!bg-[#1e3a5f] !text-white !text-[11px] shrink-0">
         {initial}
       </Avatar>
       <span className={`${type.caption} font-medium ${typeColor.muted}`}>{name}</span>
-    </div>
-  )
-}
-
-/** Small tag row under a user bubble naming the files a question was
- * scoped to — mainly useful for a shared queryable chat, where the viewer
- * never manually picked files (no composer chip to look back at). Each
- * entry is either a resolved filename or, when the viewer can't browse
- * the shared files so no name is available, a single fallback like "3
- * shared files" (`AppLayout.tsx`'s `handleSend`). */
-function UserFileTags({ tags }: { tags: string[] }) {
-  if (tags.length === 0) return null
-  return (
-    <div data-testid="user-file-tags" className="mt-1.5 flex flex-wrap gap-1">
-      {tags.map((tag) => (
-        <span
-          key={tag}
-          className={`inline-block bg-[#f4f4f4] ${radius.md} px-2 py-0.5 ${type.caption} ${typeColor.muted}`}
-        >
-          {tag}
-        </span>
-      ))}
     </div>
   )
 }
@@ -366,7 +344,6 @@ export default function ChatMessageItem({
           >
             <Text className={`${type.body} ${typeColor.body}`}>{message.content}</Text>
           </div>
-          <UserFileTags tags={message.fileTags ?? []} />
         </div>
       ) : (
         <div className="mb-6">

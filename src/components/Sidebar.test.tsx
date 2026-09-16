@@ -204,6 +204,7 @@ describe('Sidebar — project grouping', () => {
     renderSidebar({ onCreateProject })
 
     await user.click(screen.getByRole('button', { name: 'New project' }))
+    expect(screen.getByRole('dialog', { name: 'New project' })).toBeInTheDocument()
     await user.type(screen.getByPlaceholderText('Project name'), 'Legal{Enter}')
 
     expect(onCreateProject).toHaveBeenCalledWith('Legal')
