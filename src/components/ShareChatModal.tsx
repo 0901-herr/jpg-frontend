@@ -13,6 +13,13 @@ function shareLinkFor(token: string): string {
   return `${window.location.origin}/chat?share=${token}`
 }
 
+const EXPLANATIONS: Record<ChatVisibility, string> = {
+  private: 'The other users will no longer be able to see this chat.',
+  view: 'The other users can see your chat history.',
+  query:
+    'The other users can see your chat history and ask questions. The files they can query update when you send a message, not when you change your file selection.',
+}
+
 /** Radio Private / "Anyone with the link can view" / "...and ask" — owner
  * only (`Sidebar` gates opening this behind `chat.isOwner` and
  * `FEATURES.chatSharing`). Changing the radio calls `onChangeVisibility`
@@ -57,6 +64,8 @@ export default function ShareChatModal({ chat, onClose, onChangeVisibility }: Sh
         <Radio value="query">Anyone with the link can view and ask</Radio>
       </Radio.Group>
 
+      <p className={`mt-2 ${type.caption} ${typeColor.muted}`}>{EXPLANATIONS[visibility]}</p>
+
       {visibility !== 'private' && chat.shareToken && (
         <div className="mt-4 flex items-center gap-2">
           <Input readOnly value={shareLinkFor(chat.shareToken)} className="flex-1 min-w-0" />
@@ -72,20 +81,6 @@ export default function ShareChatModal({ chat, onClose, onChangeVisibility }: Sh
 
       {visibility !== 'private' && !chat.shareToken && (
         <p className={`mt-4 ${type.caption} ${typeColor.muted}`}>Creating the link</p>
-      )}
-
-      {/* Same effect as picking the Private radio above — an explicit
-          button for the common "I'm done sharing this" action, rather
-          than making the owner find the radio again. */}
-      {visibility !== 'private' && (
-        <button
-          type="button"
-          onClick={() => handleChange('private')}
-          disabled={updating}
-          className="mt-4 px-3 py-2 rounded-lg border border-[#ececec] hover:bg-[#f4f4f4] transition-colors disabled:opacity-50"
-        >
-          Stop sharing
-        </button>
       )}
     </Modal>
   )
