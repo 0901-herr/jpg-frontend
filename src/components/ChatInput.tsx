@@ -58,6 +58,12 @@ interface ChatInputProps {
   extractMetadataDisabledReason?: string | null
   queryTier: QueryTier
   onQueryTierChange: (tier: QueryTier) => void
+  /** True for a shared chat the viewer can only read — the owner shared it
+   * as "Anyone with the link can view" rather than "...and ask". Disables
+   * the textarea/send regardless of `disabled`/`selectedCount` and swaps
+   * the placeholder for `viewOnlyPlaceholder`. */
+  viewOnly?: boolean
+  viewOnlyPlaceholder?: string
 }
 
 // Numbered, single-line-per-entry list (client feedback: "they should be
@@ -111,11 +117,14 @@ export default function ChatInput({
   extractMetadataDisabledReason = null,
   queryTier,
   onQueryTierChange,
+  viewOnly = false,
+  viewOnlyPlaceholder,
 }: ChatInputProps) {
   const [value, setValue] = useState('')
   const isPhone = useMediaQuery(PHONE_QUERY)
 
-  const canSend = !isResponding && !disabled && value.trim().length > 0 && selectedCount > 0
+  const canSend =
+    !isResponding && !disabled && !viewOnly && value.trim().length > 0 && selectedCount > 0
   const canSummarize = summarizeDisabledReason == null
   const canCategorize = categorizeDisabledReason == null
   const canExtractMetadata = extractMetadataDisabledReason == null
@@ -123,12 +132,12 @@ export default function ChatInput({
     selectedCount,
     hasMessage: value.trim().length > 0,
     isResponding,
-    disabled,
+    disabled: disabled || viewOnly,
   })
 
   const handleSend = () => {
     const trimmed = value.trim()
-    if (!trimmed || isResponding || disabled || selectedCount === 0) return
+    if (!trimmed || isResponding || disabled || viewOnly || selectedCount === 0) return
     onSend(trimmed)
     setValue('')
   }
@@ -312,11 +321,13 @@ export default function ChatInput({
               onKeyDown={handleKeyDown}
               onFocus={onComposerFocus}
               placeholder={
-                selectedCount > 0
-                  ? 'Ask a question about the selected documents'
-                  : 'Select documents first'
+                viewOnly
+                  ? (viewOnlyPlaceholder ?? 'View only')
+                  : selectedCount > 0
+                    ? 'Ask a question about the selected documents'
+                    : 'Select documents first'
               }
-              disabled={disabled || selectedCount === 0}
+              disabled={disabled || viewOnly || selectedCount === 0}
               autoSize={{ minRows: 1, maxRows: 6 }}
               variant="borderless"
               className={`w-full !px-0 !py-0 ${type.body} !shadow-none resize-none !leading-6`}

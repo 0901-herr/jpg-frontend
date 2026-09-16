@@ -385,3 +385,37 @@ describe('docu-chat-composer-categorize CSS parity with summarize/extract', () =
     expect(css).toMatch(/\.docu-chat-composer-categorize:focus-visible,/)
   })
 })
+
+describe('ChatInput — view-only (shared chat, view-only visibility)', () => {
+  it('disables the composer and shows the view-only placeholder, even with files selected', () => {
+    renderChatInput({
+      selectedCount: 2,
+      viewOnly: true,
+      viewOnlyPlaceholder: 'View only — the owner has not allowed questions here',
+    })
+
+    const textarea = screen.getByPlaceholderText(
+      'View only — the owner has not allowed questions here',
+    )
+    expect(textarea).toBeDisabled()
+  })
+
+  it('never calls onSend while view-only, even if Enter is pressed', async () => {
+    const user = userEvent.setup()
+    const onSend = vi.fn()
+    renderChatInput({ selectedCount: 2, viewOnly: true, onSend })
+
+    const textarea = screen.getByPlaceholderText('View only')
+    await user.type(textarea, 'Can I ask this?{Enter}')
+
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it('renders the normal placeholder and an enabled composer when not view-only', () => {
+    renderChatInput({ selectedCount: 1, viewOnly: false })
+
+    expect(
+      screen.getByPlaceholderText('Ask a question about the selected documents'),
+    ).not.toBeDisabled()
+  })
+})
