@@ -95,7 +95,7 @@ describe('buildMetadataExtractionAnswer', () => {
     expect(rowCount).toBe(8)
   })
 
-  it('renders an arbitrary field set that has nothing to do with the old MQA fields, to prove genericity', () => {
+  it('renders an arbitrary field set unrelated to any fixed field list, to prove genericity', () => {
     const markdown = buildMetadataExtractionAnswer(
       response({
         filename: 'harvest-log.pdf',
