@@ -5,7 +5,7 @@ import type { MouseEvent } from 'react'
 import { forwardRef, useEffect, useRef, useState } from 'react'
 import { FEATURES } from '../config/features'
 import { sidebar, typeColor } from '../styles/typography'
-import { listRow, sidebarNav, surface } from '../styles/theme'
+import { listRow, sidebarNav } from '../styles/theme'
 import type { ChatProject, ChatSession } from '../types'
 
 const NO_PROJECT_KEY = '__no_project__'
@@ -45,7 +45,7 @@ export const ChatOptionsButton = forwardRef<
       aria-label="Chat options"
       onClick={onClick}
       disabled={disabled}
-      className={`docu-chat-options-trigger shrink-0 w-8 h-8 px-2 py-1.5 inline-flex items-center justify-center leading-none rounded-lg ${typeColor.muted} hover:text-[#404040] ${surface.hover} transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0084ff]/35 disabled:opacity-50 disabled:cursor-not-allowed ${
+      className={`docu-chat-options-trigger shrink-0 w-8 h-8 px-2 py-1.5 inline-flex items-center justify-center leading-none rounded-lg ${typeColor.muted} transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0084ff]/35 disabled:opacity-50 disabled:cursor-not-allowed ${
         menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
       }`}
     >
