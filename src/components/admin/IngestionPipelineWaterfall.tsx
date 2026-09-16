@@ -30,11 +30,6 @@ function trackTipIndex(states: PipelineStageState[]): number {
   return states.every((state) => state === 'complete') ? states.length - 1 : 0
 }
 
-function trackFillPercent(tipIndex: number): number {
-  if (PIPELINE_STAGES.length <= 1) return 0
-  return (tipIndex / (PIPELINE_STAGES.length - 1)) * 100
-}
-
 function nodeStyles(state: PipelineStageState, compact: boolean): string {
   const size = compact ? 'h-3.5 w-3.5 border' : 'h-7 w-7 border-2'
 
@@ -55,19 +50,6 @@ function trackTone(states: PipelineStageState[]): 'success' | 'active' | 'failed
   if (states.every((state) => state === 'complete')) return 'success'
   if (states.some((state) => state === 'current')) return 'active'
   return 'idle'
-}
-
-function trackFillClass(tone: ReturnType<typeof trackTone>): string {
-  switch (tone) {
-    case 'failed':
-      return 'admin-pipeline-track--failed'
-    case 'success':
-      return 'admin-pipeline-track--complete'
-    case 'active':
-      return 'admin-pipeline-track--active'
-    default:
-      return 'bg-transparent'
-  }
 }
 
 function StageIcon({
@@ -109,10 +91,8 @@ export default function IngestionPipelineWaterfall({
 }: IngestionPipelineWaterfallProps) {
   const progress = getPipelineProgress(status, doc)
   const tipIndex = trackTipIndex(progress.states)
-  const fillPercent = trackFillPercent(tipIndex)
   const tone = trackTone(progress.states)
   const activeStage = PIPELINE_STAGES[tipIndex]
-  const trackOffset = compact ? 'top-[6px]' : 'top-[13px]'
   const nodeRowClass = compact ? 'min-h-[14px]' : 'min-h-[28px]'
 
   return (
@@ -122,16 +102,6 @@ export default function IngestionPipelineWaterfall({
       aria-label={`Pipeline: ${progress.summary}`}
     >
       <div className={`relative ${compact ? 'pb-5' : 'pb-8'}`}>
-        <div
-          className={`admin-pipeline-track pointer-events-none absolute ${trackOffset} left-[7px] right-[7px] h-0.5 rounded-full`}
-          aria-hidden
-        />
-        <div
-          className={`pointer-events-none absolute ${trackOffset} left-[7px] h-0.5 rounded-full transition-all duration-300 ${trackFillClass(tone)}`}
-          style={{ width: `calc((100% - 14px) * ${fillPercent / 100})` }}
-          aria-hidden
-        />
-
         <div className="relative flex justify-between">
           {PIPELINE_STAGES.map((stage, index) => {
             const state = progress.states[index]

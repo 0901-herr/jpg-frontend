@@ -1464,22 +1464,6 @@ button.docu-citation-pill:hover {
   color: #8791a1;
 }
 
-.admin-pipeline-track {
-  background: var(--admin-border);
-}
-
-.admin-pipeline-track--active {
-  background: var(--admin-accent);
-}
-
-.admin-pipeline-track--complete {
-  background: var(--admin-success);
-}
-
-.admin-pipeline-track--failed {
-  background: var(--admin-danger);
-}
-
 .admin-pipeline-label--active {
   color: var(--admin-accent);
 }
