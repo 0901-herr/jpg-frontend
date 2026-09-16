@@ -11,6 +11,7 @@ import ChatIcon from '@mui/icons-material/Chat'
 import CheckCircleOutlinedIcon from '@mui/icons-material/CheckCircleOutlined'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import CloseIcon from '@mui/icons-material/Close'
+import CreateNewFolderOutlinedIcon from '@mui/icons-material/CreateNewFolderOutlined'
 import DeleteOutlinedIcon from '@mui/icons-material/DeleteOutlined'
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined'
 import DriveFileMoveOutlinedIcon from '@mui/icons-material/DriveFileMoveOutlined'
@@ -69,6 +70,9 @@ export const ChatMoveIcon = appIcon(DriveFileMoveOutlinedIcon, 14)
 export const ChatLockIcon = appIcon(LockOutlinedIcon, 20)
 export const ChatFolderIcon = appIcon(FolderOpenOutlinedIcon, 14)
 export const ChatAppsIcon = appIcon(AppsIcon, 14)
+// Distinct from ChatAddIcon (used by "New chat") so the sidebar's "New
+// project" trigger reads as creating a folder, not another chat.
+export const ChatNewFolderIcon = appIcon(CreateNewFolderOutlinedIcon, 14)
 export const ChatFolderSuffixIcon = appIcon(FolderOpenOutlinedIcon, 'inherit')
 export const ChatAppsSuffixIcon = appIcon(AppsIcon, 'inherit')
 export const ChatRefreshIcon = appIcon(RefreshOutlinedIcon, 14)
