@@ -1,5 +1,4 @@
-import { AdminRefreshIcon } from '../../icons/admin'
-import { Button, Table } from 'antd'
+import { Table } from 'antd'
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table'
 import type { AdminDocumentSummary } from '../../api/types/admin'
 import { ADMIN_EMPTY, ADMIN_TABLE_SCROLL } from '../../config/adminStyles'
@@ -7,6 +6,7 @@ import { formatDateTime } from '../../utils/lifecycle'
 import CategoryTag from '../CategoryTag'
 import DocumentStatusBadge from './DocumentStatusBadge'
 import IngestionPipelineWaterfall from './IngestionPipelineWaterfall'
+import AdminRefreshButton from './AdminRefreshButton'
 
 interface DocumentTableProps {
   items: AdminDocumentSummary[]
@@ -107,9 +107,7 @@ export default function DocumentTable({
       <div className="mb-3 flex items-center justify-between gap-3">
         <h2 className="admin-list-heading">Documents</h2>
         {onRefresh ? (
-          <Button size="small" icon={<AdminRefreshIcon />} loading={refreshing} onClick={onRefresh}>
-            Refresh
-          </Button>
+          <AdminRefreshButton loading={refreshing} onClick={onRefresh} />
         ) : null}
       </div>
       <div className="min-w-0 overflow-x-auto">

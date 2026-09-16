@@ -1,4 +1,4 @@
-import { AdminPauseIcon, AdminPlayIcon, AdminRefreshIcon } from '../../icons/admin'
+import { AdminPauseIcon, AdminPlayIcon } from '../../icons/admin'
 import { App, Button, Col, Progress, Row, Statistic, Tooltip, Typography } from 'antd'
 import { useMutation } from '@tanstack/react-query'
 import type { IngestionOverview } from '../../api/types/admin'
@@ -20,6 +20,7 @@ import {
   shouldShowProgressBar,
 } from '../../utils/pipelineStatus'
 import AdminCard from './AdminCard'
+import AdminRefreshButton from './AdminRefreshButton'
 
 const { Text } = Typography
 
@@ -226,14 +227,7 @@ export default function PipelineProgressCard({
             <span />
           )}
           {onRefresh && (
-            <Button
-              size="small"
-              icon={<AdminRefreshIcon />}
-              loading={isRefreshing}
-              onClick={onRefresh}
-            >
-              Refresh
-            </Button>
+            <AdminRefreshButton loading={isRefreshing} onClick={onRefresh} />
           )}
         </div>
       )}

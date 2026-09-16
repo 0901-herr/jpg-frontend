@@ -1,5 +1,5 @@
-import { AdminDescriptionIcon, AdminRefreshIcon } from '../../icons/admin'
-import { Alert, Button, Empty, Space, Tag, Timeline, Typography } from 'antd'
+import { AdminDescriptionIcon } from '../../icons/admin'
+import { Alert, Empty, Space, Tag, Timeline, Typography } from 'antd'
 import { useMemo } from 'react'
 import type { AdminDocumentSummary, IngestionActivityItem, IngestionOverview } from '../../api/types/admin'
 import { ADMIN_STACK_SPACE } from '../../config/adminStyles'
@@ -11,6 +11,7 @@ import {
 } from '../../utils/activityLog'
 import { ADMIN_TEXT_BODY, ADMIN_TEXT_LINK, ADMIN_TEXT_MUTED } from '../../config/adminStyles'
 import AdminCard from './AdminCard'
+import AdminRefreshButton from './AdminRefreshButton'
 
 const { Text } = Typography
 
@@ -87,9 +88,7 @@ export default function IngestionActivityLog({
         }
         extra={
           onRefresh ? (
-            <Button size="small" icon={<AdminRefreshIcon />} onClick={onRefresh} loading={loading}>
-              Refresh
-            </Button>
+            <AdminRefreshButton onClick={onRefresh} loading={loading} />
           ) : null
         }
       >
