@@ -247,6 +247,46 @@ describe('Sidebar — project grouping', () => {
     renderSidebar({ sharedSessions: [] })
     expect(screen.queryByText('Shared')).not.toBeInTheDocument()
   })
+
+  it('shows the "New project" button with a tooltip clarifying its purpose', async () => {
+    const user = userEvent.setup()
+    renderSidebar()
+
+    await user.hover(screen.getByRole('button', { name: 'New project' }))
+
+    expect(await screen.findByRole('tooltip', { name: 'New project' })).toBeInTheDocument()
+  })
+
+  it('warns the real chat count will be permanently deleted when deleting a project with chats', async () => {
+    const user = userEvent.setup()
+    const onDeleteProject = vi.fn()
+    renderSidebar({ onDeleteProject })
+
+    await user.click(screen.getByRole('button', { name: 'Project options' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Delete' }))
+
+    expect(
+      screen.getByText('This will permanently delete 1 chat in this project. This cannot be undone.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/kept — this only removes the project/)).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
+    expect(onDeleteProject).toHaveBeenCalledWith('p1')
+  })
+
+  it('shows an empty-project message (no false chat-count claim) when the project has no chats', async () => {
+    const user = userEvent.setup()
+    renderSidebar({
+      sessions: [{ id: 'c2', title: 'Chat B', messages: [], projectId: null }],
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Project options' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Delete' }))
+
+    expect(
+      screen.getByText('This project has no chats. It will be permanently deleted.'),
+    ).toBeInTheDocument()
+  })
 })
 
 describe('Sidebar — share modal', () => {

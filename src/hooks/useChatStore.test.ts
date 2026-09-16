@@ -492,14 +492,103 @@ describe('chat CRUD', () => {
     ).toEqual(['doc-1', 'doc-2'])
   })
 
-  it('deletes a project and clears its id off any chat that had it', async () => {
+  it('rolls back the optimistic project move if the PATCH fails, and shows an error', async () => {
     const result = await hydrated()
+    vi.mocked(chatApi.patchChatSession).mockRejectedValueOnce(new Error('network error'))
+
     act(() => result.current.moveChat('s1', 'proj-1'))
+
+    // Optimistic update applied immediately.
+    expect(result.current.sessions.find((s) => s.id === 's1')?.projectId).toBe('proj-1')
+
+    // Rolled back to its previous value once the PATCH rejects.
+    await waitFor(() => {
+      expect(result.current.sessions.find((s) => s.id === 's1')?.projectId).toBeNull()
+    })
+  })
+
+  it('deletes a project by cascading: deletes every chat in it via the existing single-chat-delete call, then deletes the project itself', async () => {
+    vi.mocked(chatApi.listChatSessions).mockResolvedValue({
+      sessions: [
+        {
+          id: 's1',
+          title: 'Session 1',
+          project_id: 'proj-1',
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-16T00:00:00Z',
+          updated_at: '2026-09-16T00:00:00Z',
+          message_count: 0,
+        },
+        {
+          id: 's2',
+          title: 'Session 2',
+          project_id: 'proj-1',
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-16T00:00:00Z',
+          updated_at: '2026-09-16T00:00:00Z',
+          message_count: 0,
+        },
+        {
+          id: 's3',
+          title: 'Session 3',
+          project_id: null,
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-16T00:00:00Z',
+          updated_at: '2026-09-16T00:00:00Z',
+          message_count: 0,
+        },
+      ],
+      shared: [],
+    })
+    vi.mocked(chatApi.deleteChatSession).mockResolvedValue(undefined)
     vi.mocked(chatApi.deleteChatProject).mockResolvedValue(undefined)
+    // The active chat (s1, then s3 once the cascade reselects it, mirroring
+    // `deleteChat`'s own reselection) each trigger `ensureMessagesLoaded` ->
+    // `getChatSession(id)` in the background. Mocked per-id (matching
+    // `hydratedWithShared`'s convention elsewhere in this file) rather than
+    // a single static `mockResolvedValue` — a static fixture would answer
+    // every id with the same payload, stamping session s3 with s1's id once
+    // it becomes active.
+    vi.mocked(chatApi.getChatSession).mockImplementation((requestedId: string) =>
+      Promise.resolve({
+        id: requestedId,
+        title: `Session ${requestedId}`,
+        project_id: requestedId === 's3' ? null : 'proj-1',
+        visibility: 'private',
+        share_token: null,
+        created_at: '2026-09-16T00:00:00Z',
+        updated_at: '2026-09-16T00:00:00Z',
+        message_count: 0,
+        owner_username: 'tester',
+        is_owner: true,
+        can_query: true,
+        scope_document_ids: [],
+        messages: [],
+      }),
+    )
 
-    act(() => result.current.deleteProject('proj-1'))
+    const { result } = renderHook(() => useChatStore(baseParams()))
+    await waitFor(() => expect(result.current.hydrated).toBe(true))
 
-    expect(result.current.sessions.find((s) => s.id === 's1')?.projectId).toBeNull()
+    await act(async () => {
+      await result.current.deleteProject('proj-1')
+    })
+    expect(chatApi.deleteChatSession).toHaveBeenCalledTimes(2)
+    expect(chatApi.deleteChatSession).toHaveBeenCalledWith('s1')
+    expect(chatApi.deleteChatSession).toHaveBeenCalledWith('s2')
+    expect(chatApi.deleteChatProject).toHaveBeenCalledWith('proj-1')
+    // The chats that were in the deleted project are gone from the visible
+    // list entirely (cascade), not merely orphaned to projectId: null.
+    expect(result.current.sessions.some((s) => s.id === 's1' || s.id === 's2')).toBe(false)
+    expect(result.current.sessions.some((s) => s.id === 's3')).toBe(true)
+    // 's1' was the active chat (first own session, hydration's default) and
+    // got deleted along with the rest of the project — must not leave
+    // activeChatId pointing at a chat that's gone, same reselection
+    // `deleteChat` already does for a single delete.
+    expect(result.current.activeChatId).toBe('s3')
   })
 })
 

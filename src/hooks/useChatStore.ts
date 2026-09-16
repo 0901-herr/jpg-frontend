@@ -196,7 +196,13 @@ export interface UseChatStoreResult {
   shareChat: (chatId: string, visibility: ChatVisibility) => Promise<void>
   createProject: (name: string) => Promise<void>
   renameProject: (id: string, name: string) => Promise<void>
-  deleteProject: (id: string) => void
+  /** Cascades: deletes every chat currently in the project (via the same
+   * single-chat delete the store uses elsewhere) before deleting the
+   * project itself — the backend has no cascade-delete endpoint of its
+   * own. Returns a promise so a caller that wants to await the full
+   * cascade can (e.g. a confirmation flow); existing callers that just
+   * fire-and-forget it are unaffected. */
+  deleteProject: (id: string) => Promise<void>
   /** Fire-and-forget: persists the just-appended user message (and the
    * scope it was asked against) — never blocks or throws into the caller,
    * the message is already showing locally either way. */
@@ -517,10 +523,22 @@ export function useChatStore({
 
   const moveChat = useCallback(
     (chatId: string, projectId: string | null) => {
+      // Read the pre-update value off the ref (same idiom `createChat`,
+      // `deleteChat` and `removeSharedChat` already use for "current state
+      // outside a setState updater") so it's available to roll back to if
+      // the PATCH below fails.
+      const previousProjectId = sessionsRef.current.find((s) => s.id === chatId)?.projectId ?? null
       setSessions((prev) => prev.map((s) => (s.id === chatId ? { ...s, projectId } : s)))
       if (!enabled) return
       void patchChatSession(chatId, { project_id: projectId }).catch(() => {
-        message.error('Could not move this chat.')
+        // The PATCH silently failing while the optimistic update stands is
+        // exactly what made a failed move look like it "needed a re-login
+        // to take effect" — only a later re-hydration would revert it.
+        // Roll back immediately instead, and say so.
+        setSessions((prev) =>
+          prev.map((s) => (s.id === chatId ? { ...s, projectId: previousProjectId } : s)),
+        )
+        message.error('Could not move this chat. It has been moved back.')
       })
     },
     [enabled],
@@ -592,13 +610,42 @@ export function useChatStore({
   )
 
   const deleteProject = useCallback(
-    (id: string) => {
+    async (id: string) => {
+      // Same ref-read idiom as `moveChat`/`createChat` — captured before
+      // the optimistic removal below so the cascade still knows which
+      // chats to delete server-side even after they've disappeared from
+      // `sessions`.
+      const chatsInProject = sessionsRef.current.filter((s) => s.projectId === id)
+      const removedIds = new Set(chatsInProject.map((c) => c.id))
       setProjects((prev) => prev.filter((p) => p.id !== id))
-      setSessions((prev) => prev.map((s) => (s.projectId === id ? { ...s, projectId: null } : s)))
-      if (!enabled) return
-      void deleteChatProject(id).catch(() => {
-        message.error('Could not delete the project.')
+      setSessions((prev) => {
+        // Same reselection idiom as `deleteChat` (never leave `activeChatId`
+        // pointing at a chat that's no longer in `sessions`), generalized
+        // from one removed id to the whole set this cascade removes.
+        const next = prev.filter((s) => s.projectId !== id)
+        if (next.length === 0) {
+          const fresh = createEmptySession(next)
+          loadedMessagesRef.current.add(fresh.id)
+          setActiveChatId(fresh.id)
+          return [fresh]
+        }
+        if (removedIds.has(activeChatIdRef.current)) {
+          setActiveChatId(next[0].id)
+        }
+        return next
       })
+      if (!enabled) return
+      try {
+        // The backend has no cascade-delete endpoint: deleting the project
+        // alone would only orphan these chats (project_id -> null), not
+        // remove them. Delete each chat first via the same single-chat
+        // delete call `deleteChat` already uses, then the now-empty
+        // project.
+        await Promise.all(chatsInProject.map((chat) => deleteChatSession(chat.id)))
+        await deleteChatProject(id)
+      } catch {
+        message.error('Could not fully delete this project. Please refresh and try again.')
+      }
     },
     [enabled],
   )

@@ -1,4 +1,4 @@
-import { Avatar, Dropdown, Input, Layout, Modal } from 'antd'
+import { Avatar, Dropdown, Input, Layout, Modal, Tooltip } from 'antd'
 import { useEffect, useRef, useState } from 'react'
 import {
   ChatAddIcon,
@@ -25,9 +25,11 @@ import SidebarNavItem from './SidebarNavItem'
 const { Sider } = Layout
 
 /** A project's header row: expand/collapse chevron, name (inline-editable),
- * chat count, and a Rename/Delete menu. Deleting a project never deletes
- * its chats — they fall back to "ungrouped" (the adapter sets their
- * `project_id` to null; `Sidebar` mirrors that by clearing it locally). */
+ * chat count, and a Rename/Delete menu. Deleting a project cascades: every
+ * chat in it is deleted too (after the confirmation below), not merely
+ * orphaned — the adapter has no cascade-delete endpoint of its own, so
+ * `useChatStore.deleteProject` deletes each chat individually first, then
+ * the project. */
 function ProjectGroupHeader({
   project,
   count,
@@ -152,7 +154,9 @@ function ProjectGroupHeader({
         onCancel={() => setDeleteOpen(false)}
       >
         <p className="chat-delete-modal-body">
-          Chats in this project are kept — this only removes the project.
+          {count > 0
+            ? `This will permanently delete ${count} chat${count === 1 ? '' : 's'} in this project. This cannot be undone.`
+            : 'This project has no chats. It will be permanently deleted.'}
         </p>
         <div className="chat-delete-modal-actions">
           <button
@@ -378,14 +382,16 @@ export default function Sidebar({
                 Chats
               </span>
               {onCreateProject && (
-                <button
-                  type="button"
-                  onClick={() => setCreatingProject(true)}
-                  aria-label="New project"
-                  className={`shrink-0 p-1 mb-1.5 rounded-lg ${typeColor.muted} hover:text-[#404040] ${surface.hover}`}
-                >
-                  <ChatAddIcon sx={{ fontSize: 14 }} />
-                </button>
+                <Tooltip title="New project">
+                  <button
+                    type="button"
+                    onClick={() => setCreatingProject(true)}
+                    aria-label="New project"
+                    className={`shrink-0 p-1 mb-1.5 rounded-lg ${typeColor.muted} hover:text-[#404040] ${surface.hover}`}
+                  >
+                    <ChatAddIcon sx={{ fontSize: 14 }} />
+                  </button>
+                </Tooltip>
               )}
             </div>
 
