@@ -469,6 +469,29 @@ button.docu-citation-pill:hover {
   margin-bottom: 0;
 }
 
+/* Nested lists keep their indent from `pl-5` on every `<ul>`/`<ol>`, but
+   the `list-disc` / `list-decimal` utilities apply to every level, so a
+   sub-list was drawn with the same bullet as its parent and read as one
+   flat run (owner screenshot, 2026-09-16). Restore the browser's own
+   level markers — disc, circle, square for bullets; decimal, lower-alpha,
+   lower-roman for numbers. Unlayered on purpose: it must beat the layered
+   Tailwind utility on the nested element regardless of specificity. */
+.docu-answer li > ul {
+  list-style-type: circle;
+}
+
+.docu-answer li li > ul {
+  list-style-type: square;
+}
+
+.docu-answer li > ol {
+  list-style-type: lower-alpha;
+}
+
+.docu-answer li li > ol {
+  list-style-type: lower-roman;
+}
+
 /* Mainstream AI-chat layouts use a rounded rectangle for the composer, not
    a full stadium pill — `--docu-radius-lg` (16px) rather than 9999px. The
    soft shadow gives it a touch of elevation off the page background at
