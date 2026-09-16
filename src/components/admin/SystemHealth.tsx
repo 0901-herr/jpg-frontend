@@ -102,7 +102,7 @@ export default function SystemHealth({
           return (
             <div
               key={row.key}
-              className="flex items-start justify-between gap-4 py-3 first:pt-0 last:pb-0"
+              className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0"
             >
               <div className="min-w-0 flex-1">
                 <Text className={ADMIN_TEXT_LABEL}>{row.label}</Text>
