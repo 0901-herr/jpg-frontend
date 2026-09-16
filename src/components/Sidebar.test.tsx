@@ -286,7 +286,12 @@ describe('Sidebar — share modal', () => {
 })
 
 describe('Sidebar — Files pane disabled for a shared chat', () => {
-  function renderSidebar(activeChatId: string) {
+  // `isSharedChat` is the one source of truth (AppLayout computes it from
+  // `activeSession?.isOwner === false`, the same value it uses to gate
+  // Summarize/Categorize/Extract metadata) — Sidebar must not re-derive
+  // its own answer from `sharedSessions`/`activeChatId`, which could
+  // disagree with AppLayout's own gating.
+  function renderSidebar(activeChatId: string, isSharedChat: boolean) {
     return render(
       <MemoryRouter>
         <Sidebar
@@ -296,6 +301,7 @@ describe('Sidebar — Files pane disabled for a shared chat', () => {
             { id: 's1', title: 'Shared chat', messages: [], isOwner: false, ownerUsername: 'alice' },
           ]}
           activeChatId={activeChatId}
+          isSharedChat={isSharedChat}
           browse={browseFixture()}
           selection={selectionFixture()}
           onSelectChat={vi.fn()}
@@ -307,14 +313,29 @@ describe('Sidebar — Files pane disabled for a shared chat', () => {
     )
   }
 
-  it('disables FolderSidebar when the active chat is a shared (non-owned) one', () => {
-    renderSidebar('s1')
+  it('disables FolderSidebar when isSharedChat is true', () => {
+    renderSidebar('s1', true)
     expect(screen.getByTestId('folder-sidebar-stub')).toHaveAttribute('data-disabled', 'true')
   })
 
-  it('leaves FolderSidebar enabled for the viewer’s own active chat', () => {
-    renderSidebar('c1')
+  it('leaves FolderSidebar enabled when isSharedChat is false', () => {
+    renderSidebar('c1', false)
     expect(screen.getByTestId('folder-sidebar-stub')).toHaveAttribute('data-disabled', 'false')
+  })
+
+  it('trusts the isSharedChat prop over its own activeChatId/sharedSessions match', () => {
+    // activeChatId matches a shared session's id, but the caller says
+    // isSharedChat is false — the prop wins.
+    renderSidebar('s1', false)
+    expect(screen.getByTestId('folder-sidebar-stub')).toHaveAttribute('data-disabled', 'false')
+
+    // The reverse: activeChatId matches the viewer's own chat, but the
+    // caller says isSharedChat is true — the prop still wins.
+    renderSidebar('c1', true)
+    expect(screen.getAllByTestId('folder-sidebar-stub')[1]).toHaveAttribute(
+      'data-disabled',
+      'true',
+    )
   })
 })
 

@@ -189,6 +189,14 @@ interface SidebarProps {
   sharedSessions?: ChatSession[]
   projects?: ChatProject[]
   activeChatId: string
+  /** True when the active chat is shared and the viewer doesn't own it —
+   * computed once by AppLayout (from `activeSession?.isOwner === false`,
+   * the same value that gates Summarize/Categorize/Extract metadata) and
+   * passed down as the one source of truth, rather than Sidebar
+   * re-deriving its own answer from `sharedSessions`/`activeChatId`.
+   * Disables the Files pane (owner decision, 2026-09-16: a follower can't
+   * choose documents at all). */
+  isSharedChat?: boolean
   browse: BrowseTreeState
   selection: DocumentSelection
   onSelectChat: (chatId: string) => void
@@ -224,6 +232,7 @@ export default function Sidebar({
   sharedSessions = [],
   projects = [],
   activeChatId,
+  isSharedChat = false,
   browse,
   selection,
   onSelectChat,
@@ -290,12 +299,6 @@ export default function Sidebar({
   const ungroupedChats = sessions.filter((s) => !s.projectId)
   const shareModalChat = shareChatId ? (sessions.find((s) => s.id === shareChatId) ?? null) : null
 
-  // The follower can't choose documents at all in a shared chat (owner
-  // decision, 2026-09-16) — FolderSidebar renders its whole pane disabled
-  // whenever the active chat is one of `sharedSessions` rather than the
-  // viewer's own.
-  const filesPaneDisabled = sharedSessions.some((s) => s.id === activeChatId)
-
   const renderChatItem = (chat: ChatSession) => (
     <ChatListItem
       key={chat.id}
@@ -357,7 +360,7 @@ export default function Sidebar({
               the bottom of a short viewport: this section clips and
               scrolls its own overflow instead of growing past it. */}
           <div className="flex flex-col min-h-0 flex-[3] overflow-y-auto overflow-x-hidden pt-1">
-            <FolderSidebar browse={browse} selection={selection} disabled={filesPaneDisabled} />
+            <FolderSidebar browse={browse} selection={selection} disabled={isSharedChat} />
           </div>
 
           {/* min-h-[270px] (~5 two-line ChatListItem rows, client feedback:
