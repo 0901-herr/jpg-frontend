@@ -1252,7 +1252,7 @@ describe('AppLayout — Summarize/Categorize/Extract metadata blocked in a share
 
     const summarizeBtn = screen.getByRole('button', { name: 'Summarize selected document' })
     const categorizeBtn = screen.getByRole('button', { name: 'Categorize selected document' })
-    const extractBtn = screen.getByRole('button', { name: 'Extract MQA metadata' })
+    const extractBtn = screen.getByRole('button', { name: 'Extract metadata' })
 
     await waitFor(() => expect(summarizeBtn).toBeDisabled())
     expect(categorizeBtn).toBeDisabled()
@@ -1264,7 +1264,7 @@ describe('AppLayout — Summarize/Categorize/Extract metadata blocked in a share
 
     expect(fetchDocumentSummary).not.toHaveBeenCalled()
     expect(categorizeDocument).not.toHaveBeenCalled()
-    expect(extractMqaMetadata).not.toHaveBeenCalled()
+    expect(extractMetadata).not.toHaveBeenCalled()
     expect(postChatMessage).not.toHaveBeenCalled()
   })
 })
