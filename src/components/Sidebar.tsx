@@ -654,7 +654,7 @@ export default function Sidebar({
           />
         </Modal>
 
-        <div className="shrink-0 mt-1">
+        <div className="shrink-0">
           <div className="py-3">
             <SidebarNavItem
               icon={<ChatAddIcon />}
