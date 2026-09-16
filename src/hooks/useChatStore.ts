@@ -6,6 +6,7 @@ import {
   createChatSession,
   deleteChatProject,
   deleteChatSession,
+  deleteSharedChatSession,
   getChatSession,
   getSharedChatSession,
   listChatProjects,
@@ -112,6 +113,10 @@ function mapDetailToSession(dto: ChatSessionDetailDto): ChatSession {
     canQuery: dto.can_query,
     messageCount: dto.messages.length,
     scopeDocumentIds: dto.scope_document_ids,
+    scopeDocuments: (dto.scope_documents ?? []).map((d) => ({
+      documentId: d.document_id,
+      filename: d.filename,
+    })),
   }
 }
 
@@ -201,6 +206,16 @@ export interface UseChatStoreResult {
    * interrupted; the adapter updates the same row in place. */
   recordAssistantMessage: (chatId: string, msg: ChatMessage) => void
   loadSharedSession: (token: string) => Promise<ChatSession | null>
+  /** Forces an immediate re-fetch of a shared chat's own detail (scope +
+   * messages) — used after a follower's answer completes, so a host scope
+   * change made mid-conversation is picked up without waiting for the
+   * chat to be re-activated. */
+  refreshSharedChat: (chatId: string) => void
+  /** Recipient-side removal from the viewer's own "Shared" group (`DELETE
+   * /chat/shared/{id}`) — never touches the owner's chat. Reselects the
+   * viewer's most recent own chat if the removed one was active; opening
+   * the share link again just re-adds it. */
+  removeSharedChat: (chatId: string) => void
 }
 
 /** Owns every chat-store concern that used to live directly in AppLayout:
@@ -389,35 +404,57 @@ export function useChatStore({
     setActiveChatId(fresh.id)
   }, [hydrated, sessions.length, sharedSessions.length, hasPendingShare])
 
+  // Shared by `ensureMessagesLoaded` and `refreshSharedChat` — fetches one
+  // chat's full detail and applies it to whichever list it belongs in.
+  // Best-effort only: a failure leaves the session as it was rather than
+  // surfacing an error (this may run silently in the background, e.g.
+  // after a follower's answer completes).
+  const fetchAndApplyDetail = useCallback(
+    async (chatId: string, isOwnSession: boolean) => {
+      try {
+        const detail = await getChatSession(chatId)
+        const mapped = mapDetailToSession(detail)
+        if (isOwnSession) {
+          setSessions((prev) => prev.map((s) => (s.id === chatId ? mapped : s)))
+        } else {
+          setSharedSessions((prev) => prev.map((s) => (s.id === chatId ? mapped : s)))
+        }
+      } catch {
+        // Leave the session as-is (empty messages) — best-effort only.
+      }
+    },
+    [],
+  )
+
   const ensureMessagesLoaded = useCallback(
     (chatId: string) => {
       if (!enabled || !chatId) return
-      if (loadedMessagesRef.current.has(chatId)) return
-      // A shared chat already fully loaded via `loadSharedSession` (the
-      // `?share=` link flow) already has its messages/scope — no need to
-      // re-fetch. But a shared chat that only ever came from `GET
-      // /chat/sessions`'s `shared` list (a returning-viewer reload, or a
-      // click in the sidebar) is still a message-less summary at this
-      // point and needs the same detail fetch an owned chat gets — `GET
-      // /chat/sessions/{id}` is allowed for a non-owner viewer as long as
-      // the chat isn't private, same endpoint either way.
       const isOwnSession = sessionsRef.current.some((s) => s.id === chatId)
+      if (isOwnSession) {
+        // Owned chats never change scope/history from under the viewer —
+        // fetched once, same as before.
+        if (loadedMessagesRef.current.has(chatId)) return
+        loadedMessagesRef.current.add(chatId)
+        void fetchAndApplyDetail(chatId, true)
+        return
+      }
+      // A shared chat's scope/messages can change any time the host asks
+      // another question or changes their selection — re-fetch every time
+      // this chat becomes active (not gated on `loadedMessagesRef`) so a
+      // host-side change is always picked up, even for a chat already
+      // fully loaded via `loadSharedSession` (the `?share=` link flow).
       loadedMessagesRef.current.add(chatId)
-      void (async () => {
-        try {
-          const detail = await getChatSession(chatId)
-          const mapped = mapDetailToSession(detail)
-          if (isOwnSession) {
-            setSessions((prev) => prev.map((s) => (s.id === chatId ? mapped : s)))
-          } else {
-            setSharedSessions((prev) => prev.map((s) => (s.id === chatId ? mapped : s)))
-          }
-        } catch {
-          // Leave the session as-is (empty messages) — best-effort only.
-        }
-      })()
+      void fetchAndApplyDetail(chatId, false)
     },
-    [enabled],
+    [enabled, fetchAndApplyDetail],
+  )
+
+  const refreshSharedChat = useCallback(
+    (chatId: string) => {
+      if (!enabled || !chatId) return
+      void fetchAndApplyDetail(chatId, false)
+    },
+    [enabled, fetchAndApplyDetail],
   )
 
   useEffect(() => {
@@ -594,6 +631,29 @@ export function useChatStore({
     [enabled],
   )
 
+  const removeSharedChat = useCallback(
+    (chatId: string) => {
+      const wasActive = activeChatIdRef.current === chatId
+      setSharedSessions((prev) => prev.filter((s) => s.id !== chatId))
+      loadedMessagesRef.current.delete(chatId)
+      if (wasActive) {
+        const ownSessions = sessionsRef.current
+        // If there's also nothing left in `sessions`, the "never end up
+        // with zero sessions" effect below creates and selects a fresh
+        // empty chat once this render commits — nothing to do here.
+        if (ownSessions.length > 0) setActiveChatId(ownSessions[0].id)
+      }
+      if (!enabled) return
+      void deleteSharedChatSession(chatId).catch((err) => {
+        // Already gone server-side — same outcome as a successful
+        // delete, nothing to warn about.
+        if (err instanceof ApiError && err.status === 404) return
+        message.error('Could not remove this chat from your list.')
+      })
+    },
+    [enabled],
+  )
+
   const loadSharedSession = useCallback(async (token: string): Promise<ChatSession | null> => {
     try {
       const detail = await getSharedChatSession(token)
@@ -627,5 +687,7 @@ export function useChatStore({
     recordUserMessage,
     recordAssistantMessage,
     loadSharedSession,
+    refreshSharedChat,
+    removeSharedChat,
   }
 }

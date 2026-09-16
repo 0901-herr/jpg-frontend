@@ -125,6 +125,13 @@ export interface ChatSession {
    * queryable chat when the viewer hasn't manually selected any documents
    * of their own (they may not even be able to browse these). */
   scopeDocumentIds?: string[]
+  /** Same documents as `scopeDocumentIds`, paired with a resolved
+   * filename (`null` when the viewer can't resolve one) — the composer's
+   * read-only chips for a shared queryable chat, and the source for a
+   * follower turn's user-bubble file tags, both come from this instead of
+   * the viewer's own (possibly nonexistent) browse-tree metadata. Same
+   * once-full-detail-loaded caveat as `scopeDocumentIds`. */
+  scopeDocuments?: { documentId: string; filename: string | null }[]
 }
 
 /** A named group a chat can be filed under (Sidebar's "New project"

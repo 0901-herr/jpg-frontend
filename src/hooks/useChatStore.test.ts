@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createEmptySession, useChatStore } from './useChatStore'
 import * as chatApi from '../api/chat'
+import { ApiError } from '../api/http'
 import { persistChatHistory } from '../utils/chatPersistence'
 import type { ChatSession } from '../types'
 
@@ -451,11 +452,11 @@ describe('chat CRUD', () => {
 
   it('loads a shared session by token and selects it', async () => {
     const result = await hydrated()
-    vi.mocked(chatApi.getSharedChatSession).mockResolvedValue({
+    const sharedDetail = {
       id: 'shared-1',
       title: 'Someone else chat',
       project_id: null,
-      visibility: 'query',
+      visibility: 'query' as const,
       share_token: 'tok-xyz',
       created_at: '2026-09-16T00:00:00Z',
       updated_at: '2026-09-16T00:00:00Z',
@@ -465,7 +466,15 @@ describe('chat CRUD', () => {
       can_query: true,
       scope_document_ids: ['doc-1', 'doc-2'],
       messages: [],
-    })
+    }
+    vi.mocked(chatApi.getSharedChatSession).mockResolvedValue(sharedDetail)
+    // Selecting the newly-loaded shared chat re-triggers `ensureMessagesLoaded`
+    // (it always refetches a shared chat's own detail on activation, to pick
+    // up a host scope change) — key the blanket `hydrated()` mock by id so
+    // that refetch doesn't clobber `shared-1` with the owned `s1` fixture.
+    vi.mocked(chatApi.getChatSession).mockImplementation((id: string) =>
+      Promise.resolve(id === 'shared-1' ? sharedDetail : ({ id, title: id, messages: [] } as never)),
+    )
 
     let loaded: ChatSession | null = null
     await act(async () => {
@@ -491,5 +500,191 @@ describe('chat CRUD', () => {
     act(() => result.current.deleteProject('proj-1'))
 
     expect(result.current.sessions.find((s) => s.id === 's1')?.projectId).toBeNull()
+  })
+})
+
+describe('shared chat scope + refresh', () => {
+  async function hydratedWithShared() {
+    vi.mocked(chatApi.listChatSessions).mockResolvedValue({
+      sessions: [
+        {
+          id: 's1',
+          title: 'Session 1',
+          project_id: null,
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-16T00:00:00Z',
+          updated_at: '2026-09-16T00:00:00Z',
+          message_count: 0,
+        },
+      ],
+      shared: [
+        {
+          id: 'shared-1',
+          title: 'Shared chat',
+          owner_username: 'alice',
+          visibility: 'query',
+          opened_at: '2026-09-16T00:00:00Z',
+        },
+      ],
+    })
+    vi.mocked(chatApi.getChatSession).mockImplementation((id: string) =>
+      Promise.resolve(
+        id === 'shared-1'
+          ? {
+              id: 'shared-1',
+              title: 'Shared chat',
+              project_id: null,
+              visibility: 'query',
+              share_token: null,
+              created_at: '2026-09-16T00:00:00Z',
+              updated_at: '2026-09-16T00:00:00Z',
+              message_count: 0,
+              owner_username: 'alice',
+              is_owner: false,
+              can_query: true,
+              scope_document_ids: ['doc-1'],
+              scope_documents: [{ document_id: 'doc-1', filename: 'Contract.pdf' }],
+              messages: [],
+            }
+          : {
+              id,
+              title: id,
+              project_id: null,
+              visibility: 'private',
+              share_token: null,
+              created_at: '2026-09-16T00:00:00Z',
+              updated_at: '2026-09-16T00:00:00Z',
+              message_count: 0,
+              owner_username: 'tester',
+              is_owner: true,
+              can_query: true,
+              scope_document_ids: [],
+              messages: [],
+            },
+      ),
+    )
+    const { result } = renderHook(() => useChatStore(baseParams()))
+    await waitFor(() => expect(result.current.hydrated).toBe(true))
+    return result
+  }
+
+  it('carries scope_documents (id + resolved filename) onto the mapped session', async () => {
+    const result = await hydratedWithShared()
+
+    act(() => result.current.setActiveChatId('shared-1'))
+
+    await waitFor(() => {
+      const shared = result.current.sharedSessions.find((s) => s.id === 'shared-1')
+      expect(shared?.scopeDocuments).toEqual([{ documentId: 'doc-1', filename: 'Contract.pdf' }])
+    })
+  })
+
+  it("refetches a shared chat's detail every time it becomes active, not just the first time", async () => {
+    const result = await hydratedWithShared()
+
+    act(() => result.current.setActiveChatId('shared-1'))
+    await waitFor(() =>
+      expect(
+        vi.mocked(chatApi.getChatSession).mock.calls.filter(([id]) => id === 'shared-1').length,
+      ).toBeGreaterThanOrEqual(1),
+    )
+    const firstCount = vi
+      .mocked(chatApi.getChatSession)
+      .mock.calls.filter(([id]) => id === 'shared-1').length
+
+    act(() => result.current.setActiveChatId('s1'))
+    act(() => result.current.setActiveChatId('shared-1'))
+
+    await waitFor(() => {
+      const count = vi
+        .mocked(chatApi.getChatSession)
+        .mock.calls.filter(([id]) => id === 'shared-1').length
+      expect(count).toBeGreaterThan(firstCount)
+    })
+  })
+
+  it('refreshSharedChat forces an immediate refetch of a shared chat’s detail', async () => {
+    const result = await hydratedWithShared()
+    act(() => result.current.setActiveChatId('shared-1'))
+    await waitFor(() => expect(chatApi.getChatSession).toHaveBeenCalledWith('shared-1'))
+    vi.mocked(chatApi.getChatSession).mockClear()
+
+    act(() => result.current.refreshSharedChat('shared-1'))
+
+    await waitFor(() => expect(chatApi.getChatSession).toHaveBeenCalledWith('shared-1'))
+  })
+})
+
+describe('removeSharedChat', () => {
+  async function hydratedWithShared() {
+    vi.mocked(chatApi.listChatSessions).mockResolvedValue({
+      sessions: [
+        {
+          id: 's1',
+          title: 'Session 1',
+          project_id: null,
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-16T00:00:00Z',
+          updated_at: '2026-09-16T00:00:00Z',
+          message_count: 0,
+        },
+      ],
+      shared: [
+        {
+          id: 'shared-1',
+          title: 'Shared chat',
+          owner_username: 'alice',
+          visibility: 'query',
+          opened_at: '2026-09-16T00:00:00Z',
+        },
+      ],
+    })
+    vi.mocked(chatApi.getChatSession).mockResolvedValue({
+      id: 's1',
+      title: 'Session 1',
+      project_id: null,
+      visibility: 'private',
+      share_token: null,
+      created_at: '2026-09-16T00:00:00Z',
+      updated_at: '2026-09-16T00:00:00Z',
+      message_count: 0,
+      owner_username: 'tester',
+      is_owner: true,
+      can_query: true,
+      scope_document_ids: [],
+      messages: [],
+    })
+    const { result } = renderHook(() => useChatStore(baseParams()))
+    await waitFor(() => expect(result.current.hydrated).toBe(true))
+    return result
+  }
+
+  it('deletes the shared chat from the recipient’s own list and, if active, selects their most recent own chat', async () => {
+    const result = await hydratedWithShared()
+    vi.mocked(chatApi.deleteSharedChatSession).mockResolvedValue(undefined)
+    act(() => result.current.setActiveChatId('shared-1'))
+    expect(result.current.activeChatId).toBe('shared-1')
+
+    act(() => result.current.removeSharedChat('shared-1'))
+
+    expect(result.current.sharedSessions.some((s) => s.id === 'shared-1')).toBe(false)
+    expect(result.current.activeChatId).toBe('s1')
+    await waitFor(() =>
+      expect(chatApi.deleteSharedChatSession).toHaveBeenCalledWith('shared-1'),
+    )
+  })
+
+  it('treats a 404 from the delete route as success (the chat is already gone either way)', async () => {
+    const result = await hydratedWithShared()
+    vi.mocked(chatApi.deleteSharedChatSession).mockRejectedValue(new ApiError('Not found', 404))
+
+    act(() => result.current.removeSharedChat('shared-1'))
+
+    expect(result.current.sharedSessions.some((s) => s.id === 'shared-1')).toBe(false)
+    await waitFor(() =>
+      expect(chatApi.deleteSharedChatSession).toHaveBeenCalledWith('shared-1'),
+    )
   })
 })
