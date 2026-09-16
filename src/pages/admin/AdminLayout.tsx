@@ -1,5 +1,5 @@
 import { AdminDashboardIcon } from '../../icons/admin'
-import { App, Layout, Menu, Typography } from 'antd'
+import { App, Layout, Typography } from 'antd'
 import { Link, Outlet, useLocation } from 'react-router-dom'
 import { ADMIN_PANEL_CLASS } from '../../config/adminStyles'
 
@@ -8,13 +8,13 @@ const { Text } = Typography
 
 export default function AdminLayout() {
   const location = useLocation()
-  const selected = location.pathname.startsWith('/admin/ingestion') ? ['ingestion'] : []
+  const ingestionSelected = location.pathname.startsWith('/admin/ingestion')
 
   return (
     <App>
       <Layout className={`${ADMIN_PANEL_CLASS} h-screen overflow-hidden overflow-x-hidden`}>
         <Sider
-          width={240}
+          width={220}
           theme="light"
           className="admin-primary-nav !bg-white border-r shrink-0"
         >
@@ -23,18 +23,17 @@ export default function AdminLayout() {
               Admin console
             </Text>
           </div>
-          <Menu
-            mode="inline"
-            selectedKeys={selected}
-            className="!bg-transparent !border-none px-3 pt-4"
-            items={[
-              {
-                key: 'ingestion',
-                icon: <AdminDashboardIcon />,
-                label: <Link to="/admin/ingestion">Ingestion</Link>,
-              },
-            ]}
-          />
+          <nav className="flex flex-col gap-1 px-3 pt-4" aria-label="Admin sections">
+            <Link
+              to="/admin/ingestion"
+              className={`admin-section-nav-link${ingestionSelected ? ' is-active' : ''}`}
+            >
+              <span className="shrink-0">
+                <AdminDashboardIcon />
+              </span>
+              <span className="flex-1 truncate">Ingestion</span>
+            </Link>
+          </nav>
         </Sider>
         <Layout className="admin-page min-w-0 flex flex-col">
           <Content className="flex-1 min-h-0 min-w-0 overflow-hidden">
