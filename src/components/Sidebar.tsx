@@ -654,21 +654,22 @@ export default function Sidebar({
           />
         </Modal>
 
-        <div className="shrink-0 pt-2 mt-1">
-          <SidebarNavItem
-            icon={<ChatAddIcon />}
-            onClick={() => {
-              if (isLoading) return
-              onNewChat()
-              onNavigate?.()
-            }}
-            variant="secondary"
-            disabled={isLoading}
-            title={isLoading ? 'Chats are loading' : 'Start a new chat'}
-            className="mb-2"
-          >
-            New chat
-          </SidebarNavItem>
+        <div className="shrink-0 mt-1">
+          <div className="py-3">
+            <SidebarNavItem
+              icon={<ChatAddIcon />}
+              onClick={() => {
+                if (isLoading) return
+                onNewChat()
+                onNavigate?.()
+              }}
+              variant="secondary"
+              disabled={isLoading}
+              title={isLoading ? 'Chats are loading' : 'Start a new chat'}
+            >
+              New chat
+            </SidebarNavItem>
+          </div>
           <div className="border-t border-[#ececec] pt-2">
             <Dropdown
               menu={{ items: profileMenu, onClick: handleProfileMenuClick }}
