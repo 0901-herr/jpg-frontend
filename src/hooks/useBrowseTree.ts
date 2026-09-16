@@ -634,6 +634,9 @@ export function useBrowseTree(onDocumentsLoaded?: (event: DocumentsLoadedEvent) 
     activeFolderContents,
     getFolderNode,
     isInitializing,
+    // Same underlying flag as `isInitializing` — exposed under this name
+    // too since it's what the initial-mount loading skeleton consumes.
+    initialLoading: isInitializing,
     initError,
     sessionExpired,
     isActiveFolderLoading,

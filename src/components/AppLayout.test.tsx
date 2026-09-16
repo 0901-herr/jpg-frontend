@@ -112,7 +112,6 @@ vi.mock('../hooks/useDocumentSelection', () => ({
       setSelection: vi.fn(),
       mergeSelection: vi.fn(),
       selectAllSelectable: vi.fn(),
-      autoSelectIfPending: vi.fn(),
       deselectAllInView: vi.fn(),
       clearSelection: vi.fn(),
       trimSelection: (ids: string[]) => {
@@ -443,8 +442,14 @@ describe('AppLayout — shared link (?share=token)', () => {
     expect(getSharedChatSession).toHaveBeenCalledWith('tok123')
 
     // Selected — its own message renders in the chat pane without clicking
-    // anything.
-    expect(await screen.findByText('Shared answer content')).toBeInTheDocument()
+    // anything. Re-queries on every retry (rather than asserting on a
+    // single `findByText` node reference) so a benign re-render racing the
+    // assertion — e.g. `ensureMessagesLoaded`'s own `messagesLoading`
+    // bookkeeping settling right around here — can't leave it holding a
+    // stale, now-detached node.
+    await waitFor(() => {
+      expect(screen.getByText('Shared answer content')).toBeInTheDocument()
+    })
 
     // Live UI proof regression: no throwaway auto-created own chat ("New
     // chat"'s dated title) ever appears, and it never wins the selection

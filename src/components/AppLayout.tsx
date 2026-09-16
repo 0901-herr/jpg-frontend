@@ -203,18 +203,15 @@ export default function AppLayout() {
   const selection = useDocumentSelection()
 
   const handleDocumentsLoaded = useCallback(
-    ({ documents, page }: DocumentsLoadedEvent) => {
+    ({ documents }: DocumentsLoadedEvent) => {
+      // By default nothing is selected — never auto-select on load (a
+      // folder switch, refresh, category toggle, or "load more"): loading
+      // everything up front is exactly what the lazy-loading requirement
+      // rules out. Only registers document metadata for whatever the user
+      // does go on to check.
       selection.registerDocuments(documents)
-      // Page 0 (a folder switch, refresh, or category toggle): auto-select
-      // is a one-time-per-browser decision owned by the hook itself, so an
-      // explicit "deselect all" is never undone by a later page-0 load.
-      // "Load more" (page > 0) never touches the selection at all — merging
-      // newly loaded documents into a partial selection was the bug.
-      if (page === 0) {
-        selection.autoSelectIfPending(documents)
-      }
     },
-    [selection.registerDocuments, selection.autoSelectIfPending],
+    [selection.registerDocuments],
   )
 
   const browse = useBrowseTree(handleDocumentsLoaded)

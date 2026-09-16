@@ -216,6 +216,11 @@ export interface UseChatStoreResult {
    * write, can await it. Safe to ignore otherwise. */
   recordAssistantMessage: (chatId: string, msg: ChatMessage) => Promise<void>
   loadSharedSession: (token: string) => Promise<ChatSession | null>
+  /** Chat ids whose messages `ensureMessagesLoaded` is currently fetching —
+   * a chat id is added right before that fetch starts and removed once it
+   * settles (success or failure), so a caller can render a loading skeleton
+   * for whichever chat the viewer just clicked into. */
+  messagesLoading: Set<string>
   /** Forces an immediate re-fetch of a shared chat's own detail (scope +
    * messages) — used after a follower's answer completes, so a host scope
    * change made mid-conversation is picked up without waiting for the
@@ -247,6 +252,9 @@ export function useChatStore({
   const [projects, setProjects] = useState<ChatProject[]>([])
   const [activeChatId, setActiveChatId] = useState(initialSession.id)
   const [hydrated, setHydrated] = useState(false)
+  // Chat ids with an in-flight `ensureMessagesLoaded` fetch — see
+  // `UseChatStoreResult.messagesLoading`.
+  const [messagesLoading, setMessagesLoading] = useState<Set<string>>(new Set())
 
   const activeChatIdRef = useRef(activeChatId)
   activeChatIdRef.current = activeChatId
@@ -441,6 +449,21 @@ export function useChatStore({
     [],
   )
 
+  // Marks `chatId` as loading for the duration of `promise` — added
+  // immediately, removed in a `finally` regardless of outcome. Shared by
+  // both branches of `ensureMessagesLoaded` below; never touches
+  // `fetchAndApplyDetail` itself, which stays exactly as it was.
+  const trackMessagesLoading = useCallback((chatId: string, promise: Promise<void>) => {
+    setMessagesLoading((prev) => new Set(prev).add(chatId))
+    void promise.finally(() => {
+      setMessagesLoading((prev) => {
+        const next = new Set(prev)
+        next.delete(chatId)
+        return next
+      })
+    })
+  }, [])
+
   const ensureMessagesLoaded = useCallback(
     (chatId: string) => {
       if (!enabled || !chatId) return
@@ -450,7 +473,7 @@ export function useChatStore({
         // fetched once, same as before.
         if (loadedMessagesRef.current.has(chatId)) return
         loadedMessagesRef.current.add(chatId)
-        void fetchAndApplyDetail(chatId, true)
+        trackMessagesLoading(chatId, fetchAndApplyDetail(chatId, true))
         return
       }
       // A shared chat's scope/messages can change any time the host asks
@@ -459,9 +482,9 @@ export function useChatStore({
       // host-side change is always picked up, even for a chat already
       // fully loaded via `loadSharedSession` (the `?share=` link flow).
       loadedMessagesRef.current.add(chatId)
-      void fetchAndApplyDetail(chatId, false)
+      trackMessagesLoading(chatId, fetchAndApplyDetail(chatId, false))
     },
-    [enabled, fetchAndApplyDetail],
+    [enabled, fetchAndApplyDetail, trackMessagesLoading],
   )
 
   const refreshSharedChat = useCallback(
@@ -797,6 +820,7 @@ export function useChatStore({
     recordUserMessage,
     recordAssistantMessage,
     loadSharedSession,
+    messagesLoading,
     refreshSharedChat,
     removeSharedChat,
   }

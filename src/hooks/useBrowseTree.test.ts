@@ -505,6 +505,38 @@ describe('useBrowseTree — switching to a folder that no longer exists', () => 
   })
 })
 
+describe('useBrowseTree — initialLoading', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    fetchBrowseRoot.mockResolvedValue(root)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.doUnmock('../config/browse')
+  })
+
+  it('starts true and becomes false once the root fetch and first folder load resolve', async () => {
+    fetchFolderContents.mockResolvedValueOnce(rootContents('READY'))
+    const { useBrowseTree } = await import('./useBrowseTree')
+    const { result } = renderHook(() => useBrowseTree())
+
+    expect(result.current.initialLoading).toBe(true)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+
+    expect(result.current.initialLoading).toBe(false)
+    // Same underlying flag as the pre-existing `isInitializing` — both stay
+    // in sync, `initialLoading` is just the name the loading-skeleton work
+    // (Task 8) consumes.
+    expect(result.current.isInitializing).toBe(false)
+  })
+})
+
 describe('useBrowseTree — getFolderNode', () => {
   beforeEach(() => {
     vi.resetModules()

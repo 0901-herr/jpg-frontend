@@ -933,3 +933,56 @@ describe('recordAssistantMessage', () => {
     await waitFor(() => expect(settled).toBe(true))
   })
 })
+
+describe('messagesLoading', () => {
+  it('tracks a chat id while ensureMessagesLoaded has an in-flight fetch, and clears it once settled', async () => {
+    vi.mocked(chatApi.listChatSessions).mockResolvedValue({
+      sessions: [
+        {
+          id: 's1',
+          title: 'Session 1',
+          project_id: null,
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-16T00:00:00Z',
+          updated_at: '2026-09-16T00:00:00Z',
+          message_count: 0,
+        },
+      ],
+      shared: [],
+    })
+
+    let resolveDetail: ((detail: unknown) => void) | undefined
+    vi.mocked(chatApi.getChatSession).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveDetail = resolve
+        }),
+    )
+
+    const { result } = renderHook(() => useChatStore(baseParams()))
+    await waitFor(() => expect(result.current.hydrated).toBe(true))
+
+    // Hydration selects s1 as the active chat, which triggers
+    // ensureMessagesLoaded('s1') in the background.
+    await waitFor(() => expect(result.current.messagesLoading.has('s1')).toBe(true))
+
+    resolveDetail?.({
+      id: 's1',
+      title: 'Session 1',
+      project_id: null,
+      visibility: 'private',
+      share_token: null,
+      created_at: '2026-09-16T00:00:00Z',
+      updated_at: '2026-09-16T00:00:00Z',
+      message_count: 0,
+      owner_username: 'tester',
+      is_owner: true,
+      can_query: true,
+      scope_document_ids: [],
+      messages: [],
+    })
+
+    await waitFor(() => expect(result.current.messagesLoading.has('s1')).toBe(false))
+  })
+})
