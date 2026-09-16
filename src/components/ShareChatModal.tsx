@@ -103,7 +103,7 @@ export default function ShareChatModal({ chat, onClose, onChangeVisibility }: Sh
       )}
 
       {visibility !== 'private' && !chat.shareToken && (
-        <p className={`mt-5 ${type.caption} ${typeColor.muted}`}>Creating the link…</p>
+        <p className={`mt-5 ${type.caption} ${typeColor.muted}`}>Creating the link</p>
       )}
     </Modal>
   )
