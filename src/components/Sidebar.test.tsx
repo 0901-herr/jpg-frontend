@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import React from 'react'
 import { vi } from 'vitest'
-import Sidebar from './Sidebar'
+import Sidebar, { sortChatsNewestFirst } from './Sidebar'
 import type { BrowseTreeState } from '../hooks/useBrowseTree'
 import type { DocumentSelection } from '../hooks/useDocumentSelection'
 
@@ -85,6 +85,27 @@ describe('Sidebar branding', () => {
 
     expect(screen.getByText('Arche AI')).toBeInTheDocument()
     expect(screen.queryByText('Docu Arch AI')).not.toBeInTheDocument()
+  })
+})
+
+describe('Sidebar — chat ordering', () => {
+  it('sorts dated chats newest first while keeping legacy undated chats at the end', () => {
+    const newest = { id: 'newest', title: 'Newest', messages: [], createdAt: '2026-09-17T08:00:00Z' }
+    const oldest = { id: 'oldest', title: 'Oldest', messages: [], createdAt: '2026-09-15T08:00:00Z' }
+    const legacy = { id: 'legacy', title: 'Legacy', messages: [] }
+
+    expect(sortChatsNewestFirst([oldest, legacy, newest]).map((chat) => chat.id)).toEqual([
+      'newest',
+      'oldest',
+      'legacy',
+    ])
+  })
+
+  it('keeps creation order for chats with identical timestamps', () => {
+    const first = { id: 'first', title: 'First', messages: [], createdAt: '2026-09-17T08:00:00Z' }
+    const second = { id: 'second', title: 'Second', messages: [], createdAt: '2026-09-17T08:00:00Z' }
+
+    expect(sortChatsNewestFirst([first, second]).map((chat) => chat.id)).toEqual(['first', 'second'])
   })
 })
 

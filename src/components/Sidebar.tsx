@@ -25,6 +25,32 @@ import SidebarNavItem from './SidebarNavItem'
 
 const { Sider } = Layout
 
+/** Keep every chat group in the same, predictable order as the main chat
+ * history: the most recently created session first.  The server's list
+ * order is not part of the API contract, and newly-created sessions can be
+ * interleaved with an older response, so sorting only in the store would be
+ * easy to bypass when rendering project/shared groups. */
+export function sortChatsNewestFirst(chats: ChatSession[]): ChatSession[] {
+  return chats
+    .map((chat, index) => ({ chat, index }))
+    .sort((a, b) => {
+      const aTime = a.chat.createdAt ? Date.parse(a.chat.createdAt) : Number.NaN
+      const bTime = b.chat.createdAt ? Date.parse(b.chat.createdAt) : Number.NaN
+      const aSortable = Number.isFinite(aTime)
+      const bSortable = Number.isFinite(bTime)
+
+      // Legacy sessions without a timestamp remain visible, but sit after
+      // dated sessions. Preserve input order for missing/identical dates so
+      // rendering never jumps around without a meaningful date change.
+      if (!aSortable || !bSortable) {
+        if (aSortable !== bSortable) return aSortable ? -1 : 1
+        return a.index - b.index
+      }
+      return bTime - aTime || a.index - b.index
+    })
+    .map(({ chat }) => chat)
+}
+
 /** A project's header row: expand/collapse chevron, name (inline-editable),
  * chat count, and a Rename/Delete menu. Deleting a project cascades: every
  * chat in it is deleted too (after the confirmation below), not merely
@@ -397,7 +423,9 @@ export default function Sidebar({
     })
   }
 
-  const ungroupedChats = sessions.filter((s) => !s.projectId)
+  const sortedChats = sortChatsNewestFirst(sessions)
+  const sortedSharedChats = sortChatsNewestFirst(sharedSessions)
+  const ungroupedChats = sortedChats.filter((s) => !s.projectId)
   const shareModalChat = shareChatId ? (sessions.find((s) => s.id === shareChatId) ?? null) : null
 
   const renderChatItem = (chat: ChatSession) => (
@@ -425,10 +453,10 @@ export default function Sidebar({
       theme="light"
     >
       <div className={`flex flex-col h-full min-h-0 ${spacing.panelLg}`}>
-        {/* Compact wordmark row, then "New chat" directly under it as a
-            full-width secondary button — mainstream placement (client
-            feedback: UI polish pass), rather than pinned at the very
-            bottom below the chat list. Skipped when `inDrawer`: the
+        {/* Compact wordmark row. The primary "New chat" action lives in the
+            bottom action area beside the account control, so the top of the
+            sidebar stays focused on browsing files and existing chats.
+            Skipped when `inDrawer`: the
             Drawer (AppLayout.tsx) renders "Arche AI" itself, in its own
             header, on the same row as the close button (fix round 1) —
             rendering it again here would duplicate it right below that
@@ -438,22 +466,6 @@ export default function Sidebar({
             <span className={`text-lg font-semibold ${typeColor.primary}`}>Arche AI</span>
           </div>
         )}
-
-        <div className="shrink-0 mb-3">
-          <SidebarNavItem
-            icon={<ChatAddIcon />}
-            onClick={() => {
-              if (isLoading) return
-              onNewChat()
-              onNavigate?.()
-            }}
-            variant="secondary"
-            disabled={isLoading}
-            title={isLoading ? 'Chats are loading' : undefined}
-          >
-            New chat
-          </SidebarNavItem>
-        </div>
 
         <div className={`flex flex-col flex-1 min-h-0 ${spacing.section} overflow-hidden`}>
           {/* Fix round 1: Files and Chats each scroll independently within
@@ -534,7 +546,7 @@ export default function Sidebar({
               ) : (
                 <>
                   {projects.map((project) => {
-                    const projectChats = sessions.filter((s) => s.projectId === project.id)
+                    const projectChats = sortedChats.filter((s) => s.projectId === project.id)
                     const expanded = !collapsedProjectIds.has(project.id)
                     return (
                       <div key={project.id} className="mb-2">
@@ -580,7 +592,7 @@ export default function Sidebar({
                     <div className="mt-2">
                       <span className={sectionLabel}>Shared</span>
                       <div className="space-y-0.5">
-                        {sharedSessions.map((chat) => (
+                        {sortedSharedChats.map((chat) => (
                           <ChatListItem
                             key={chat.id}
                             chat={chat}
@@ -644,6 +656,20 @@ export default function Sidebar({
 
         <div className="shrink-0 pt-2 mt-1">
           <div className="border-t border-[#ececec] pt-2">
+            <SidebarNavItem
+              icon={<ChatAddIcon />}
+              onClick={() => {
+                if (isLoading) return
+                onNewChat()
+                onNavigate?.()
+              }}
+              variant="secondary"
+              disabled={isLoading}
+              title={isLoading ? 'Chats are loading' : 'Start a new chat'}
+              className="mb-1.5"
+            >
+              New chat
+            </SidebarNavItem>
             <Dropdown
               menu={{ items: profileMenu, onClick: handleProfileMenuClick }}
               trigger={['click']}
