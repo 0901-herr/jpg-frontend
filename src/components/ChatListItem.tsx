@@ -21,12 +21,22 @@ interface ChatListItemProps {
   projects?: ChatProject[]
   onMove?: (chatId: string, projectId: string | null) => void
   onShare?: (chatId: string) => void
+  /** Direct "Stop sharing" action (sets visibility to private) — a menu
+   * item distinct from `onShare` (which opens the modal): shown only
+   * while `chat.visibility` isn't already `'private'`. */
+  onStopSharing?: (chatId: string) => void
   /** "by <owner>" — shown instead of the first-question preview for a
    * shared, non-owned chat. */
   subtitle?: string
   /** True for a chat the viewer doesn't own (the Shared group) — hides the
-   * whole options menu; nothing there applies to someone else's chat. */
+   * normal options menu; nothing there applies to someone else's chat. A
+   * `readOnly` row still gets its own minimal menu (just "Remove from my
+   * chats") when `onRemove` is provided. */
   readOnly?: boolean
+  /** Recipient-side removal from the viewer's own "Shared" group — only
+   * ever used on a `readOnly` row. Omitted entirely (rather than passed
+   * as `undefined`) hides that row's menu, same as before this existed. */
+  onRemove?: (chatId: string) => void
 }
 
 export default function ChatListItem({
@@ -38,8 +48,10 @@ export default function ChatListItem({
   projects = [],
   onMove,
   onShare,
+  onStopSharing,
   subtitle,
   readOnly = false,
+  onRemove,
 }: ChatListItemProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -78,6 +90,14 @@ export default function ChatListItem({
       onShare?.(chat.id)
       return
     }
+    if (key === 'stop-sharing') {
+      onStopSharing?.(chat.id)
+      return
+    }
+    if (key === 'remove') {
+      onRemove?.(chat.id)
+      return
+    }
     if (key === 'delete') {
       setDeleteOpen(true)
       return
@@ -89,6 +109,8 @@ export default function ChatListItem({
   }
 
   const canShare = FEATURES.chatSharing && chat.isOwner !== false && Boolean(onShare)
+  const isShared = Boolean(chat.visibility) && chat.visibility !== 'private'
+  const canStopSharing = FEATURES.chatSharing && isShared && Boolean(onStopSharing)
 
   const menuItems: MenuProps['items'] = [
     { key: 'rename', label: 'Rename', icon: <ChatEditIcon /> },
@@ -105,10 +127,23 @@ export default function ChatListItem({
         ]
       : []),
     ...(canShare ? [{ key: 'share', label: 'Share' }] : []),
+    ...(canStopSharing ? [{ key: 'stop-sharing', label: 'Stop sharing' }] : []),
     { type: 'divider' as const },
     {
       key: 'delete',
       label: 'Delete',
+      icon: <ChatDeleteIcon />,
+      className: 'docu-menu-item-danger',
+    },
+  ]
+
+  // A read-only (Shared group) row otherwise has no options menu at all —
+  // "Remove from my chats" is the one action that applies to someone
+  // else's chat from the recipient's own side.
+  const readOnlyMenuItems: MenuProps['items'] = [
+    {
+      key: 'remove',
+      label: 'Remove from my chats',
       icon: <ChatDeleteIcon />,
       className: 'docu-menu-item-danger',
     },
@@ -177,6 +212,28 @@ export default function ChatListItem({
       {!isEditing && !readOnly && (
         <Dropdown
           menu={{ items: menuItems, onClick: handleMenuClick }}
+          trigger={['click']}
+          placement="bottomRight"
+          overlayClassName="docu-chat-options-menu"
+          open={menuOpen}
+          onOpenChange={setMenuOpen}
+        >
+          <button
+            type="button"
+            aria-label="Chat options"
+            onClick={(e) => e.stopPropagation()}
+            className={`shrink-0 px-3 py-2 rounded-lg ${typeColor.muted} hover:text-[#404040] ${surface.hover} transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0084ff]/35 ${
+              menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
+            }`}
+          >
+            <ChatMoreIcon className={sidebar.caption} />
+          </button>
+        </Dropdown>
+      )}
+
+      {!isEditing && readOnly && onRemove && (
+        <Dropdown
+          menu={{ items: readOnlyMenuItems, onClick: handleMenuClick }}
           trigger={['click']}
           placement="bottomRight"
           overlayClassName="docu-chat-options-menu"

@@ -73,6 +73,20 @@ export default function ShareChatModal({ chat, onClose, onChangeVisibility }: Sh
       {visibility !== 'private' && !chat.shareToken && (
         <p className={`mt-4 ${type.caption} ${typeColor.muted}`}>Creating the link</p>
       )}
+
+      {/* Same effect as picking the Private radio above — an explicit
+          button for the common "I'm done sharing this" action, rather
+          than making the owner find the radio again. */}
+      {visibility !== 'private' && (
+        <button
+          type="button"
+          onClick={() => handleChange('private')}
+          disabled={updating}
+          className="mt-4 px-3 py-2 rounded-lg border border-[#ececec] hover:bg-[#f4f4f4] transition-colors disabled:opacity-50"
+        >
+          Stop sharing
+        </button>
+      )}
     </Modal>
   )
 }

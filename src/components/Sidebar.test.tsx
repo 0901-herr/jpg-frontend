@@ -14,9 +14,13 @@ vi.mock('../context/AuthContext', () => ({
 vi.mock('../config/features', () => ({ FEATURES: { categoryView: false, chatSharing: true } }))
 
 // FolderSidebar pulls in the browse/category hooks and api client — out of
-// scope for a header-branding test, so it's stubbed out.
+// scope for a header-branding test, so it's stubbed out. Renders its
+// `disabled` prop as a data attribute so Sidebar's own wiring of that prop
+// (based on whether the active chat is shared) can be asserted here.
 vi.mock('./FolderSidebar', () => ({
-  default: () => <div data-testid="folder-sidebar-stub" />,
+  default: ({ disabled }: { disabled?: boolean }) => (
+    <div data-testid="folder-sidebar-stub" data-disabled={String(Boolean(disabled))} />
+  ),
 }))
 
 function browseFixture(): BrowseTreeState {
@@ -278,5 +282,165 @@ describe('Sidebar — share modal', () => {
     await user.click(screen.getByLabelText('Anyone with the link can view'))
 
     expect(onShareChat).toHaveBeenCalledWith('c1', 'view')
+  })
+})
+
+describe('Sidebar — Files pane disabled for a shared chat', () => {
+  function renderSidebar(activeChatId: string) {
+    return render(
+      <MemoryRouter>
+        <Sidebar
+          width={280}
+          sessions={[{ id: 'c1', title: 'Chat A', messages: [] }]}
+          sharedSessions={[
+            { id: 's1', title: 'Shared chat', messages: [], isOwner: false, ownerUsername: 'alice' },
+          ]}
+          activeChatId={activeChatId}
+          browse={browseFixture()}
+          selection={selectionFixture()}
+          onSelectChat={vi.fn()}
+          onRenameChat={vi.fn()}
+          onDeleteChat={vi.fn()}
+          onNewChat={vi.fn()}
+        />
+      </MemoryRouter>,
+    )
+  }
+
+  it('disables FolderSidebar when the active chat is a shared (non-owned) one', () => {
+    renderSidebar('s1')
+    expect(screen.getByTestId('folder-sidebar-stub')).toHaveAttribute('data-disabled', 'true')
+  })
+
+  it('leaves FolderSidebar enabled for the viewer’s own active chat', () => {
+    renderSidebar('c1')
+    expect(screen.getByTestId('folder-sidebar-stub')).toHaveAttribute('data-disabled', 'false')
+  })
+})
+
+describe('Sidebar — host revocation ("Stop sharing")', () => {
+  function renderSidebar(onShareChat = vi.fn().mockResolvedValue(undefined)) {
+    return render(
+      <MemoryRouter>
+        <Sidebar
+          width={280}
+          sessions={[{ id: 'c1', title: 'Chat A', messages: [], visibility: 'query', shareToken: 'tok-1' }]}
+          activeChatId="c1"
+          browse={browseFixture()}
+          selection={selectionFixture()}
+          onSelectChat={vi.fn()}
+          onRenameChat={vi.fn()}
+          onDeleteChat={vi.fn()}
+          onNewChat={vi.fn()}
+          onShareChat={onShareChat}
+        />
+      </MemoryRouter>,
+    )
+  }
+
+  it('shows a "Stop sharing" item on the chat row menu only while the chat is shared', async () => {
+    const user = userEvent.setup()
+    const onShareChat = vi.fn().mockResolvedValue(undefined)
+    renderSidebar(onShareChat)
+
+    await user.click(screen.getByRole('button', { name: 'Chat options' }))
+    await user.click(screen.getByText('Stop sharing'))
+
+    expect(onShareChat).toHaveBeenCalledWith('c1', 'private')
+  })
+
+  it('never shows "Stop sharing" for a private chat', async () => {
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter>
+        <Sidebar
+          width={280}
+          sessions={[{ id: 'c1', title: 'Chat A', messages: [], visibility: 'private' }]}
+          activeChatId="c1"
+          browse={browseFixture()}
+          selection={selectionFixture()}
+          onSelectChat={vi.fn()}
+          onRenameChat={vi.fn()}
+          onDeleteChat={vi.fn()}
+          onNewChat={vi.fn()}
+          onShareChat={vi.fn()}
+        />
+      </MemoryRouter>,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Chat options' }))
+    expect(screen.queryByText('Stop sharing')).not.toBeInTheDocument()
+  })
+
+  it('offers "Stop sharing" from inside the share modal too', async () => {
+    const user = userEvent.setup()
+    const onShareChat = vi.fn().mockResolvedValue(undefined)
+    renderSidebar(onShareChat)
+
+    await user.click(screen.getByRole('button', { name: 'Chat options' }))
+    await user.click(screen.getByText('Share'))
+    expect(screen.getByText('Share this chat')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Stop sharing' }))
+
+    expect(onShareChat).toHaveBeenCalledWith('c1', 'private')
+  })
+})
+
+describe('Sidebar — recipient removal ("Remove from my chats")', () => {
+  function renderSidebar(onRemoveSharedChat = vi.fn()) {
+    return render(
+      <MemoryRouter>
+        <Sidebar
+          width={280}
+          sessions={[]}
+          sharedSessions={[
+            { id: 's1', title: 'Shared chat', messages: [], isOwner: false, ownerUsername: 'alice' },
+          ]}
+          activeChatId="s1"
+          browse={browseFixture()}
+          selection={selectionFixture()}
+          onSelectChat={vi.fn()}
+          onRenameChat={vi.fn()}
+          onDeleteChat={vi.fn()}
+          onNewChat={vi.fn()}
+          onRemoveSharedChat={onRemoveSharedChat}
+        />
+      </MemoryRouter>,
+    )
+  }
+
+  it('shows a menu with a single "Remove from my chats" item on a shared row', async () => {
+    const user = userEvent.setup()
+    const onRemoveSharedChat = vi.fn()
+    renderSidebar(onRemoveSharedChat)
+
+    await user.click(screen.getByRole('button', { name: 'Chat options' }))
+    await user.click(screen.getByText('Remove from my chats'))
+
+    expect(onRemoveSharedChat).toHaveBeenCalledWith('s1')
+  })
+
+  it('hides the shared row menu entirely when onRemoveSharedChat is not provided', () => {
+    render(
+      <MemoryRouter>
+        <Sidebar
+          width={280}
+          sessions={[]}
+          sharedSessions={[
+            { id: 's1', title: 'Shared chat', messages: [], isOwner: false, ownerUsername: 'alice' },
+          ]}
+          activeChatId="s1"
+          browse={browseFixture()}
+          selection={selectionFixture()}
+          onSelectChat={vi.fn()}
+          onRenameChat={vi.fn()}
+          onDeleteChat={vi.fn()}
+          onNewChat={vi.fn()}
+        />
+      </MemoryRouter>,
+    )
+
+    expect(screen.queryByRole('button', { name: 'Chat options' })).not.toBeInTheDocument()
   })
 })

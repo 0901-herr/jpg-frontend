@@ -200,6 +200,11 @@ interface SidebarProps {
   onCreateProject?: (name: string) => Promise<void>
   onRenameProject?: (id: string, name: string) => Promise<void>
   onDeleteProject?: (id: string) => void
+  /** Recipient-side removal from the viewer's own "Shared" group — shown
+   * as a "Remove from my chats" item on a shared row's own options menu
+   * when provided; the menu is hidden entirely otherwise (unchanged
+   * behaviour for a caller that doesn't wire this up). */
+  onRemoveSharedChat?: (chatId: string) => void
   /** Called right after selecting a chat or starting a new one — AppLayout
    * passes this only when Sidebar is rendered inside the mobile Drawer, to
    * close it once the navigation it was opened for has happened. Desktop
@@ -230,6 +235,7 @@ export default function Sidebar({
   onCreateProject,
   onRenameProject,
   onDeleteProject,
+  onRemoveSharedChat,
   onNavigate,
   inDrawer = false,
 }: SidebarProps) {
@@ -284,6 +290,12 @@ export default function Sidebar({
   const ungroupedChats = sessions.filter((s) => !s.projectId)
   const shareModalChat = shareChatId ? (sessions.find((s) => s.id === shareChatId) ?? null) : null
 
+  // The follower can't choose documents at all in a shared chat (owner
+  // decision, 2026-09-16) — FolderSidebar renders its whole pane disabled
+  // whenever the active chat is one of `sharedSessions` rather than the
+  // viewer's own.
+  const filesPaneDisabled = sharedSessions.some((s) => s.id === activeChatId)
+
   const renderChatItem = (chat: ChatSession) => (
     <ChatListItem
       key={chat.id}
@@ -298,6 +310,7 @@ export default function Sidebar({
       projects={projects}
       onMove={onMoveChat}
       onShare={onShareChat ? (chatId) => setShareChatId(chatId) : undefined}
+      onStopSharing={onShareChat ? (chatId) => void onShareChat(chatId, 'private') : undefined}
     />
   )
 
@@ -344,7 +357,7 @@ export default function Sidebar({
               the bottom of a short viewport: this section clips and
               scrolls its own overflow instead of growing past it. */}
           <div className="flex flex-col min-h-0 flex-[3] overflow-y-auto overflow-x-hidden pt-1">
-            <FolderSidebar browse={browse} selection={selection} />
+            <FolderSidebar browse={browse} selection={selection} disabled={filesPaneDisabled} />
           </div>
 
           {/* min-h-[270px] (~5 two-line ChatListItem rows, client feedback:
@@ -436,6 +449,7 @@ export default function Sidebar({
                         onDelete={onDeleteChat}
                         readOnly
                         subtitle={chat.ownerUsername ? `by ${chat.ownerUsername}` : undefined}
+                        onRemove={onRemoveSharedChat}
                       />
                     ))}
                   </div>
