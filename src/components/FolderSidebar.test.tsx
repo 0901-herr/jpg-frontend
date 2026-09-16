@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
 import { afterEach, beforeEach, vi } from 'vitest'
@@ -77,6 +77,7 @@ function createBrowseFixture(overrides: Partial<BrowseTreeState> = {}): BrowseTr
       has_more_documents: false,
     },
     isInitializing: false,
+    initialLoading: false,
     initError: null,
     sessionExpired: false,
     isActiveFolderLoading: false,
@@ -215,6 +216,36 @@ describe('FolderSidebar manual status refresh', () => {
     await user.hover(screen.getByRole('button', { name: 'Refresh document status' }))
 
     expect(await screen.findByRole('tooltip')).toHaveTextContent('Refresh document status')
+  })
+
+  it('keeps the refresh button visible by truncating the section label instead of letting it overflow', () => {
+    // 240px matches the documented minimum sidebar width
+    // (src/hooks/useResizableWidth.ts) — jsdom doesn't compute real layout,
+    // so this is a DOM-structure assertion that the label can shrink/ellipsis
+    // and the button never does.
+    const { container } = render(
+      <div style={{ width: 240 }}>
+        <FolderSidebar browse={createBrowseFixture()} selection={createSelectionFixture()} />
+      </div>,
+    )
+
+    // `truncate` must sit on a span around the text run alone, not on the
+    // icon+text flex container itself — mixing an icon flex-item with a raw
+    // text node under `truncate` is a known CSS gotcha where browsers
+    // hard-clip without rendering the ellipsis glyph.
+    const textRun = within(container).getByText('Files', { selector: 'span.truncate' })
+    expect(textRun.className).toMatch(/truncate/)
+
+    // The label wrapper (icon + text run) — the text run's parent — must
+    // still be able to shrink within the header row, and must be distinct
+    // from the truncating text-run span itself.
+    const labelWrapper = textRun.parentElement as HTMLElement
+    expect(labelWrapper).not.toBe(textRun)
+    expect(labelWrapper.className).toMatch(/min-w-0/)
+    expect(labelWrapper.className).not.toMatch(/\btruncate\b/)
+
+    const refreshButton = screen.getByRole('button', { name: 'Refresh document status' })
+    expect(refreshButton.className).toMatch(/shrink-0/)
   })
 })
 
@@ -505,6 +536,41 @@ describe('FolderSidebar file row status icon', () => {
     // The filename keeps its own native title attribute — a separate
     // element/mechanism from the antd Tooltip asserted above.
     expect(screen.getByText('contract.pdf')).toHaveAttribute('title', 'contract.pdf')
+  })
+})
+
+describe('FolderSidebar initial loading', () => {
+  beforeEach(() => {
+    vi.mocked(useBrowseCategoriesModule.useBrowseCategories).mockReturnValue({
+      serverCategories: null,
+      categoriesLoading: false,
+    })
+  })
+
+  it('shows a skeleton instead of the file tree while initialLoading is true, and disables the refresh button', () => {
+    render(
+      <FolderSidebar
+        browse={createBrowseFixture({ isInitializing: true, initialLoading: true })}
+        selection={createSelectionFixture()}
+      />,
+    )
+
+    expect(screen.getByTestId('files-skeleton')).toBeInTheDocument()
+    expect(screen.queryByRole('tree')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Refresh document status' })).toBeDisabled()
+  })
+
+  it('renders the file tree (no skeleton) once initialLoading turns false', async () => {
+    render(
+      <FolderSidebar
+        browse={createBrowseFixture({ isInitializing: false, initialLoading: false })}
+        selection={createSelectionFixture()}
+      />,
+    )
+
+    expect(screen.queryByTestId('files-skeleton')).not.toBeInTheDocument()
+    expect(await screen.findByText('contract.pdf')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Refresh document status' })).not.toBeDisabled()
   })
 })
 

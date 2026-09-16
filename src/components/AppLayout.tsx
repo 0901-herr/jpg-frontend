@@ -1,4 +1,4 @@
-import { Drawer, Layout, message } from 'antd'
+import { Drawer, Layout, Skeleton, message } from 'antd'
 import { ChatBubbleIconLg, ChatCloseIcon, ChatMenuIcon } from '../icons/chat'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -153,8 +153,15 @@ export default function AppLayout() {
     initialSession: initialSessionRef.current,
     hasPendingShare: shareToken != null,
   })
-  const { sessions, setSessions, activeChatId, setActiveChatId, sharedSessions, setSharedSessions } =
-    chatStore
+  const {
+    sessions,
+    setSessions,
+    activeChatId,
+    setActiveChatId,
+    sharedSessions,
+    setSharedSessions,
+    messagesLoading,
+  } = chatStore
   const chatHydrated = chatStore.hydrated
   // Read (never written to trigger a render) wherever a callback needs the
   // latest `sessions` synchronously right after calling `setSessions` —
@@ -203,18 +210,15 @@ export default function AppLayout() {
   const selection = useDocumentSelection()
 
   const handleDocumentsLoaded = useCallback(
-    ({ documents, page }: DocumentsLoadedEvent) => {
+    ({ documents }: DocumentsLoadedEvent) => {
+      // By default nothing is selected — never auto-select on load (a
+      // folder switch, refresh, category toggle, or "load more"): loading
+      // everything up front is exactly what the lazy-loading requirement
+      // rules out. Only registers document metadata for whatever the user
+      // does go on to check.
       selection.registerDocuments(documents)
-      // Page 0 (a folder switch, refresh, or category toggle): auto-select
-      // is a one-time-per-browser decision owned by the hook itself, so an
-      // explicit "deselect all" is never undone by a later page-0 load.
-      // "Load more" (page > 0) never touches the selection at all — merging
-      // newly loaded documents into a partial selection was the bug.
-      if (page === 0) {
-        selection.autoSelectIfPending(documents)
-      }
     },
-    [selection.registerDocuments, selection.autoSelectIfPending],
+    [selection.registerDocuments],
   )
 
   const browse = useBrowseTree(handleDocumentsLoaded)
@@ -362,12 +366,40 @@ export default function AppLayout() {
   // Files pane and to make sure a leftover selection from the viewer's own
   // chat never leaks into the composer while a shared chat is active.
   const isSharedChat = activeSession?.isOwner === false
+  // The host's own side of a query-shared chat: owner (absent/`true` for
+  // every chat the viewer created themselves — see `ChatSession.isOwner`'s
+  // doc comment, so this checks `!== false` rather than truthiness) AND
+  // currently shared with query ("view and ask") permission. Drives
+  // ChatInput's rooftop banner — never shown for a private chat, a
+  // view-shared chat, or to a non-owner viewer (client feedback, "Sharing
+  // Input": banner "only for chat shared with view and ask permissions").
+  const isHostOfQueryShare =
+    activeSession?.isOwner !== false && activeSession?.visibility === 'query'
   const sharedScopeIds = activeSession?.scopeDocumentIds ?? []
   const sharedScopeDocuments = activeSession?.scopeDocuments ?? []
 
   const messagePairs = useMemo(
     () => pairMessages(activeSession?.messages ?? []),
     [activeSession?.messages],
+  )
+
+  // True while `useChatStore`'s `ensureMessagesLoaded` is fetching the
+  // active chat's own history AND that chat has nothing to show yet —
+  // drives the message-pane skeleton below and ORs into ChatInput's
+  // `disabled`, alongside the pre-existing `sessionExpired` reason, rather
+  // than replacing it. The `messagePairs.length === 0` guard matters for a
+  // shared chat specifically: its branch of `ensureMessagesLoaded` is
+  // deliberately ungated (re-fetches on every activation so a host-side
+  // scope change is always picked up — see useChatStore.ts's
+  // `trackMessagesLoading` comment), so reselecting an already-open shared
+  // chat re-adds its id to `messagesLoading` while its previously-loaded
+  // messages are still sitting in `activeSession.messages` the whole time.
+  // Without this guard that background re-fetch would flicker the already-
+  // correct message list into a skeleton and disable the composer for no
+  // visible reason — mirrors FolderSidebar's own "loading but have
+  // something to show already" distinction (fileTreeData.length === 0).
+  const isActiveChatMessagesLoading = Boolean(
+    activeChatId && messagesLoading.has(activeChatId) && messagePairs.length === 0,
   )
 
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -1291,7 +1323,15 @@ export default function AppLayout() {
                   messagePairs.length === 0 ? 'justify-center' : ''
                 }`}
               >
-                {messagePairs.length === 0 ? (
+                {isActiveChatMessagesLoading ? (
+                  <div
+                    data-testid="messages-skeleton"
+                    className="flex flex-col gap-4 px-6 py-4"
+                  >
+                    <Skeleton active paragraph={{ rows: 2 }} />
+                    <Skeleton active paragraph={{ rows: 3 }} />
+                  </div>
+                ) : messagePairs.length === 0 ? (
                   <div className="flex flex-col items-center justify-center text-center px-4 py-8">
                     <div className="w-12 h-12 rounded-xl bg-[var(--docu-bg-muted)] flex items-center justify-center mb-4 text-[var(--docu-text-muted)]">
                       <ChatBubbleIconLg />
@@ -1340,7 +1380,7 @@ export default function AppLayout() {
               onStop={handleStop}
               onComposerFocus={handleComposerFocus}
               isResponding={sendQuery.isPending}
-              disabled={browse.sessionExpired}
+              disabled={browse.sessionExpired || isActiveChatMessagesLoading}
               disabledReason={inputBlockedReason}
               summarizeDisabledReason={summarizeDisabledReason}
               categorizeDisabledReason={categorizeDisabledReason}
@@ -1353,6 +1393,8 @@ export default function AppLayout() {
               emptySelectionPlaceholder="Ask about the shared files"
               sharedScopeFiles={isSharedQueryable ? sharedScopeDocuments : undefined}
               sharedScopeEmpty={isSharedQueryable && sharedScopeIds.length === 0}
+              isSharedChat={isSharedChat}
+              isHostOfQueryShare={isHostOfQueryShare}
             />
           </Content>
         </Layout>

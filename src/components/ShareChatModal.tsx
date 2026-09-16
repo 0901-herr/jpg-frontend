@@ -1,4 +1,4 @@
-import { Input, Modal, Radio } from 'antd'
+import { Input, Modal, Radio, Spin } from 'antd'
 import { useState } from 'react'
 import { type, typeColor } from '../styles/typography'
 import type { ChatSession, ChatVisibility } from '../types'
@@ -11,6 +11,13 @@ interface ShareChatModalProps {
 
 function shareLinkFor(token: string): string {
   return `${window.location.origin}/chat?share=${token}`
+}
+
+const EXPLANATIONS: Record<ChatVisibility, string> = {
+  private: 'The other users will no longer be able to see this chat.',
+  view: 'The other users can see your chat history.',
+  query:
+    'The other users can see your chat history and ask questions. The files they can query update when you send a message, not when you change your file selection.',
 }
 
 /** Radio Private / "Anyone with the link can view" / "...and ask" — owner
@@ -46,16 +53,21 @@ export default function ShareChatModal({ chat, onClose, onChangeVisibility }: Sh
 
   return (
     <Modal open title="Share this chat" footer={null} onCancel={onClose} width={420} centered>
-      <Radio.Group
-        onChange={(e) => handleChange(e.target.value as ChatVisibility)}
-        value={visibility}
-        disabled={updating}
-        className="flex flex-col gap-3 mt-2"
-      >
-        <Radio value="private">Private</Radio>
-        <Radio value="view">Anyone with the link can view</Radio>
-        <Radio value="query">Anyone with the link can view and ask</Radio>
-      </Radio.Group>
+      <div className="flex items-start gap-2 mt-2">
+        <Radio.Group
+          onChange={(e) => handleChange(e.target.value as ChatVisibility)}
+          value={visibility}
+          disabled={updating}
+          className="flex flex-col gap-3"
+        >
+          <Radio value="private">Private</Radio>
+          <Radio value="view">Anyone with the link can view</Radio>
+          <Radio value="query">Anyone with the link can view and ask</Radio>
+        </Radio.Group>
+        {updating && <Spin size="small" data-testid="visibility-spinner" />}
+      </div>
+
+      <p className={`mt-2 ${type.caption} ${typeColor.muted}`}>{EXPLANATIONS[visibility]}</p>
 
       {visibility !== 'private' && chat.shareToken && (
         <div className="mt-4 flex items-center gap-2">
@@ -72,20 +84,6 @@ export default function ShareChatModal({ chat, onClose, onChangeVisibility }: Sh
 
       {visibility !== 'private' && !chat.shareToken && (
         <p className={`mt-4 ${type.caption} ${typeColor.muted}`}>Creating the link</p>
-      )}
-
-      {/* Same effect as picking the Private radio above — an explicit
-          button for the common "I'm done sharing this" action, rather
-          than making the owner find the radio again. */}
-      {visibility !== 'private' && (
-        <button
-          type="button"
-          onClick={() => handleChange('private')}
-          disabled={updating}
-          className="mt-4 px-3 py-2 rounded-lg border border-[#ececec] hover:bg-[#f4f4f4] transition-colors disabled:opacity-50"
-        >
-          Stop sharing
-        </button>
       )}
     </Modal>
   )

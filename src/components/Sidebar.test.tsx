@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import React from 'react'
@@ -247,6 +247,187 @@ describe('Sidebar — project grouping', () => {
     renderSidebar({ sharedSessions: [] })
     expect(screen.queryByText('Shared')).not.toBeInTheDocument()
   })
+
+  it('shows the "New project" button with a tooltip clarifying its purpose', async () => {
+    const user = userEvent.setup()
+    renderSidebar()
+
+    await user.hover(screen.getByRole('button', { name: 'New project' }))
+
+    expect(await screen.findByRole('tooltip', { name: 'New project' })).toBeInTheDocument()
+  })
+
+  it('warns the real chat count will be permanently deleted when deleting a project with chats', async () => {
+    const user = userEvent.setup()
+    const onDeleteProject = vi.fn()
+    renderSidebar({ onDeleteProject })
+
+    await user.click(screen.getByRole('button', { name: 'Project options' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Delete' }))
+
+    expect(
+      screen.getByText('This will permanently delete 1 chat in this project. This cannot be undone.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/kept — this only removes the project/)).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
+    expect(onDeleteProject).toHaveBeenCalledWith('p1')
+  })
+
+  it('shows an empty-project message (no false chat-count claim) when the project has no chats', async () => {
+    const user = userEvent.setup()
+    renderSidebar({
+      sessions: [{ id: 'c2', title: 'Chat B', messages: [], projectId: null }],
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Project options' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Delete' }))
+
+    expect(
+      screen.getByText('This project has no chats. It will be permanently deleted.'),
+    ).toBeInTheDocument()
+  })
+
+  it('shows a spinner and disables the New project trigger while a create is in flight', async () => {
+    const user = userEvent.setup()
+    let resolveCreate: () => void
+    const onCreateProject = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveCreate = () => resolve()
+        }),
+    )
+    renderSidebar({ onCreateProject })
+
+    await user.click(screen.getByRole('button', { name: 'New project' }))
+    await user.type(screen.getByPlaceholderText('Project name'), 'Legal{Enter}')
+
+    expect(screen.getByTestId('create-project-spinner')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'New project' })).toBeDisabled()
+
+    resolveCreate!()
+    await waitFor(() =>
+      expect(screen.queryByTestId('create-project-spinner')).not.toBeInTheDocument(),
+    )
+    expect(screen.getByRole('button', { name: 'New project' })).not.toBeDisabled()
+  })
+
+  it('shows a "Deleting project" spinner near the Chats header while the cascade is in flight', async () => {
+    const user = userEvent.setup()
+    let resolveDelete: () => void
+    const onDeleteProject = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveDelete = () => resolve()
+        }),
+    )
+    renderSidebar({ onDeleteProject })
+
+    await user.click(screen.getByRole('button', { name: 'Project options' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Delete' }))
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
+
+    expect(onDeleteProject).toHaveBeenCalledWith('p1')
+    // The confirm modal's `open` prop is already false at this point
+    // (unchanged from before this task — antd keeps the closing dialog's
+    // markup mounted for its own exit transition, which jsdom doesn't run,
+    // so its title text can still be queried here; that's an antd/jsdom
+    // quirk unrelated to this task, not asserted on). The pending
+    // indicator lives at the Sidebar level instead, precisely because
+    // `deleteProject` optimistically removes the project row (and this
+    // header) synchronously — a row-local spinner would never be seen.
+    expect(screen.getByTestId('delete-project-spinner')).toBeInTheDocument()
+    expect(screen.getByText('Deleting project')).toBeInTheDocument()
+
+    resolveDelete!()
+    await waitFor(() =>
+      expect(screen.queryByTestId('delete-project-spinner')).not.toBeInTheDocument(),
+    )
+  })
+
+  it('shows a "Deleting chat" spinner near the Chats header while a chat delete is in flight', async () => {
+    const user = userEvent.setup()
+    let resolveDelete: () => void
+    const onDeleteChat = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveDelete = () => resolve()
+        }),
+    )
+    renderSidebar({ onDeleteChat })
+
+    const optionButtons = screen.getAllByRole('button', { name: 'Chat options' })
+    await user.click(optionButtons[0]) // Chat A
+    await user.click(screen.getByText('Delete'))
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
+
+    expect(onDeleteChat).toHaveBeenCalledWith('c1')
+    // Same reasoning as the project-delete spinner above: `deleteChat`
+    // optimistically removes the chat's own row synchronously, so a
+    // row-local spinner would never be seen — this indicator lives at
+    // the Sidebar level instead.
+    expect(screen.getByTestId('delete-chat-spinner')).toBeInTheDocument()
+    expect(screen.getByText('Deleting chat')).toBeInTheDocument()
+
+    resolveDelete!()
+    await waitFor(() =>
+      expect(screen.queryByTestId('delete-chat-spinner')).not.toBeInTheDocument(),
+    )
+  })
+
+  it('shows a spinner on the row and disables its options button while a move is in flight', async () => {
+    const user = userEvent.setup()
+    let resolveMove: () => void
+    const onMoveChat = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveMove = () => resolve()
+        }),
+    )
+    renderSidebar({ onMoveChat })
+
+    const optionButtons = screen.getAllByRole('button', { name: 'Chat options' })
+    await user.click(optionButtons[1]) // Chat B, the ungrouped one
+    await user.hover(screen.getByText('Move to'))
+    await user.click(await screen.findByRole('menuitem', { name: 'Research' }))
+
+    expect(onMoveChat).toHaveBeenCalledWith('c2', 'p1')
+    // Unlike delete, `moveChat` keeps the chat in `sessions` (just under a
+    // different `projectId`) — the row relocates rather than vanishing,
+    // so this is a genuine per-row spinner (driven by Sidebar's own
+    // `movingChatIds`, not the row's local state, which a relocation
+    // would reset — see ChatListItem's `moving` prop doc).
+    expect(screen.getByTestId('move-chat-spinner')).toBeInTheDocument()
+
+    resolveMove!()
+    await waitFor(() => expect(screen.queryByTestId('move-chat-spinner')).not.toBeInTheDocument())
+  })
+
+  it('shows a spinner next to the project name and disables Project options while a rename is in flight', async () => {
+    const user = userEvent.setup()
+    let resolveRename: () => void
+    const onRenameProject = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveRename = () => resolve()
+        }),
+    )
+    renderSidebar({ onRenameProject })
+
+    await user.click(screen.getByRole('button', { name: 'Project options' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Rename' }))
+    await user.type(screen.getByDisplayValue('Research'), ' updated{Enter}')
+
+    expect(onRenameProject).toHaveBeenCalledWith('p1', 'Research updated')
+    expect(screen.getByTestId('rename-project-spinner')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Project options' })).toBeDisabled()
+
+    resolveRename!()
+    await waitFor(() =>
+      expect(screen.queryByTestId('rename-project-spinner')).not.toBeInTheDocument(),
+    )
+    expect(screen.getByRole('button', { name: 'Project options' })).not.toBeDisabled()
+  })
 })
 
 describe('Sidebar — share modal', () => {
@@ -339,7 +520,7 @@ describe('Sidebar — Files pane disabled for a shared chat', () => {
   })
 })
 
-describe('Sidebar — host revocation ("Stop sharing")', () => {
+describe('Sidebar — host revocation (Share modal Private row)', () => {
   function renderSidebar(onShareChat = vi.fn().mockResolvedValue(undefined)) {
     return render(
       <MemoryRouter>
@@ -359,41 +540,11 @@ describe('Sidebar — host revocation ("Stop sharing")', () => {
     )
   }
 
-  it('shows a "Stop sharing" item on the chat row menu only while the chat is shared', async () => {
-    const user = userEvent.setup()
-    const onShareChat = vi.fn().mockResolvedValue(undefined)
-    renderSidebar(onShareChat)
+  // The chat-row menu's own "Stop sharing" item was removed (client
+  // feedback, Task 5) — it duplicated this modal's Private-radio revoke
+  // action. Only the modal-driven revoke flow below remains.
 
-    await user.click(screen.getByRole('button', { name: 'Chat options' }))
-    await user.click(screen.getByText('Stop sharing'))
-
-    expect(onShareChat).toHaveBeenCalledWith('c1', 'private')
-  })
-
-  it('never shows "Stop sharing" for a private chat', async () => {
-    const user = userEvent.setup()
-    render(
-      <MemoryRouter>
-        <Sidebar
-          width={280}
-          sessions={[{ id: 'c1', title: 'Chat A', messages: [], visibility: 'private' }]}
-          activeChatId="c1"
-          browse={browseFixture()}
-          selection={selectionFixture()}
-          onSelectChat={vi.fn()}
-          onRenameChat={vi.fn()}
-          onDeleteChat={vi.fn()}
-          onNewChat={vi.fn()}
-          onShareChat={vi.fn()}
-        />
-      </MemoryRouter>,
-    )
-
-    await user.click(screen.getByRole('button', { name: 'Chat options' }))
-    expect(screen.queryByText('Stop sharing')).not.toBeInTheDocument()
-  })
-
-  it('offers "Stop sharing" from inside the share modal too', async () => {
+  it('revokes sharing from inside the share modal by selecting the Private row', async () => {
     const user = userEvent.setup()
     const onShareChat = vi.fn().mockResolvedValue(undefined)
     renderSidebar(onShareChat)
@@ -402,7 +553,11 @@ describe('Sidebar — host revocation ("Stop sharing")', () => {
     await user.click(screen.getByText('Share'))
     expect(screen.getByText('Share this chat')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Stop sharing' }))
+    // The modal has no separate "Stop sharing" button — selecting Private
+    // has the same revoking effect (visibility: 'private' already revokes
+    // shared-link access server-side), so this drives the flow through the
+    // Private radio row instead.
+    await user.click(screen.getByRole('radio', { name: 'Private' }))
 
     expect(onShareChat).toHaveBeenCalledWith('c1', 'private')
   })

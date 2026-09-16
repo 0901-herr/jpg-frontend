@@ -112,7 +112,6 @@ vi.mock('../hooks/useDocumentSelection', () => ({
       setSelection: vi.fn(),
       mergeSelection: vi.fn(),
       selectAllSelectable: vi.fn(),
-      autoSelectIfPending: vi.fn(),
       deselectAllInView: vi.fn(),
       clearSelection: vi.fn(),
       trimSelection: (ids: string[]) => {
@@ -443,8 +442,14 @@ describe('AppLayout — shared link (?share=token)', () => {
     expect(getSharedChatSession).toHaveBeenCalledWith('tok123')
 
     // Selected — its own message renders in the chat pane without clicking
-    // anything.
-    expect(await screen.findByText('Shared answer content')).toBeInTheDocument()
+    // anything. Re-queries on every retry (rather than asserting on a
+    // single `findByText` node reference) so a benign re-render racing the
+    // assertion — e.g. `ensureMessagesLoaded`'s own `messagesLoading`
+    // bookkeeping settling right around here — can't leave it holding a
+    // stale, now-detached node.
+    await waitFor(() => {
+      expect(screen.getByText('Shared answer content')).toBeInTheDocument()
+    })
 
     // Live UI proof regression: no throwaway auto-created own chat ("New
     // chat"'s dated title) ever appears, and it never wins the selection
@@ -689,7 +694,7 @@ describe('AppLayout — shared link (?share=token)', () => {
     expect(textarea).toBeDisabled()
   })
 
-  it('renders read-only chips from scope_documents and omits the document list when a follower asks', async () => {
+  it('renders one aggregate count pill (not per-file chips) from scope_documents, and omits the document list when a follower asks', async () => {
     const user = userEvent.setup()
     initialSelectedIds = new Set()
     window.history.pushState({}, '', '/chat?share=tok-chips')
@@ -715,19 +720,22 @@ describe('AppLayout — shared link (?share=token)', () => {
 
     render(<AppLayout />)
 
-    expect(await screen.findByText('Contract.pdf')).toBeInTheDocument()
-    expect(screen.getByText('File doc-10')).toBeInTheDocument()
-    expect(screen.getAllByText('Contract.pdf')).toHaveLength(1)
+    // The composer's own pill is a count only (Task 10: "don't enumerate
+    // the files out it's weird") — no per-file names before sending.
+    expect(await screen.findByText('2 files')).toBeInTheDocument()
+    expect(screen.queryByText('Contract.pdf')).not.toBeInTheDocument()
+    expect(screen.queryByText('File doc-10')).not.toBeInTheDocument()
 
     const textarea = screen.getByPlaceholderText('Ask about the shared files')
     await user.type(textarea, 'What do these say?')
     await user.click(screen.getByRole('button', { name: 'Send message' }))
 
     await waitFor(() => expect(lastSendQueryRequest?.omitDocuments).toBe(true))
-    // The sent question's own file tags (user bubble) come from the
-    // resolved scope filenames too — a second "Contract.pdf" alongside
-    // the composer's own read-only chip.
-    await waitFor(() => expect(screen.getAllByText('Contract.pdf')).toHaveLength(2))
+    // The sent question's own file tags (user bubble) still resolve real
+    // filenames — unaffected by the composer pill's collapse to a count.
+    await waitFor(() => expect(screen.getAllByText('Contract.pdf')).toHaveLength(1))
+    // The composer's own pill stays a count, even after sending.
+    expect(screen.getByText('2 files')).toBeInTheDocument()
   })
 
   it("refreshes the shared chat's own detail after the follower's answer completes", async () => {
@@ -837,6 +845,97 @@ describe('AppLayout — shared link (?share=token)', () => {
       const count = getChatSession.mock.calls.filter(([id]) => id === 'shared-7').length
       expect(count).toBeGreaterThan(beforeCount)
     })
+  })
+})
+
+describe('AppLayout — host rooftop banner (isHostOfQueryShare gating)', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    currentSignal = null
+    initialSelectedIds = new Set(['doc-1'])
+    initialDocumentMeta = defaultDocumentMeta()
+    getChatSession.mockReset()
+    getChatSession.mockResolvedValue({})
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('shows the banner only for the host of a chat shared with query permission — not private, not view-only, not a non-owner viewer', async () => {
+    const user = userEvent.setup()
+    const baseFields = {
+      project_id: null,
+      share_token: null,
+      created_at: '2026-09-01T00:00:00Z',
+      updated_at: '2026-09-01T00:00:00Z',
+      message_count: 0,
+    }
+    listChatSessions.mockResolvedValueOnce({
+      sessions: [
+        { id: 'own-private', title: 'Own Private', visibility: 'private', ...baseFields },
+        { id: 'own-view', title: 'Own View', visibility: 'view', ...baseFields },
+        { id: 'own-query', title: 'Own Query', visibility: 'query', ...baseFields },
+      ],
+      shared: [
+        {
+          id: 'shared-query',
+          title: 'Shared Query',
+          owner_username: 'alice',
+          visibility: 'query',
+          opened_at: '2026-09-01T00:00:00Z',
+        },
+      ],
+    })
+    getChatSession.mockImplementation((id: string) => {
+      if (id === 'own-query') {
+        // Deliberately omits `is_owner` from the detail response — the
+        // DTO type promises `boolean`, but `ChatSession.isOwner`'s own doc
+        // comment allows "Absent/true" for a chat the viewer owns. The
+        // banner's gating must treat an absent `isOwner` as still-the-host
+        // (`!== false`), not silently hide the banner for the real owner.
+        return Promise.resolve({
+          id,
+          title: 'Own Query',
+          visibility: 'query',
+          messages: [],
+          ...baseFields,
+        })
+      }
+      if (id === 'shared-query') {
+        return Promise.resolve({
+          id,
+          title: 'Shared Query',
+          visibility: 'query',
+          owner_username: 'alice',
+          is_owner: false,
+          can_query: true,
+          messages: [],
+          ...baseFields,
+        })
+      }
+      return Promise.resolve({ id, title: id, visibility: 'private', messages: [], ...baseFields })
+    })
+
+    render(<AppLayout />)
+
+    const bannerText = /sending a message will update what the recipients can see/i
+
+    await user.click(await screen.findByRole('button', { name: 'select:Own Private' }))
+    await waitFor(() => expect(screen.getByTestId('active-chat-id').textContent).toBe('own-private'))
+    expect(screen.queryByText(bannerText)).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'select:Own View' }))
+    await waitFor(() => expect(screen.getByTestId('active-chat-id').textContent).toBe('own-view'))
+    expect(screen.queryByText(bannerText)).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'select:Own Query' }))
+    await waitFor(() => expect(screen.getByTestId('active-chat-id').textContent).toBe('own-query'))
+    expect(await screen.findByText(bannerText)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'shared:Shared Query' }))
+    await waitFor(() => expect(screen.getByTestId('active-chat-id').textContent).toBe('shared-query'))
+    expect(screen.queryByText(bannerText)).not.toBeInTheDocument()
   })
 })
 
@@ -1668,6 +1767,233 @@ describe('.docu-app-shell CSS contract (Item B)', () => {
     const body = match![1]
     expect(body).toMatch(/height\s*:\s*100vh/)
     expect(body).toMatch(/height\s*:\s*100dvh/)
+  })
+})
+
+describe('AppLayout — message pane skeleton while a chat is loading messages', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    currentSignal = null
+    initialSelectedIds = new Set(['doc-1'])
+    initialDocumentMeta = defaultDocumentMeta()
+    listChatSessions.mockReset()
+    getChatSession.mockReset()
+    getChatSession.mockResolvedValue({})
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+    listChatSessions.mockResolvedValue({ sessions: [], shared: [] })
+    getChatSession.mockResolvedValue({})
+    window.history.pushState({}, '', '/')
+  })
+
+  it('shows a skeleton in the message pane and disables the composer while the active (not-yet-loaded) chat is fetching messages, then reveals the composer once it resolves', async () => {
+    // A real, previously-created own chat coming back from the server —
+    // unlike the auto-created empty first chat, this one is NOT pre-marked
+    // as already loaded, so mounting triggers `ensureMessagesLoaded`'s
+    // fetch and `messagesLoading` picks up its id for the duration.
+    listChatSessions.mockResolvedValueOnce({
+      sessions: [
+        {
+          id: 's1',
+          title: 'Old chat',
+          project_id: null,
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-01T00:00:00Z',
+          updated_at: '2026-09-01T00:00:00Z',
+          message_count: 1,
+        },
+      ],
+      shared: [],
+    })
+    let resolveDetail: ((value: unknown) => void) | undefined
+    getChatSession.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveDetail = resolve
+        }),
+    )
+
+    render(<AppLayout />)
+
+    await waitFor(() => expect(screen.getByTestId('active-chat-id').textContent).toBe('s1'))
+
+    // `activeChatId` and `messagesLoading` are set by two separate state
+    // updates (the latter one effect-render later, inside
+    // `ensureMessagesLoaded`) — re-query rather than assert synchronously
+    // right after the activeChatId waitFor above settles, or this can race
+    // a still-in-flight second render.
+    await waitFor(() => {
+      expect(screen.getByTestId('messages-skeleton')).toBeInTheDocument()
+    })
+    expect(
+      screen.getByPlaceholderText('Ask a question about the selected documents'),
+    ).toBeDisabled()
+
+    await act(async () => {
+      resolveDetail?.({
+        id: 's1',
+        title: 'Old chat',
+        messages: [],
+        created_at: '2026-09-01T00:00:00Z',
+        project_id: null,
+        visibility: 'private',
+        share_token: null,
+        is_owner: true,
+        can_query: true,
+        scope_document_ids: [],
+      })
+    })
+
+    // Re-queries on every retry rather than asserting a single node
+    // reference (see Task 7's flaky-node note for this same transition).
+    await waitFor(() => {
+      expect(screen.queryByTestId('messages-skeleton')).not.toBeInTheDocument()
+    })
+    expect(
+      screen.getByPlaceholderText('Ask a question about the selected documents'),
+    ).not.toBeDisabled()
+  })
+
+  it('does NOT show the skeleton or disable the composer when a chat that already has messages is silently re-fetching in the background (reselecting an already-open shared chat)', async () => {
+    // Shared chats are re-fetched on every activation (ungated, unlike own
+    // chats — see useChatStore.ts's `ensureMessagesLoaded`), so reselecting
+    // one that's already open and fully loaded re-adds its id to
+    // `messagesLoading` while its messages are still sitting in
+    // `activeSession.messages` from the earlier load. The message list
+    // must stay put and the composer must stay enabled for that background
+    // re-fetch — only a genuinely empty, first-ever load should skeleton.
+    //
+    // Restore-on-reload (localStorage + listChatSessions), not the
+    // `?share=` link flow, mirroring the already-stable "fetches a
+    // restored shared chat's detail on reload" test above — it exercises
+    // the identical ungated shared-branch `ensureMessagesLoaded` fetch
+    // with one fewer moving part (no shareToken/loadSharedSession/
+    // replaceState hop).
+    const user = userEvent.setup()
+    window.history.pushState({}, '', '/chat')
+    window.localStorage.setItem(
+      'docu_chat_history_user-1',
+      JSON.stringify({
+        version: 1,
+        activeChatId: 'shared-9',
+        sessions: [
+          { id: 's1', title: 'My own chat', messages: [], createdAt: '2026-09-01T00:00:00.000Z' },
+        ],
+        updatedAt: '2026-09-01T00:00:00.000Z',
+      }),
+    )
+    listChatSessions.mockResolvedValueOnce({
+      sessions: [
+        {
+          id: 's1',
+          title: 'My own chat',
+          project_id: null,
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-01T00:00:00Z',
+          updated_at: '2026-09-01T00:00:00Z',
+          message_count: 0,
+        },
+      ],
+      shared: [
+        {
+          id: 'shared-9',
+          title: 'Reselect Chat',
+          owner_username: 'alice',
+          visibility: 'query',
+          opened_at: '2026-09-01T00:00:00Z',
+        },
+      ],
+    })
+    // `pairMessages` (AppLayout.tsx) anchors each pair on a `user` message
+    // — a lone `assistant` entry with no preceding `user` turn is silently
+    // dropped, so a fixture asserting a rendered message needs both.
+    const shared9Detail = {
+      id: 'shared-9',
+      title: 'Reselect Chat',
+      project_id: null,
+      visibility: 'query',
+      share_token: null,
+      created_at: '2026-09-01T00:00:00Z',
+      updated_at: '2026-09-01T00:00:00Z',
+      message_count: 2,
+      owner_username: 'alice',
+      is_owner: false,
+      can_query: true,
+      scope_document_ids: ['doc-9'],
+      messages: [
+        {
+          id: 'm0',
+          seq: 1,
+          role: 'user',
+          content: 'What is the status?',
+          author_username: 'alice',
+          created_at: '2026-09-01T00:00:00Z',
+        },
+        {
+          id: 'm1',
+          seq: 2,
+          role: 'assistant',
+          content: 'Already loaded answer',
+          author_username: 'alice',
+          created_at: '2026-09-01T00:00:00Z',
+        },
+      ],
+    }
+    getChatSession.mockImplementation((id: string) =>
+      id === 'shared-9' ? Promise.resolve(shared9Detail) : Promise.resolve({ id, title: id, messages: [] }),
+    )
+
+    render(<AppLayout />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('active-chat-id').textContent).toBe('shared-9')
+    })
+    // First activation — a genuine first-ever load, expected to show the
+    // skeleton briefly and then reveal the message (setup, not the
+    // assertion under test).
+    expect(await screen.findByText('Already loaded answer')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByTestId('messages-skeleton')).not.toBeInTheDocument()
+    })
+
+    // Switch away to an own (new) chat, then back — a reachable A -> B ->
+    // A reselect of the already-open, already-loaded shared chat.
+    await user.click(screen.getByRole('button', { name: 'New chat' }))
+    await waitFor(() => {
+      expect(screen.getByTestId('active-chat-id').textContent).not.toBe('shared-9')
+    })
+
+    let resolveDetail: ((value: unknown) => void) | undefined
+    getChatSession.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveDetail = resolve
+        }),
+    )
+
+    await user.click(screen.getByRole('button', { name: 'shared:Reselect Chat' }))
+    await waitFor(() => {
+      expect(screen.getByTestId('active-chat-id').textContent).toBe('shared-9')
+    })
+
+    // The background re-fetch is now in flight (deliberately never
+    // resolved yet) — the already-correct message and an enabled composer
+    // must stay exactly as they were: no skeleton, no disable.
+    expect(screen.getByText('Already loaded answer')).toBeInTheDocument()
+    expect(screen.queryByTestId('messages-skeleton')).not.toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Ask about the shared files')).not.toBeDisabled()
+
+    await act(async () => {
+      resolveDetail?.(shared9Detail)
+    })
+
+    // Still fine once the background re-fetch actually settles.
+    expect(screen.getByText('Already loaded answer')).toBeInTheDocument()
+    expect(screen.queryByTestId('messages-skeleton')).not.toBeInTheDocument()
   })
 })
 

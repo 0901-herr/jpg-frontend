@@ -1,4 +1,4 @@
-import { Typography } from 'antd'
+import { Avatar, Typography } from 'antd'
 import { useMemo, useRef } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -310,8 +310,14 @@ function AssistantLabel() {
  * local (just sent, or from before this field existed) falls back to the
  * viewer's own display name. */
 function UserLabel({ name }: { name: string }) {
+  const initial = name.trim().charAt(0).toUpperCase() || '?'
   return (
-    <span className={`block ${type.caption} font-medium ${typeColor.muted} mb-1`}>{name}</span>
+    <span className="inline-flex items-center gap-1.5 mb-1" aria-label={name}>
+      <Avatar size={20} className="!bg-[#1e3a5f] !text-white !text-[11px] shrink-0">
+        {initial}
+      </Avatar>
+      <span className={`${type.caption} font-medium ${typeColor.muted}`}>{name}</span>
+    </span>
   )
 }
 
@@ -353,7 +359,7 @@ export default function ChatMessageItem({
   return (
     <div className="min-w-0">
       {message.role === 'user' ? (
-        <div className="mt-6 mb-4">
+        <div className="mt-8 mb-6">
           <UserLabel name={message.authorUsername ?? currentUsername ?? 'You'} />
           <div
             className={`inline-block bg-[#f4f4f4] ${radius.lg} px-4 py-3 max-w-[min(36rem,100%)] min-w-0 break-words [overflow-wrap:anywhere]`}
@@ -363,12 +369,12 @@ export default function ChatMessageItem({
           <UserFileTags tags={message.fileTags ?? []} />
         </div>
       ) : (
-        <div className="mb-4">
+        <div className="mb-6">
           <AssistantLabel />
           <AssistantMessage message={message} />
         </div>
       )}
-      {showDivider && <hr className="my-6 border-0 border-t border-[#ececec]" />}
+      {showDivider && <hr className="my-8 border-0 border-t border-[#ececec]" />}
     </div>
   )
 }

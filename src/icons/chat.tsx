@@ -13,6 +13,7 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import CloseIcon from '@mui/icons-material/Close'
 import DeleteOutlinedIcon from '@mui/icons-material/DeleteOutlined'
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined'
+import DriveFileMoveOutlinedIcon from '@mui/icons-material/DriveFileMoveOutlined'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import FolderOpenOutlinedIcon from '@mui/icons-material/FolderOpenOutlined'
@@ -28,6 +29,7 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import RefreshOutlinedIcon from '@mui/icons-material/RefreshOutlined'
 import RemoveCircleOutlinedIcon from '@mui/icons-material/RemoveCircleOutlined'
 import ScheduleOutlinedIcon from '@mui/icons-material/ScheduleOutlined'
+import ShareOutlinedIcon from '@mui/icons-material/ShareOutlined'
 import { appIcon } from './AppIcon'
 
 export const ChatBubbleIcon = appIcon(ChatIcon, 20)
@@ -62,6 +64,8 @@ export const ChatRedirectIcon = appIcon(CallMadeIcon, 20)
 export const ChatEditIcon = appIcon(EditOutlinedIcon)
 export const ChatDeleteIcon = appIcon(DeleteOutlinedIcon)
 export const ChatMoreIcon = appIcon(MoreHorizIcon, 14)
+export const ChatShareIcon = appIcon(ShareOutlinedIcon, 14)
+export const ChatMoveIcon = appIcon(DriveFileMoveOutlinedIcon, 14)
 export const ChatLockIcon = appIcon(LockOutlinedIcon, 20)
 export const ChatFolderIcon = appIcon(FolderOpenOutlinedIcon, 14)
 export const ChatAppsIcon = appIcon(AppsIcon, 14)

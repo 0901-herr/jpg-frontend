@@ -190,13 +190,31 @@ export interface UseChatStoreResult {
   setActiveChatId: (id: string) => void
   hydrated: boolean
   createChat: () => void
-  renameChat: (chatId: string, title: string) => void
-  deleteChat: (chatId: string) => void
-  moveChat: (chatId: string, projectId: string | null) => void
+  /** Stays optimistic (the title updates locally before the PATCH below
+   * settles), but — unlike before Task 11 — now returns the PATCH's own
+   * promise instead of firing it with `void ... .catch()` and discarding
+   * it, so a caller (`ChatListItem`) that wants to show a pending
+   * indicator while it's still in flight can await it. */
+  renameChat: (chatId: string, title: string) => Promise<void>
+  /** Same optimistic-but-now-awaitable change as `renameChat`, for the
+   * same reason (`Sidebar` tracks the in-flight delete to show a pending
+   * indicator, since the chat's own row is gone from `sessions` the
+   * instant this is called). */
+  deleteChat: (chatId: string) => Promise<void>
+  /** Same optimistic-but-now-awaitable change as `renameChat`/`deleteChat`
+   * — the rollback-on-failure behavior below is completely unchanged,
+   * this only exposes the settle point to an awaiting caller. */
+  moveChat: (chatId: string, projectId: string | null) => Promise<void>
   shareChat: (chatId: string, visibility: ChatVisibility) => Promise<void>
   createProject: (name: string) => Promise<void>
   renameProject: (id: string, name: string) => Promise<void>
-  deleteProject: (id: string) => void
+  /** Cascades: deletes every chat currently in the project (via the same
+   * single-chat delete the store uses elsewhere) before deleting the
+   * project itself — the backend has no cascade-delete endpoint of its
+   * own. Returns a promise so a caller that wants to await the full
+   * cascade can (e.g. a confirmation flow); existing callers that just
+   * fire-and-forget it are unaffected. */
+  deleteProject: (id: string) => Promise<void>
   /** Fire-and-forget: persists the just-appended user message (and the
    * scope it was asked against) — never blocks or throws into the caller,
    * the message is already showing locally either way. */
@@ -210,6 +228,11 @@ export interface UseChatStoreResult {
    * write, can await it. Safe to ignore otherwise. */
   recordAssistantMessage: (chatId: string, msg: ChatMessage) => Promise<void>
   loadSharedSession: (token: string) => Promise<ChatSession | null>
+  /** Chat ids whose messages `ensureMessagesLoaded` is currently fetching —
+   * a chat id is added right before that fetch starts and removed once it
+   * settles (success or failure), so a caller can render a loading skeleton
+   * for whichever chat the viewer just clicked into. */
+  messagesLoading: Set<string>
   /** Forces an immediate re-fetch of a shared chat's own detail (scope +
    * messages) — used after a follower's answer completes, so a host scope
    * change made mid-conversation is picked up without waiting for the
@@ -241,6 +264,9 @@ export function useChatStore({
   const [projects, setProjects] = useState<ChatProject[]>([])
   const [activeChatId, setActiveChatId] = useState(initialSession.id)
   const [hydrated, setHydrated] = useState(false)
+  // Chat ids with an in-flight `ensureMessagesLoaded` fetch — see
+  // `UseChatStoreResult.messagesLoading`.
+  const [messagesLoading, setMessagesLoading] = useState<Set<string>>(new Set())
 
   const activeChatIdRef = useRef(activeChatId)
   activeChatIdRef.current = activeChatId
@@ -248,6 +274,11 @@ export function useChatStore({
   sessionsRef.current = sessions
   const sharedSessionsRef = useRef<ChatSession[]>(sharedSessions)
   sharedSessionsRef.current = sharedSessions
+  // Same "current value outside a setState updater" idiom as the refs
+  // above — used by `deleteProject` to restore the project row if its
+  // cascade delete turns out not to have fully succeeded server-side.
+  const projectsRef = useRef<ChatProject[]>(projects)
+  projectsRef.current = projects
   // Session ids whose messages are already known locally — created this
   // session, imported, or already fetched — so a chat is only ever
   // GET-ted once per app load.
@@ -430,6 +461,42 @@ export function useChatStore({
     [],
   )
 
+  // Per-chat-id in-flight fetch count backing `messagesLoading` — the
+  // shared-chat branch of `ensureMessagesLoaded` below is deliberately not
+  // gated by `loadedMessagesRef` (it re-fetches every time that chat
+  // becomes active, so a host-side scope change is always picked up), so a
+  // quick A -> B -> A reselect can start a second, overlapping fetch for
+  // the same id while the first is still in flight. A plain delete-on-
+  // settle would let the FIRST fetch to resolve clear the id out from
+  // under the still-pending second one. Kept in a ref (not state) since
+  // it's only ever read/written from `trackMessagesLoading` itself —
+  // `messagesLoading` is the state that actually drives renders.
+  const messagesLoadingCountRef = useRef<Map<string, number>>(new Map())
+
+  // Marks `chatId` as loading for the duration of `promise` — added
+  // immediately, removed in a `finally` once every overlapping in-flight
+  // fetch for that id (see the counter above) has settled. Shared by both
+  // branches of `ensureMessagesLoaded` below; never touches
+  // `fetchAndApplyDetail` itself, which stays exactly as it was.
+  const trackMessagesLoading = useCallback((chatId: string, promise: Promise<void>) => {
+    const counts = messagesLoadingCountRef.current
+    counts.set(chatId, (counts.get(chatId) ?? 0) + 1)
+    setMessagesLoading((prev) => new Set(prev).add(chatId))
+    void promise.finally(() => {
+      const remaining = (counts.get(chatId) ?? 1) - 1
+      if (remaining > 0) {
+        counts.set(chatId, remaining)
+        return
+      }
+      counts.delete(chatId)
+      setMessagesLoading((prev) => {
+        const next = new Set(prev)
+        next.delete(chatId)
+        return next
+      })
+    })
+  }, [])
+
   const ensureMessagesLoaded = useCallback(
     (chatId: string) => {
       if (!enabled || !chatId) return
@@ -439,7 +506,7 @@ export function useChatStore({
         // fetched once, same as before.
         if (loadedMessagesRef.current.has(chatId)) return
         loadedMessagesRef.current.add(chatId)
-        void fetchAndApplyDetail(chatId, true)
+        trackMessagesLoading(chatId, fetchAndApplyDetail(chatId, true))
         return
       }
       // A shared chat's scope/messages can change any time the host asks
@@ -448,9 +515,9 @@ export function useChatStore({
       // host-side change is always picked up, even for a chat already
       // fully loaded via `loadSharedSession` (the `?share=` link flow).
       loadedMessagesRef.current.add(chatId)
-      void fetchAndApplyDetail(chatId, false)
+      trackMessagesLoading(chatId, fetchAndApplyDetail(chatId, false))
     },
-    [enabled, fetchAndApplyDetail],
+    [enabled, fetchAndApplyDetail, trackMessagesLoading],
   )
 
   const refreshSharedChat = useCallback(
@@ -482,18 +549,20 @@ export function useChatStore({
   }, [enabled])
 
   const renameChat = useCallback(
-    (chatId: string, title: string) => {
+    async (chatId: string, title: string) => {
       setSessions((prev) => prev.map((s) => (s.id === chatId ? { ...s, title } : s)))
       if (!enabled) return
-      void patchChatSession(chatId, { title }).catch(() => {
+      try {
+        await patchChatSession(chatId, { title })
+      } catch {
         message.error('Could not save the new chat name.')
-      })
+      }
     },
     [enabled],
   )
 
   const deleteChat = useCallback(
-    (chatId: string) => {
+    async (chatId: string) => {
       setSessions((prev) => {
         const next = prev.filter((s) => s.id !== chatId)
         if (next.length === 0) {
@@ -508,20 +577,36 @@ export function useChatStore({
         return next
       })
       if (!enabled) return
-      void deleteChatSession(chatId).catch(() => {
+      try {
+        await deleteChatSession(chatId)
+      } catch {
         message.error('Could not delete this chat.')
-      })
+      }
     },
     [enabled],
   )
 
   const moveChat = useCallback(
-    (chatId: string, projectId: string | null) => {
+    async (chatId: string, projectId: string | null) => {
+      // Read the pre-update value off the ref (same idiom `createChat`,
+      // `deleteChat` and `removeSharedChat` already use for "current state
+      // outside a setState updater") so it's available to roll back to if
+      // the PATCH below fails.
+      const previousProjectId = sessionsRef.current.find((s) => s.id === chatId)?.projectId ?? null
       setSessions((prev) => prev.map((s) => (s.id === chatId ? { ...s, projectId } : s)))
       if (!enabled) return
-      void patchChatSession(chatId, { project_id: projectId }).catch(() => {
-        message.error('Could not move this chat.')
-      })
+      try {
+        await patchChatSession(chatId, { project_id: projectId })
+      } catch {
+        // The PATCH silently failing while the optimistic update stands is
+        // exactly what made a failed move look like it "needed a re-login
+        // to take effect" — only a later re-hydration would revert it.
+        // Roll back immediately instead, and say so.
+        setSessions((prev) =>
+          prev.map((s) => (s.id === chatId ? { ...s, projectId: previousProjectId } : s)),
+        )
+        message.error('Could not move this chat. It has been moved back.')
+      }
     },
     [enabled],
   )
@@ -592,13 +677,90 @@ export function useChatStore({
   )
 
   const deleteProject = useCallback(
-    (id: string) => {
+    async (id: string) => {
+      // Same ref-read idiom as `moveChat`/`createChat` — captured before
+      // the optimistic removal below so the cascade still knows which
+      // chats to delete server-side even after they've disappeared from
+      // `sessions`, and so a partial failure below knows exactly which
+      // ones to roll back.
+      const chatsInProject = sessionsRef.current.filter((s) => s.projectId === id)
+      const removedIds = new Set(chatsInProject.map((c) => c.id))
+      // Same ref-read idiom, via `projectsRef` — so it's available to
+      // restore below if the project turns out not to have actually been
+      // deleted server-side. (A functional `setProjects` updater's own
+      // `prev` would look equivalent, but React doesn't guarantee it runs
+      // synchronously with this call, and the read below can't wait for it.)
+      const removedProject = projectsRef.current.find((p) => p.id === id)
       setProjects((prev) => prev.filter((p) => p.id !== id))
-      setSessions((prev) => prev.map((s) => (s.projectId === id ? { ...s, projectId: null } : s)))
+
+      // Same reselection idiom as `deleteChat` (never leave `activeChatId`
+      // pointing at a chat that's no longer in `sessions`), generalized
+      // from one removed id to the whole set this cascade removes — computed
+      // here rather than inside the `setSessions` call below, so that call
+      // stays a plain state update instead of one whose updater function
+      // also reaches out and calls `setActiveChatId` as a side effect.
+      const next = sessionsRef.current.filter((s) => s.projectId !== id)
+      if (next.length === 0) {
+        const fresh = createEmptySession(next)
+        loadedMessagesRef.current.add(fresh.id)
+        setActiveChatId(fresh.id)
+        setSessions([fresh])
+      } else {
+        if (removedIds.has(activeChatIdRef.current)) {
+          setActiveChatId(next[0].id)
+        }
+        setSessions(next)
+      }
+
       if (!enabled) return
-      void deleteChatProject(id).catch(() => {
-        message.error('Could not delete the project.')
-      })
+
+      // The backend has no cascade-delete endpoint: deleting the project
+      // alone would only orphan these chats (project_id -> null), not
+      // remove them. Delete each chat first via the same single-chat
+      // delete call `deleteChat` already uses, then the now-empty project —
+      // but `allSettled`, not `all`: a fail-fast `Promise.all` would bail
+      // out of the whole cascade on the first rejection, silently leaving
+      // the rest of the chats (and the project itself) undeleted
+      // server-side while the optimistic update had already made all of
+      // them disappear from view. Distinguishing successes from failures
+      // here lets the UI stay honest about what actually happened.
+      const results = await Promise.allSettled(
+        chatsInProject.map((chat) => deleteChatSession(chat.id)),
+      )
+      const failedChats = chatsInProject.filter((_, i) => results[i].status === 'rejected')
+
+      if (failedChats.length > 0) {
+        // Some chats are still on the project server-side — don't delete
+        // the project itself, bring it and the chats that didn't actually
+        // get deleted back into view, and say so honestly (not "could not
+        // delete the project": most of it may well have worked).
+        setSessions((prev) => [...prev, ...failedChats])
+        if (removedProject) {
+          setProjects((prev) =>
+            [...prev, removedProject].sort((a, b) => a.name.localeCompare(b.name)),
+          )
+        }
+        message.error(
+          `${failedChats.length} of ${chatsInProject.length} chats could not be deleted. Please try again.`,
+        )
+        return
+      }
+
+      try {
+        await deleteChatProject(id)
+      } catch {
+        // Every chat is genuinely gone server-side at this point (no
+        // rollback for those), but the project row itself is still there —
+        // bring it back so the user can retry deleting it.
+        if (removedProject) {
+          setProjects((prev) =>
+            [...prev, removedProject].sort((a, b) => a.name.localeCompare(b.name)),
+          )
+        }
+        message.error(
+          'Chats were deleted, but the project itself could not be removed. Please try again.',
+        )
+      }
     },
     [enabled],
   )
@@ -697,6 +859,7 @@ export function useChatStore({
     recordUserMessage,
     recordAssistantMessage,
     loadSharedSession,
+    messagesLoading,
     refreshSharedChat,
     removeSharedChat,
   }

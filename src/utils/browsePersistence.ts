@@ -26,10 +26,9 @@ function readJsonNumber(key: string): number | null {
 
 /** `null` means the key has never been written — the browser has no
  * persisted selection at all, as opposed to an explicit, deliberate empty
- * selection (`[]`, from clearing every document). Callers need to tell
- * these apart to auto-select-all only on a browser's very first load, and
- * never again once the user has made any selection decision (including
- * clearing everything). */
+ * selection (`[]`, from clearing every document). Either way, the caller's
+ * own default (an empty `Set`) is what a fresh browser starts with — by
+ * design, nothing is selected until the user checks something. */
 export function loadPersistedSelection(): Set<string> | null {
   let raw: string | null
   try {

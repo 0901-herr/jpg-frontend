@@ -465,7 +465,7 @@ input.ant-input:focus-visible {
 
 .docu-chat-input-footer {
   padding: 0 1.5rem 1rem;
-  margin-top: -0.75rem;
+  margin-top: 0.75rem;
 }
 
 .docu-chat-input-stack {
@@ -477,6 +477,22 @@ input.ant-input:focus-visible {
 .docu-chat-input-disclaimer {
   margin: 0;
   padding: 0 0.25rem;
+}
+
+/* Host-only rooftop banner above the composer, for a chat shared with
+   query ("view and ask") permission — warns the owner that sending a
+   message updates what every recipient can see and query (ChatInput.tsx,
+   `isHostOfQueryShare`). Reuses the same muted-pill token pair as the
+   files chip (`--docu-bg-muted`/`--docu-text-muted`) and the composer's
+   own `--docu-radius-md` rather than inventing new colours/radii. */
+.docu-chat-composer-host-banner {
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+  color: var(--docu-text-muted);
+  background: var(--docu-bg-muted);
+  border-radius: var(--docu-radius-md);
+  padding: 0.375rem 0.75rem;
+  margin-bottom: 0.5rem;
 }
 
 /* Inline citation pill (CitationList.tsx) — a small round numbered chip

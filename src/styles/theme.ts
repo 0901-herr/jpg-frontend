@@ -32,7 +32,7 @@ export const border = {
  * quiet section labels of a mainstream AI-chat sidebar rather than
  * standing out as their own heading. */
 export const sectionLabel =
-  'inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-[#8e8e8e] mb-1.5'
+  'inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-[#8e8e8e] mb-1.5 min-w-0'
 
 /** @deprecated use sectionLabel — kept for imports */
 export const sectionLabelPrimary = sectionLabel

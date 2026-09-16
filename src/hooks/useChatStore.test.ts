@@ -1,4 +1,5 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
+import { message } from 'antd'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createEmptySession, useChatStore } from './useChatStore'
 import * as chatApi from '../api/chat'
@@ -423,7 +424,17 @@ describe('chat CRUD', () => {
     const result = await hydrated()
     vi.mocked(chatApi.patchChatSession).mockResolvedValue({} as never)
 
-    act(() => result.current.moveChat('s1', 'proj-1'))
+    // Not `act(() => result.current.moveChat(...))` — `moveChat` now
+    // returns a promise (Task 11 follow-up), and an implicit-return arrow
+    // would hand that promise back to `act` itself, which then switches
+    // to its async overload and defers flushing the optimistic update
+    // past this assertion instead of synchronously before it. `void`
+    // inside a block body keeps `act`'s callback synchronous (`void`),
+    // matching the "assert the optimistic update, before the PATCH
+    // settles" intent this test actually has.
+    act(() => {
+      void result.current.moveChat('s1', 'proj-1')
+    })
 
     expect(result.current.sessions[0].projectId).toBe('proj-1')
     expect(chatApi.patchChatSession).toHaveBeenCalledWith('s1', { project_id: 'proj-1' })
@@ -492,14 +503,298 @@ describe('chat CRUD', () => {
     ).toEqual(['doc-1', 'doc-2'])
   })
 
-  it('deletes a project and clears its id off any chat that had it', async () => {
+  it('rolls back the optimistic project move if the PATCH fails, and shows an error', async () => {
+    const errorSpy = vi.spyOn(message, 'error')
     const result = await hydrated()
-    act(() => result.current.moveChat('s1', 'proj-1'))
+    vi.mocked(chatApi.patchChatSession).mockRejectedValueOnce(new Error('network error'))
+
+    // See the sibling "moves a chat between projects" test above for why
+    // this is a block body, not `act(() => result.current.moveChat(...))`.
+    act(() => {
+      void result.current.moveChat('s1', 'proj-1')
+    })
+
+    // Optimistic update applied immediately.
+    expect(result.current.sessions.find((s) => s.id === 's1')?.projectId).toBe('proj-1')
+
+    // Rolled back to its previous value once the PATCH rejects.
+    await waitFor(() => {
+      expect(result.current.sessions.find((s) => s.id === 's1')?.projectId).toBeNull()
+    })
+    expect(errorSpy).toHaveBeenCalledWith('Could not move this chat. It has been moved back.')
+  })
+
+  it('deletes a project by cascading: deletes every chat in it via the existing single-chat-delete call, then deletes the project itself', async () => {
+    vi.mocked(chatApi.listChatSessions).mockResolvedValue({
+      sessions: [
+        {
+          id: 's1',
+          title: 'Session 1',
+          project_id: 'proj-1',
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-16T00:00:00Z',
+          updated_at: '2026-09-16T00:00:00Z',
+          message_count: 0,
+        },
+        {
+          id: 's2',
+          title: 'Session 2',
+          project_id: 'proj-1',
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-16T00:00:00Z',
+          updated_at: '2026-09-16T00:00:00Z',
+          message_count: 0,
+        },
+        {
+          id: 's3',
+          title: 'Session 3',
+          project_id: null,
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-16T00:00:00Z',
+          updated_at: '2026-09-16T00:00:00Z',
+          message_count: 0,
+        },
+      ],
+      shared: [],
+    })
+    vi.mocked(chatApi.deleteChatSession).mockResolvedValue(undefined)
     vi.mocked(chatApi.deleteChatProject).mockResolvedValue(undefined)
+    // The active chat (s1, then s3 once the cascade reselects it, mirroring
+    // `deleteChat`'s own reselection) each trigger `ensureMessagesLoaded` ->
+    // `getChatSession(id)` in the background. Mocked per-id (matching
+    // `hydratedWithShared`'s convention elsewhere in this file) rather than
+    // a single static `mockResolvedValue` — a static fixture would answer
+    // every id with the same payload, stamping session s3 with s1's id once
+    // it becomes active.
+    vi.mocked(chatApi.getChatSession).mockImplementation((requestedId: string) =>
+      Promise.resolve({
+        id: requestedId,
+        title: `Session ${requestedId}`,
+        project_id: requestedId === 's3' ? null : 'proj-1',
+        visibility: 'private',
+        share_token: null,
+        created_at: '2026-09-16T00:00:00Z',
+        updated_at: '2026-09-16T00:00:00Z',
+        message_count: 0,
+        owner_username: 'tester',
+        is_owner: true,
+        can_query: true,
+        scope_document_ids: [],
+        messages: [],
+      }),
+    )
 
-    act(() => result.current.deleteProject('proj-1'))
+    const { result } = renderHook(() => useChatStore(baseParams()))
+    await waitFor(() => expect(result.current.hydrated).toBe(true))
 
-    expect(result.current.sessions.find((s) => s.id === 's1')?.projectId).toBeNull()
+    await act(async () => {
+      await result.current.deleteProject('proj-1')
+    })
+    expect(chatApi.deleteChatSession).toHaveBeenCalledTimes(2)
+    expect(chatApi.deleteChatSession).toHaveBeenCalledWith('s1')
+    expect(chatApi.deleteChatSession).toHaveBeenCalledWith('s2')
+    expect(chatApi.deleteChatProject).toHaveBeenCalledWith('proj-1')
+    // The chats that were in the deleted project are gone from the visible
+    // list entirely (cascade), not merely orphaned to projectId: null.
+    expect(result.current.sessions.some((s) => s.id === 's1' || s.id === 's2')).toBe(false)
+    expect(result.current.sessions.some((s) => s.id === 's3')).toBe(true)
+    // 's1' was the active chat (first own session, hydration's default) and
+    // got deleted along with the rest of the project — must not leave
+    // activeChatId pointing at a chat that's gone, same reselection
+    // `deleteChat` already does for a single delete.
+    expect(result.current.activeChatId).toBe('s3')
+  })
+
+  it('rolls back only the chats that failed to delete when a cascade delete partially fails, and does not delete the project', async () => {
+    const errorSpy = vi.spyOn(message, 'error')
+    vi.mocked(chatApi.listChatProjects).mockResolvedValue([
+      { id: 'proj-1', name: 'Research', created_at: '2026-09-16T00:00:00Z', updated_at: '2026-09-16T00:00:00Z' },
+    ])
+    vi.mocked(chatApi.listChatSessions).mockResolvedValue({
+      sessions: [
+        {
+          id: 's1',
+          title: 'Session 1',
+          project_id: 'proj-1',
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-16T00:00:00Z',
+          updated_at: '2026-09-16T00:00:00Z',
+          message_count: 0,
+        },
+        {
+          id: 's2',
+          title: 'Session 2',
+          project_id: 'proj-1',
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-16T00:00:00Z',
+          updated_at: '2026-09-16T00:00:00Z',
+          message_count: 0,
+        },
+        {
+          id: 's3',
+          title: 'Session 3',
+          project_id: null,
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-16T00:00:00Z',
+          updated_at: '2026-09-16T00:00:00Z',
+          message_count: 0,
+        },
+      ],
+      shared: [],
+    })
+    // s1 deletes fine; s2 fails (e.g. a transient network error).
+    vi.mocked(chatApi.deleteChatSession).mockImplementation((chatId: string) =>
+      chatId === 's2' ? Promise.reject(new Error('network error')) : Promise.resolve(undefined),
+    )
+    vi.mocked(chatApi.getChatSession).mockImplementation((requestedId: string) =>
+      Promise.resolve({
+        id: requestedId,
+        title: `Session ${requestedId}`,
+        project_id: requestedId === 's3' ? null : 'proj-1',
+        visibility: 'private',
+        share_token: null,
+        created_at: '2026-09-16T00:00:00Z',
+        updated_at: '2026-09-16T00:00:00Z',
+        message_count: 0,
+        owner_username: 'tester',
+        is_owner: true,
+        can_query: true,
+        scope_document_ids: [],
+        messages: [],
+      }),
+    )
+
+    const { result } = renderHook(() => useChatStore(baseParams()))
+    await waitFor(() => expect(result.current.hydrated).toBe(true))
+    expect(result.current.projects).toEqual([{ id: 'proj-1', name: 'Research' }])
+
+    await act(async () => {
+      await result.current.deleteProject('proj-1')
+    })
+
+    // The project still has a chat server-side (s2's delete failed), so
+    // the project itself must never be deleted, and comes back into view.
+    expect(chatApi.deleteChatProject).not.toHaveBeenCalled()
+    await waitFor(() => {
+      expect(result.current.projects).toEqual([{ id: 'proj-1', name: 'Research' }])
+    })
+
+    // s1 (succeeded) stays gone; s2 (failed) reappears.
+    await waitFor(() => {
+      expect(result.current.sessions.some((s) => s.id === 's2')).toBe(true)
+    })
+    expect(result.current.sessions.some((s) => s.id === 's1')).toBe(false)
+    expect(result.current.sessions.some((s) => s.id === 's3')).toBe(true)
+
+    expect(errorSpy).toHaveBeenCalledWith('1 of 2 chats could not be deleted. Please try again.')
+  })
+
+  // Task 11 follow-up: `renameChat`/`deleteChat`/`moveChat` stayed
+  // optimistic (the state update below still happens synchronously,
+  // before any network round-trip) but now also return the PATCH/DELETE
+  // call's own promise — previously fired with `void ... .catch()` and
+  // discarded — so a caller like `ChatListItem`/`Sidebar` can await it to
+  // show a pending indicator, without changing what happens on success or
+  // failure.
+
+  it('returns a promise from renameChat that resolves once the PATCH settles', async () => {
+    const result = await hydrated()
+    let resolvePatch: () => void
+    vi.mocked(chatApi.patchChatSession).mockReturnValue(
+      new Promise((resolve) => {
+        resolvePatch = () => resolve({} as never)
+      }),
+    )
+
+    let renamePromise: Promise<void> | undefined
+    act(() => {
+      renamePromise = result.current.renameChat('s1', 'New title')
+    })
+
+    // Optimistic update already applied, before the PATCH has settled.
+    expect(result.current.sessions[0].title).toBe('New title')
+
+    let settled = false
+    void renamePromise!.then(() => {
+      settled = true
+    })
+    expect(settled).toBe(false)
+
+    await act(async () => {
+      resolvePatch!()
+      await renamePromise
+    })
+
+    expect(settled).toBe(true)
+  })
+
+  it('returns a promise from deleteChat that resolves once the DELETE settles', async () => {
+    const result = await hydrated()
+    let resolveDelete: () => void
+    vi.mocked(chatApi.deleteChatSession).mockReturnValue(
+      new Promise((resolve) => {
+        resolveDelete = () => resolve(undefined)
+      }),
+    )
+
+    let deletePromise: Promise<void> | undefined
+    act(() => {
+      deletePromise = result.current.deleteChat('s1')
+    })
+
+    // Optimistic removal already applied (a fresh empty chat replaces the
+    // only session, same as the existing "never end up with zero
+    // sessions" behaviour), before the DELETE has settled.
+    expect(result.current.sessions.some((s) => s.id === 's1')).toBe(false)
+
+    let settled = false
+    void deletePromise!.then(() => {
+      settled = true
+    })
+    expect(settled).toBe(false)
+
+    await act(async () => {
+      resolveDelete!()
+      await deletePromise
+    })
+
+    expect(settled).toBe(true)
+  })
+
+  it('returns a promise from moveChat that resolves once the PATCH settles', async () => {
+    const result = await hydrated()
+    let resolvePatch: () => void
+    vi.mocked(chatApi.patchChatSession).mockReturnValue(
+      new Promise((resolve) => {
+        resolvePatch = () => resolve({} as never)
+      }),
+    )
+
+    let movePromise: Promise<void> | undefined
+    act(() => {
+      movePromise = result.current.moveChat('s1', 'proj-1')
+    })
+
+    expect(result.current.sessions[0].projectId).toBe('proj-1')
+
+    let settled = false
+    void movePromise!.then(() => {
+      settled = true
+    })
+    expect(settled).toBe(false)
+
+    await act(async () => {
+      resolvePatch!()
+      await movePromise
+    })
+
+    expect(settled).toBe(true)
   })
 })
 
@@ -752,5 +1047,136 @@ describe('recordAssistantMessage', () => {
 
     resolvePost?.()
     await waitFor(() => expect(settled).toBe(true))
+  })
+})
+
+describe('messagesLoading', () => {
+  it('tracks a chat id while ensureMessagesLoaded has an in-flight fetch, and clears it once settled', async () => {
+    vi.mocked(chatApi.listChatSessions).mockResolvedValue({
+      sessions: [
+        {
+          id: 's1',
+          title: 'Session 1',
+          project_id: null,
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-16T00:00:00Z',
+          updated_at: '2026-09-16T00:00:00Z',
+          message_count: 0,
+        },
+      ],
+      shared: [],
+    })
+
+    let resolveDetail: ((detail: unknown) => void) | undefined
+    vi.mocked(chatApi.getChatSession).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveDetail = resolve
+        }),
+    )
+
+    const { result } = renderHook(() => useChatStore(baseParams()))
+    await waitFor(() => expect(result.current.hydrated).toBe(true))
+
+    // Hydration selects s1 as the active chat, which triggers
+    // ensureMessagesLoaded('s1') in the background.
+    await waitFor(() => expect(result.current.messagesLoading.has('s1')).toBe(true))
+
+    resolveDetail?.({
+      id: 's1',
+      title: 'Session 1',
+      project_id: null,
+      visibility: 'private',
+      share_token: null,
+      created_at: '2026-09-16T00:00:00Z',
+      updated_at: '2026-09-16T00:00:00Z',
+      message_count: 0,
+      owner_username: 'tester',
+      is_owner: true,
+      can_query: true,
+      scope_document_ids: [],
+      messages: [],
+    })
+
+    await waitFor(() => expect(result.current.messagesLoading.has('s1')).toBe(false))
+  })
+
+  it('does not clear a chat id from messagesLoading until every overlapping in-flight fetch for it has settled (shared-chat re-entry)', async () => {
+    vi.mocked(chatApi.listChatSessions).mockResolvedValue({
+      sessions: [
+        {
+          id: 's1',
+          title: 'Session 1',
+          project_id: null,
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-16T00:00:00Z',
+          updated_at: '2026-09-16T00:00:00Z',
+          message_count: 0,
+        },
+      ],
+      shared: [],
+    })
+
+    const pending: Array<{ chatId: string; resolve: (detail: unknown) => void }> = []
+    vi.mocked(chatApi.getChatSession).mockImplementation(
+      (chatId: string) =>
+        new Promise((resolve) => {
+          pending.push({ chatId, resolve })
+        }),
+    )
+    const extDetail = {
+      id: 'ext-1',
+      title: 'Ext',
+      project_id: null,
+      visibility: 'private' as const,
+      share_token: null,
+      created_at: '2026-09-16T00:00:00Z',
+      updated_at: '2026-09-16T00:00:00Z',
+      message_count: 0,
+      owner_username: 'alice',
+      is_owner: false,
+      can_query: true,
+      scope_document_ids: [],
+      messages: [],
+    }
+
+    const { result } = renderHook(() => useChatStore(baseParams()))
+    await waitFor(() => expect(result.current.hydrated).toBe(true))
+
+    // Hydration's own ensureMessagesLoaded('s1') call — not what this test
+    // is about, resolve it out of the way immediately.
+    await waitFor(() => expect(pending.some((p) => p.chatId === 's1')).toBe(true))
+    pending
+      .find((p) => p.chatId === 's1')
+      ?.resolve({ ...extDetail, id: 's1', is_owner: true })
+
+    // 'ext-1' isn't in `sessions` — `ensureMessagesLoaded` treats it as a
+    // shared chat, unconditionally re-fetched on every activation (not
+    // gated by `loadedMessagesRef`). Select it, then switch away and back
+    // before its first fetch settles — a realistic A -> B -> A reselect —
+    // starting a second, overlapping fetch for the same id.
+    act(() => result.current.setActiveChatId('ext-1'))
+    await waitFor(() => expect(pending.filter((p) => p.chatId === 'ext-1')).toHaveLength(1))
+    expect(result.current.messagesLoading.has('ext-1')).toBe(true)
+
+    act(() => result.current.setActiveChatId('s1'))
+    act(() => result.current.setActiveChatId('ext-1'))
+    await waitFor(() => expect(pending.filter((p) => p.chatId === 'ext-1')).toHaveLength(2))
+
+    const extFetches = pending.filter((p) => p.chatId === 'ext-1')
+
+    extFetches[0].resolve(extDetail)
+    // Still loading — the second overlapping fetch for the same id hasn't
+    // settled yet. A naive unconditional delete-on-settle would clear it
+    // here already.
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(result.current.messagesLoading.has('ext-1')).toBe(true)
+
+    extFetches[1].resolve(extDetail)
+    await waitFor(() => expect(result.current.messagesLoading.has('ext-1')).toBe(false))
   })
 })

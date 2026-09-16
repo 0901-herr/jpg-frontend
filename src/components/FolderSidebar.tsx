@@ -1,4 +1,4 @@
-import { Alert, message, Select, Spin, Tooltip, Tree } from 'antd'
+import { Alert, message, Select, Skeleton, Spin, Tooltip, Tree } from 'antd'
 import {
   ChatAppsIcon,
   ChatAppsSuffixIcon,
@@ -68,7 +68,7 @@ export default function FolderSidebar({ browse, selection, disabled = false }: F
     rootFolderId,
     cache,
     folderMeta,
-    isInitializing,
+    initialLoading,
     initError,
     sessionExpired,
     ensureFolderLoaded,
@@ -511,14 +511,6 @@ export default function FolderSidebar({ browse, selection, disabled = false }: F
     )
   }
 
-  if (isInitializing) {
-    return (
-      <div className="flex justify-center py-8">
-        <Spin size="small" />
-      </div>
-    )
-  }
-
   if (initError) {
     return (
       <Alert
@@ -573,11 +565,13 @@ export default function FolderSidebar({ browse, selection, disabled = false }: F
 
       <div className="flex flex-col min-h-0 flex-1 gap-1.5 pt-1">
         <div className="flex items-center justify-between shrink-0 gap-2">
-          <span className={`${sectionLabel} !mb-0`}>
+          <span className={`${sectionLabel} !mb-0 min-w-0 flex-1`}>
             {viewMode === 'folder' ? <ChatFolderIcon /> : <ChatDescriptionIcon />}
-            {viewMode === 'folder' ? 'Files' : 'Documents'}
+            <span className="truncate min-w-0 flex-1">
+              {viewMode === 'folder' ? 'Files' : 'Documents'}
+            </span>
           </span>
-          <div className="flex min-w-0 items-center gap-1.5">
+          <div className="flex min-w-0 items-center gap-1.5 shrink-0">
             {isTreeBusy && <Spin size="small" />}
             {viewMode === 'folder' && (
               <Tooltip title="Refresh document status" mouseEnterDelay={0.3}>
@@ -585,7 +579,7 @@ export default function FolderSidebar({ browse, selection, disabled = false }: F
                   type="button"
                   aria-label="Refresh document status"
                   onClick={() => void handleRefreshStatus()}
-                  disabled={isRefreshingStatus}
+                  disabled={isRefreshingStatus || initialLoading}
                   className="flex shrink-0 items-center justify-center w-6 h-6 rounded-full text-[#8e8e8e] transition-colors hover:bg-[#ececec] hover:text-[#1f1f1f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0084ff]/35 disabled:opacity-50"
                 >
                   <ChatRefreshIcon />
@@ -596,7 +590,11 @@ export default function FolderSidebar({ browse, selection, disabled = false }: F
         </div>
         <div className="flex flex-1 min-h-0 flex-col overflow-y-auto -mx-2.5 px-2.5">
           {viewMode === 'folder' ? (
-            fileTreeData.length === 0 ? (
+            initialLoading ? (
+              <div data-testid="files-skeleton" className="px-3 py-2">
+                <Skeleton active paragraph={{ rows: 4 }} title={false} />
+              </div>
+            ) : fileTreeData.length === 0 ? (
               <div className="flex h-full min-h-[80px] items-center justify-center">
                 <Spin size="small" />
               </div>
