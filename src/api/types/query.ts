@@ -56,7 +56,7 @@ export type QueryTier = 'fast' | 'standard' | 'accurate'
 
 export interface QueryRequest {
   question: string
-  documents: string[]
+  documents?: string[]
   tier?: QueryTier
   /** The chat this question belongs to — lets the adapter gate a shared
    * (non-owner) request against the chat's visibility. Omitted only for
@@ -69,6 +69,12 @@ export interface SendMessageRequest {
   message: string
   documents: string[]
   tier?: QueryTier
+  /** True for a follower asking a shared queryable chat: the adapter
+   * always uses the chat's own stored scope for these, never a document
+   * list the follower sends (it can't choose files at all — see
+   * AppLayout.tsx's `isSharedQueryable`) — so `documents` is left off the
+   * wire payload entirely rather than sent and ignored. */
+  omitDocuments?: boolean
   signal?: AbortSignal
   callbacks?: StreamQueryCallbacks
 }

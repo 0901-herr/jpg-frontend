@@ -437,7 +437,7 @@ export async function sendMessage(request: SendMessageRequest): Promise<SendMess
   const startedAt = Date.now()
   const payload: QueryRequest = {
     question: request.message,
-    documents: request.documents,
+    ...(request.omitDocuments ? {} : { documents: request.documents }),
     ...(request.tier ? { tier: request.tier } : {}),
     ...(request.chatId ? { conversation_id: request.chatId } : {}),
   }

@@ -50,11 +50,24 @@ export interface ChatMessageDto {
   created_at: string
 }
 
+export interface ChatScopeDocumentDto {
+  document_id: string
+  /** `null` when the viewer can't resolve this document's name — still
+   * shown (as "File <id>") rather than dropped, since the whole point is
+   * a follower who may not be able to browse the file at all. */
+  filename: string | null
+}
+
 export interface ChatSessionDetailDto extends ChatSessionSummaryDto {
   owner_username: string
   is_owner: boolean
   can_query: boolean
   scope_document_ids: string[]
+  /** Same documents as `scope_document_ids`, paired with a resolved
+   * filename — lets a follower who can't browse the host's files see
+   * real names instead of bare ids, in the composer's read-only chips and
+   * the sent question's file tags. */
+  scope_documents?: ChatScopeDocumentDto[]
   messages: ChatMessageDto[]
 }
 

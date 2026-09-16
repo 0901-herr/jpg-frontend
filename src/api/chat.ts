@@ -64,3 +64,11 @@ export async function postChatMessage(
 export async function getSharedChatSession(token: string): Promise<ChatSessionDetailDto> {
   return apiGet<ChatSessionDetailDto>(`/chat/shared/${token}`)
 }
+
+/** Recipient-side removal of a shared chat from the viewer's own "Shared"
+ * group — never affects the owner's chat or its sharing. 204 on success;
+ * a 404 (already gone) is handled by the caller the same way as a normal
+ * success (see `useChatStore.removeSharedChat`). */
+export async function deleteSharedChatSession(sessionId: string): Promise<void> {
+  await apiDelete<void>(`/chat/shared/${sessionId}`)
+}

@@ -4,6 +4,7 @@ import {
   createChatSession,
   deleteChatProject,
   deleteChatSession,
+  deleteSharedChatSession,
   getChatSession,
   getSharedChatSession,
   listChatProjects,
@@ -126,5 +127,13 @@ describe('shared', () => {
     await getSharedChatSession('tok123')
 
     expect(apiGet).toHaveBeenCalledWith('/chat/shared/tok123')
+  })
+
+  it('removes a shared chat from the recipient’s own list by session id', async () => {
+    vi.mocked(apiDelete).mockResolvedValue(undefined)
+
+    await deleteSharedChatSession('shared-1')
+
+    expect(apiDelete).toHaveBeenCalledWith('/chat/shared/shared-1')
   })
 })

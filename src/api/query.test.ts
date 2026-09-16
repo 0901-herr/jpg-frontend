@@ -593,6 +593,30 @@ describe('sendMessage delta handling', () => {
     )
   })
 
+  it('omits documents from the query payload when omitDocuments is set (shared chat, follower query)', async () => {
+    scriptedEvents = [
+      { event: 'answer', data: { text: 'Done.' } },
+      { event: 'done', data: {} },
+    ]
+
+    await sendMessage({
+      chatId: 'c1',
+      message: 'q',
+      documents: ['doc-9', 'doc-10'],
+      omitDocuments: true,
+    })
+
+    expect(apiPostStream).toHaveBeenCalledWith(
+      '/query',
+      {
+        question: 'q',
+        conversation_id: 'c1',
+      },
+      true,
+      undefined,
+    )
+  })
+
   it('omits conversation_id from the query payload when chatId is empty', async () => {
     scriptedEvents = [
       { event: 'answer', data: { text: 'Done.' } },
