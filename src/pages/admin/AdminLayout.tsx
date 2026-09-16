@@ -1,7 +1,7 @@
 import { AdminDashboardIcon } from '../../icons/admin'
 import { App, Layout, Menu, Typography } from 'antd'
 import { Link, Outlet, useLocation } from 'react-router-dom'
-import { ADMIN_PANEL_CLASS, ADMIN_TEXT_MUTED } from '../../config/adminStyles'
+import { ADMIN_PANEL_CLASS } from '../../config/adminStyles'
 
 const { Sider, Content } = Layout
 const { Text } = Typography
@@ -18,11 +18,10 @@ export default function AdminLayout() {
           theme="light"
           className="admin-primary-nav !bg-white border-r shrink-0"
         >
-          <div className="admin-primary-nav-header px-6 py-6 border-b">
+          <div className="px-6 py-6">
             <Text strong className="admin-sidebar-title">
-              JPG Admin
+              Admin console
             </Text>
-            <Text className={`block mt-1 ${ADMIN_TEXT_MUTED}`}>Operator console</Text>
           </div>
           <Menu
             mode="inline"

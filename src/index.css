@@ -1279,10 +1279,6 @@ button.docu-citation-pill:hover {
   border-color: var(--admin-border) !important;
 }
 
-.admin-primary-nav-header {
-  border-color: var(--admin-border) !important;
-}
-
 .admin-card.ant-card {
   box-shadow: none !important;
   border: 1px solid var(--admin-border) !important;
