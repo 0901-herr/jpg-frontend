@@ -2,9 +2,12 @@ import { Dropdown, Input, Modal } from 'antd'
 import { ChatDeleteIcon, ChatEditIcon, ChatMoreIcon } from '../icons/chat'
 import type { InputRef, MenuProps } from 'antd'
 import { useEffect, useRef, useState } from 'react'
+import { FEATURES } from '../config/features'
 import { sidebar, typeColor } from '../styles/typography'
 import { listRow, sidebarNav, surface } from '../styles/theme'
-import type { ChatSession } from '../types'
+import type { ChatProject, ChatSession } from '../types'
+
+const NO_PROJECT_KEY = '__no_project__'
 
 interface ChatListItemProps {
   chat: ChatSession
@@ -12,6 +15,18 @@ interface ChatListItemProps {
   onSelect: () => void
   onRename: (chatId: string, title: string) => void
   onDelete: (chatId: string) => void
+  /** Omitted for a read-only row (the Shared group) — the whole options
+   * menu is hidden and `subtitle` is shown instead of the question
+   * preview. */
+  projects?: ChatProject[]
+  onMove?: (chatId: string, projectId: string | null) => void
+  onShare?: (chatId: string) => void
+  /** "by <owner>" — shown instead of the first-question preview for a
+   * shared, non-owned chat. */
+  subtitle?: string
+  /** True for a chat the viewer doesn't own (the Shared group) — hides the
+   * whole options menu; nothing there applies to someone else's chat. */
+  readOnly?: boolean
 }
 
 export default function ChatListItem({
@@ -20,6 +35,11 @@ export default function ChatListItem({
   onSelect,
   onRename,
   onDelete,
+  projects = [],
+  onMove,
+  onShare,
+  subtitle,
+  readOnly = false,
 }: ChatListItemProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -54,14 +74,38 @@ export default function ChatListItem({
       setIsEditing(true)
       return
     }
+    if (key === 'share') {
+      onShare?.(chat.id)
+      return
+    }
     if (key === 'delete') {
       setDeleteOpen(true)
+      return
+    }
+    if (key.startsWith('move:')) {
+      const projectKey = key.slice('move:'.length)
+      onMove?.(chat.id, projectKey === NO_PROJECT_KEY ? null : projectKey)
     }
   }
 
+  const canShare = FEATURES.chatSharing && chat.isOwner !== false && Boolean(onShare)
+
   const menuItems: MenuProps['items'] = [
     { key: 'rename', label: 'Rename', icon: <ChatEditIcon /> },
-    { type: 'divider' },
+    ...(onMove
+      ? [
+          {
+            key: 'move',
+            label: 'Move to',
+            children: [
+              ...projects.map((project) => ({ key: `move:${project.id}`, label: project.name })),
+              { key: `move:${NO_PROJECT_KEY}`, label: 'No project' },
+            ],
+          },
+        ]
+      : []),
+    ...(canShare ? [{ key: 'share', label: 'Share' }] : []),
+    { type: 'divider' as const },
     {
       key: 'delete',
       label: 'Delete',
@@ -73,8 +117,8 @@ export default function ChatListItem({
   // The first user question, as a preview — the row's muted second line.
   // Sidebar titles are now dated ("Session 15 Sep 2026 (1)"), not the
   // question itself, so this is the only place that question still shows
-  // up in the Chats list.
-  const preview = chat.messages.find((m) => m.role === 'user')?.content
+  // up in the Chats list. A shared row shows "by <owner>" instead.
+  const preview = subtitle ?? chat.messages.find((m) => m.role === 'user')?.content
 
   return (
     <div
@@ -130,7 +174,7 @@ export default function ChatListItem({
         </button>
       )}
 
-      {!isEditing && (
+      {!isEditing && !readOnly && (
         <Dropdown
           menu={{ items: menuItems, onClick: handleMenuClick }}
           trigger={['click']}

@@ -11,6 +11,8 @@ vi.mock('../context/AuthContext', () => ({
   useAuth: () => ({ session: { userId: 'user-1', username: 'tester' }, logout: vi.fn() }),
 }))
 
+vi.mock('../config/features', () => ({ FEATURES: { categoryView: false, chatSharing: true } }))
+
 // FolderSidebar pulls in the browse/category hooks and api client — out of
 // scope for a header-branding test, so it's stubbed out.
 vi.mock('./FolderSidebar', () => ({
@@ -143,5 +145,138 @@ describe('Sidebar — onNavigate (mobile Drawer close)', () => {
 
     await user.click(screen.getByText('Session 15 Sep 2026 (1)'))
     expect(onSelectChat).toHaveBeenCalledWith('chat-1')
+  })
+})
+
+describe('Sidebar — project grouping', () => {
+  function renderSidebar(overrides: Partial<React.ComponentProps<typeof Sidebar>> = {}) {
+    return render(
+      <MemoryRouter>
+        <Sidebar
+          width={280}
+          sessions={[
+            { id: 'c1', title: 'Chat A', messages: [], projectId: 'p1' },
+            { id: 'c2', title: 'Chat B', messages: [], projectId: null },
+          ]}
+          projects={[{ id: 'p1', name: 'Research' }]}
+          activeChatId="c1"
+          browse={browseFixture()}
+          selection={selectionFixture()}
+          onSelectChat={vi.fn()}
+          onRenameChat={vi.fn()}
+          onDeleteChat={vi.fn()}
+          onNewChat={vi.fn()}
+          onMoveChat={vi.fn()}
+          onCreateProject={vi.fn()}
+          {...overrides}
+        />
+      </MemoryRouter>,
+    )
+  }
+
+  it('groups a chat under its project, with a count, and leaves an unassigned chat outside it', () => {
+    renderSidebar()
+
+    expect(screen.getByText('Research')).toBeInTheDocument()
+    expect(screen.getByText('1')).toBeInTheDocument()
+    expect(screen.getByText('Chat A')).toBeInTheDocument()
+    expect(screen.getByText('Chat B')).toBeInTheDocument()
+  })
+
+  it('collapses and re-expands a project group', async () => {
+    const user = userEvent.setup()
+    renderSidebar()
+
+    await user.click(screen.getByRole('button', { name: 'Collapse project' }))
+    expect(screen.queryByText('Chat A')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Expand project' }))
+    expect(screen.getByText('Chat A')).toBeInTheDocument()
+  })
+
+  it('creates a project through the "New project" affordance', async () => {
+    const user = userEvent.setup()
+    const onCreateProject = vi.fn()
+    renderSidebar({ onCreateProject })
+
+    await user.click(screen.getByRole('button', { name: 'New project' }))
+    await user.type(screen.getByPlaceholderText('Project name'), 'Legal{Enter}')
+
+    expect(onCreateProject).toHaveBeenCalledWith('Legal')
+  })
+
+  it('moves a chat to a project via its options menu', async () => {
+    const user = userEvent.setup()
+    const onMoveChat = vi.fn()
+    renderSidebar({ onMoveChat })
+
+    const optionButtons = screen.getAllByRole('button', { name: 'Chat options' })
+    await user.click(optionButtons[1]) // Chat B, the ungrouped one
+    await user.hover(screen.getByText('Move to'))
+    await user.click(await screen.findByRole('menuitem', { name: 'Research' }))
+
+    expect(onMoveChat).toHaveBeenCalledWith('c2', 'p1')
+  })
+
+  it('shows the Shared group with a "by <owner>" subtitle, and hides the options menu for it', () => {
+    renderSidebar({
+      sharedSessions: [
+        {
+          id: 's1',
+          title: 'Shared chat',
+          messages: [],
+          isOwner: false,
+          ownerUsername: 'alice',
+        },
+      ],
+    })
+
+    expect(screen.getByText('Shared')).toBeInTheDocument()
+    expect(screen.getByText('Shared chat')).toBeInTheDocument()
+    expect(screen.getByText('by alice')).toBeInTheDocument()
+    // Two owned chats (Chat A, Chat B) get an options button; the shared
+    // row doesn't.
+    expect(screen.getAllByRole('button', { name: 'Chat options' })).toHaveLength(2)
+  })
+
+  it('does not show the Shared group when there are no shared chats', () => {
+    renderSidebar({ sharedSessions: [] })
+    expect(screen.queryByText('Shared')).not.toBeInTheDocument()
+  })
+})
+
+describe('Sidebar — share modal', () => {
+  function renderSidebar(onShareChat = vi.fn().mockResolvedValue(undefined)) {
+    return render(
+      <MemoryRouter>
+        <Sidebar
+          width={280}
+          sessions={[{ id: 'c1', title: 'Chat A', messages: [], visibility: 'private' }]}
+          activeChatId="c1"
+          browse={browseFixture()}
+          selection={selectionFixture()}
+          onSelectChat={vi.fn()}
+          onRenameChat={vi.fn()}
+          onDeleteChat={vi.fn()}
+          onNewChat={vi.fn()}
+          onShareChat={onShareChat}
+        />
+      </MemoryRouter>,
+    )
+  }
+
+  it('opens the share modal from the options menu and changes visibility', async () => {
+    const user = userEvent.setup()
+    const onShareChat = vi.fn().mockResolvedValue(undefined)
+    renderSidebar(onShareChat)
+
+    await user.click(screen.getByRole('button', { name: 'Chat options' }))
+    await user.click(screen.getByText('Share'))
+
+    expect(screen.getByText('Share this chat')).toBeInTheDocument()
+
+    await user.click(screen.getByLabelText('Anyone with the link can view'))
+
+    expect(onShareChat).toHaveBeenCalledWith('c1', 'view')
   })
 })

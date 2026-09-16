@@ -1,18 +1,182 @@
-import { Avatar, Dropdown, Layout } from 'antd'
-import { ChatAddIcon, ChatLogoutIcon, ChatMessageIcon } from '../icons/chat'
-import type { MenuProps } from 'antd'
+import { Avatar, Dropdown, Input, Layout, Modal } from 'antd'
+import { useEffect, useRef, useState } from 'react'
+import {
+  ChatAddIcon,
+  ChatChevronIcon,
+  ChatDeleteIcon,
+  ChatEditIcon,
+  ChatLogoutIcon,
+  ChatMessageIcon,
+  ChatMoreIcon,
+} from '../icons/chat'
+import type { InputRef, MenuProps } from 'antd'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { sectionLabel, spacing, surface } from '../styles/theme'
 import { sidebar, typeColor } from '../styles/typography'
 import type { BrowseTreeState } from '../hooks/useBrowseTree'
 import type { DocumentSelection } from '../hooks/useDocumentSelection'
-import type { ChatSession } from '../types'
+import type { ChatProject, ChatSession, ChatVisibility } from '../types'
 import ChatListItem from './ChatListItem'
 import FolderSidebar from './FolderSidebar'
+import ShareChatModal from './ShareChatModal'
 import SidebarNavItem from './SidebarNavItem'
 
 const { Sider } = Layout
+
+/** A project's header row: expand/collapse chevron, name (inline-editable),
+ * chat count, and a Rename/Delete menu. Deleting a project never deletes
+ * its chats — they fall back to "ungrouped" (the adapter sets their
+ * `project_id` to null; `Sidebar` mirrors that by clearing it locally). */
+function ProjectGroupHeader({
+  project,
+  count,
+  expanded,
+  onToggleExpand,
+  onRename,
+  onDelete,
+}: {
+  project: ChatProject
+  count: number
+  expanded: boolean
+  onToggleExpand: () => void
+  onRename: (name: string) => void
+  onDelete: () => void
+}) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [draftName, setDraftName] = useState(project.name)
+  const inputRef = useRef<InputRef>(null)
+
+  useEffect(() => {
+    if (!isEditing) setDraftName(project.name)
+  }, [project.name, isEditing])
+
+  useEffect(() => {
+    if (isEditing) {
+      inputRef.current?.focus()
+      inputRef.current?.select()
+    }
+  }, [isEditing])
+
+  const commitRename = () => {
+    const trimmed = draftName.trim()
+    setIsEditing(false)
+    if (trimmed && trimmed !== project.name) {
+      onRename(trimmed)
+    } else {
+      setDraftName(project.name)
+    }
+  }
+
+  const menuItems: MenuProps['items'] = [
+    { key: 'rename', label: 'Rename', icon: <ChatEditIcon /> },
+    { type: 'divider' },
+    { key: 'delete', label: 'Delete', icon: <ChatDeleteIcon />, className: 'docu-menu-item-danger' },
+  ]
+
+  const handleMenuClick: MenuProps['onClick'] = ({ key, domEvent }) => {
+    domEvent.stopPropagation()
+    if (key === 'rename') setIsEditing(true)
+    if (key === 'delete') setDeleteOpen(true)
+  }
+
+  return (
+    <div className="group flex items-center gap-0.5">
+      <button
+        type="button"
+        onClick={onToggleExpand}
+        aria-label={expanded ? 'Collapse project' : 'Expand project'}
+        className="shrink-0 p-1.5 rounded-lg hover:bg-[#ececec]"
+      >
+        <ChatChevronIcon className={`docu-tree-chevron${expanded ? ' expanded' : ''}`} />
+      </button>
+
+      {isEditing ? (
+        <Input
+          ref={inputRef}
+          size="small"
+          value={draftName}
+          onChange={(e) => setDraftName(e.target.value)}
+          onBlur={commitRename}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commitRename()
+            if (e.key === 'Escape') {
+              setDraftName(project.name)
+              setIsEditing(false)
+            }
+          }}
+          onClick={(e) => e.stopPropagation()}
+          className={`flex-1 min-w-0 mx-1 my-1 ${sidebar.body} !rounded-lg`}
+          maxLength={200}
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={onToggleExpand}
+          className="flex-1 min-w-0 flex items-center gap-1.5 text-left py-1.5"
+        >
+          <span className={`truncate ${sidebar.body} font-medium ${typeColor.secondary}`}>
+            {project.name}
+          </span>
+          <span className={`shrink-0 ${sidebar.caption} ${typeColor.muted}`}>{count}</span>
+        </button>
+      )}
+
+      {!isEditing && (
+        <Dropdown
+          menu={{ items: menuItems, onClick: handleMenuClick }}
+          trigger={['click']}
+          placement="bottomRight"
+          overlayClassName="docu-chat-options-menu"
+        >
+          <button
+            type="button"
+            aria-label="Project options"
+            onClick={(e) => e.stopPropagation()}
+            className={`shrink-0 px-2 py-1.5 rounded-lg ${typeColor.muted} hover:text-[#404040] ${surface.hover} opacity-0 group-hover:opacity-100 focus-visible:opacity-100`}
+          >
+            <ChatMoreIcon className={sidebar.caption} />
+          </button>
+        </Dropdown>
+      )}
+
+      <Modal
+        open={deleteOpen}
+        title="Delete project?"
+        footer={null}
+        closable={false}
+        centered
+        width={360}
+        className="chat-delete-modal"
+        onCancel={() => setDeleteOpen(false)}
+      >
+        <p className="chat-delete-modal-body">
+          Chats in this project are kept — this only removes the project.
+        </p>
+        <div className="chat-delete-modal-actions">
+          <button
+            type="button"
+            className="chat-delete-modal-btn chat-delete-modal-btn--cancel"
+            onClick={() => setDeleteOpen(false)}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="chat-delete-modal-btn chat-delete-modal-btn--delete"
+            onClick={() => {
+              setDeleteOpen(false)
+              onDelete()
+            }}
+          >
+            Delete
+          </button>
+        </div>
+      </Modal>
+    </div>
+  )
+}
 
 interface SidebarProps {
   /** A plain pixel number for the desktop resizable panel, or a CSS width
@@ -20,6 +184,10 @@ interface SidebarProps {
    * instead — see AppLayout's narrow-layout branch. */
   width: number | string
   sessions: ChatSession[]
+  /** Chats opened via a shared link the viewer doesn't own — rendered as a
+   * separate "Shared" group, only when non-empty. */
+  sharedSessions?: ChatSession[]
+  projects?: ChatProject[]
   activeChatId: string
   browse: BrowseTreeState
   selection: DocumentSelection
@@ -27,6 +195,11 @@ interface SidebarProps {
   onRenameChat: (chatId: string, title: string) => void
   onDeleteChat: (chatId: string) => void
   onNewChat: () => void
+  onMoveChat?: (chatId: string, projectId: string | null) => void
+  onShareChat?: (chatId: string, visibility: ChatVisibility) => Promise<void>
+  onCreateProject?: (name: string) => Promise<void>
+  onRenameProject?: (id: string, name: string) => Promise<void>
+  onDeleteProject?: (id: string) => void
   /** Called right after selecting a chat or starting a new one — AppLayout
    * passes this only when Sidebar is rendered inside the mobile Drawer, to
    * close it once the navigation it was opened for has happened. Desktop
@@ -43,6 +216,8 @@ interface SidebarProps {
 export default function Sidebar({
   width,
   sessions,
+  sharedSessions = [],
+  projects = [],
   activeChatId,
   browse,
   selection,
@@ -50,11 +225,26 @@ export default function Sidebar({
   onRenameChat,
   onDeleteChat,
   onNewChat,
+  onMoveChat,
+  onShareChat,
+  onCreateProject,
+  onRenameProject,
+  onDeleteProject,
   onNavigate,
   inDrawer = false,
 }: SidebarProps) {
   const { session, logout } = useAuth()
   const navigate = useNavigate()
+
+  const [collapsedProjectIds, setCollapsedProjectIds] = useState<Set<string>>(new Set())
+  const [creatingProject, setCreatingProject] = useState(false)
+  const [newProjectName, setNewProjectName] = useState('')
+  const newProjectInputRef = useRef<InputRef>(null)
+  const [shareChatId, setShareChatId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (creatingProject) newProjectInputRef.current?.focus()
+  }, [creatingProject])
 
   const displayName = browse.username ?? session?.username ?? 'User'
   const avatarInitial = displayName.charAt(0).toUpperCase()
@@ -74,6 +264,42 @@ export default function Sidebar({
       className: 'docu-menu-item-danger',
     },
   ]
+
+  const toggleProjectExpanded = (id: string) => {
+    setCollapsedProjectIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const commitNewProject = () => {
+    const trimmed = newProjectName.trim()
+    setCreatingProject(false)
+    setNewProjectName('')
+    if (trimmed) void onCreateProject?.(trimmed)
+  }
+
+  const ungroupedChats = sessions.filter((s) => !s.projectId)
+  const shareModalChat = shareChatId ? (sessions.find((s) => s.id === shareChatId) ?? null) : null
+
+  const renderChatItem = (chat: ChatSession) => (
+    <ChatListItem
+      key={chat.id}
+      chat={chat}
+      isActive={activeChatId === chat.id}
+      onSelect={() => {
+        onSelectChat(chat.id)
+        onNavigate?.()
+      }}
+      onRename={onRenameChat}
+      onDelete={onDeleteChat}
+      projects={projects}
+      onMove={onMoveChat}
+      onShare={onShareChat ? (chatId) => setShareChatId(chatId) : undefined}
+    />
+  )
 
   return (
     <Sider
@@ -131,24 +357,90 @@ export default function Sidebar({
           <div
             className={`flex flex-col flex-1 min-h-[270px] overflow-y-auto overflow-x-hidden ${spacing.sectionY}`}
           >
-            <span className={sectionLabel}>
-              <ChatMessageIcon />
-              Chats
-            </span>
+            <div className="flex items-center justify-between">
+              <span className={sectionLabel}>
+                <ChatMessageIcon />
+                Chats
+              </span>
+              {onCreateProject && (
+                <button
+                  type="button"
+                  onClick={() => setCreatingProject(true)}
+                  aria-label="New project"
+                  className={`shrink-0 p-1 mb-1.5 rounded-lg ${typeColor.muted} hover:text-[#404040] ${surface.hover}`}
+                >
+                  <ChatAddIcon sx={{ fontSize: 14 }} />
+                </button>
+              )}
+            </div>
+
+            {creatingProject && (
+              <Input
+                ref={newProjectInputRef}
+                size="small"
+                placeholder="Project name"
+                value={newProjectName}
+                onChange={(e) => setNewProjectName(e.target.value)}
+                onBlur={commitNewProject}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') commitNewProject()
+                  if (e.key === 'Escape') {
+                    setNewProjectName('')
+                    setCreatingProject(false)
+                  }
+                }}
+                className={`mb-1.5 ${sidebar.body} !rounded-lg`}
+                maxLength={200}
+              />
+            )}
+
             <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 space-y-0.5">
-              {sessions.map((chat) => (
-                <ChatListItem
-                  key={chat.id}
-                  chat={chat}
-                  isActive={activeChatId === chat.id}
-                  onSelect={() => {
-                    onSelectChat(chat.id)
-                    onNavigate?.()
-                  }}
-                  onRename={onRenameChat}
-                  onDelete={onDeleteChat}
-                />
-              ))}
+              {projects.map((project) => {
+                const projectChats = sessions.filter((s) => s.projectId === project.id)
+                const expanded = !collapsedProjectIds.has(project.id)
+                return (
+                  <div key={project.id} className="mb-1">
+                    <ProjectGroupHeader
+                      project={project}
+                      count={projectChats.length}
+                      expanded={expanded}
+                      onToggleExpand={() => toggleProjectExpanded(project.id)}
+                      onRename={(name) => void onRenameProject?.(project.id, name)}
+                      onDelete={() => onDeleteProject?.(project.id)}
+                    />
+                    {expanded && (
+                      <div className="pl-4 space-y-0.5">
+                        {projectChats.map(renderChatItem)}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+
+              {ungroupedChats.map(renderChatItem)}
+
+              {sharedSessions.length > 0 && (
+                <div className="mt-2">
+                  <span className={sectionLabel}>Shared</span>
+                  <div className="space-y-0.5">
+                    {sharedSessions.map((chat) => (
+                      <ChatListItem
+                        key={chat.id}
+                        chat={chat}
+                        isActive={activeChatId === chat.id}
+                        onSelect={() => {
+                          onSelectChat(chat.id)
+                          onNavigate?.()
+                        }}
+                        onRename={onRenameChat}
+                        onDelete={onDeleteChat}
+                        readOnly
+                        subtitle={chat.ownerUsername ? `by ${chat.ownerUsername}` : undefined}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -179,6 +471,14 @@ export default function Sidebar({
           </div>
         </div>
       </div>
+
+      {onShareChat && (
+        <ShareChatModal
+          chat={shareModalChat}
+          onClose={() => setShareChatId(null)}
+          onChangeVisibility={onShareChat}
+        />
+      )}
     </Sider>
   )
 }
