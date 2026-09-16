@@ -1,4 +1,4 @@
-import { Avatar, Dropdown, Input, Layout, Modal, Tooltip } from 'antd'
+import { Avatar, Dropdown, Input, Layout, Modal, Spin, Tooltip } from 'antd'
 import { useEffect, useRef, useState } from 'react'
 import {
   ChatAddIcon,
@@ -170,6 +170,16 @@ function ProjectGroupHeader({
             type="button"
             className="chat-delete-modal-btn chat-delete-modal-btn--delete"
             onClick={() => {
+              // Unlike a genuinely pending action, `deleteProject`
+              // optimistically removes this very project (and its
+              // `ProjectGroupHeader`, including this modal) from the
+              // `projects` list *synchronously*, in the same call this
+              // makes below — there is no surviving row/modal left to
+              // render a spinner on by the time React next paints. Close
+              // immediately (unchanged from before this task) and let
+              // `onDelete` itself track the in-flight cascade at the
+              // `Sidebar` level, where a "Deleting project" indicator
+              // can actually stay mounted for the caller to see.
               setDeleteOpen(false)
               onDelete()
             }}
@@ -257,7 +267,14 @@ export default function Sidebar({
 
   const [collapsedProjectIds, setCollapsedProjectIds] = useState<Set<string>>(new Set())
   const [creatingProject, setCreatingProject] = useState(false)
+  const [creatingProjectPending, setCreatingProjectPending] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
+  // Project ids with an in-flight `deleteProject` cascade — tracked here,
+  // not inside `ProjectGroupHeader`, because `deleteProject` optimistically
+  // removes the project (and thus unmounts that row) synchronously before
+  // this ever settles; a row-local "deleting" flag would never survive to
+  // be seen. This state lives above that unmount, so its indicator does.
+  const [deletingProjectIds, setDeletingProjectIds] = useState<Set<string>>(new Set())
   const newProjectInputRef = useRef<InputRef>(null)
   const [shareChatId, setShareChatId] = useState<string | null>(null)
 
@@ -297,7 +314,31 @@ export default function Sidebar({
     const trimmed = newProjectName.trim()
     setCreatingProject(false)
     setNewProjectName('')
-    if (trimmed) void onCreateProject?.(trimmed)
+    if (!trimmed || !onCreateProject) return
+    // Unlike rename/delete/move (optimistic — local state updates before
+    // the network call, so the UI never has a visible pending window),
+    // `createProject` awaits the create call before the new project ever
+    // appears — there's a real gap here with nothing shown today. The
+    // "+" trigger below swaps to a spinner and disables itself for the
+    // duration so a second click can't fire an overlapping create.
+    setCreatingProjectPending(true)
+    // `Promise.resolve(...)` (not a bare `.finally()`) so a caller that
+    // doesn't actually return a promise — the prop is typed to, but a
+    // plain `vi.fn()` test double or future non-async wiring wouldn't —
+    // doesn't throw here instead of merely skipping the spinner.
+    void Promise.resolve(onCreateProject(trimmed)).finally(() => setCreatingProjectPending(false))
+  }
+
+  const handleDeleteProject = (projectId: string) => {
+    if (!onDeleteProject) return
+    setDeletingProjectIds((prev) => new Set(prev).add(projectId))
+    void Promise.resolve(onDeleteProject(projectId)).finally(() => {
+      setDeletingProjectIds((prev) => {
+        const next = new Set(prev)
+        next.delete(projectId)
+        return next
+      })
+    })
   }
 
   const ungroupedChats = sessions.filter((s) => !s.projectId)
@@ -387,9 +428,14 @@ export default function Sidebar({
                     type="button"
                     onClick={() => setCreatingProject(true)}
                     aria-label="New project"
-                    className={`shrink-0 p-1 mb-1.5 rounded-lg ${typeColor.muted} hover:text-[#404040] ${surface.hover}`}
+                    disabled={creatingProjectPending}
+                    className={`shrink-0 p-1 mb-1.5 rounded-lg ${typeColor.muted} hover:text-[#404040] ${surface.hover} disabled:opacity-50 disabled:cursor-not-allowed`}
                   >
-                    <ChatAddIcon sx={{ fontSize: 14 }} />
+                    {creatingProjectPending ? (
+                      <Spin size="small" data-testid="create-project-spinner" />
+                    ) : (
+                      <ChatAddIcon sx={{ fontSize: 14 }} />
+                    )}
                   </button>
                 </Tooltip>
               )}
@@ -415,6 +461,15 @@ export default function Sidebar({
               />
             )}
 
+            {deletingProjectIds.size > 0 && (
+              <span
+                className={`flex items-center gap-1.5 mb-1.5 ${sidebar.caption} ${typeColor.muted}`}
+              >
+                <Spin size="small" data-testid="delete-project-spinner" />
+                Deleting project
+              </span>
+            )}
+
             <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 space-y-0.5">
               {projects.map((project) => {
                 const projectChats = sessions.filter((s) => s.projectId === project.id)
@@ -427,7 +482,7 @@ export default function Sidebar({
                       expanded={expanded}
                       onToggleExpand={() => toggleProjectExpanded(project.id)}
                       onRename={(name) => void onRenameProject?.(project.id, name)}
-                      onDelete={() => onDeleteProject?.(project.id)}
+                      onDelete={() => handleDeleteProject(project.id)}
                     />
                     {expanded && (
                       <div className="pl-4 space-y-0.5">

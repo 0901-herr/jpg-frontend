@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
 import { vi } from 'vitest'
@@ -87,5 +87,35 @@ describe('ShareChatModal', () => {
     await user.click(screen.getByRole('radio', { name: 'Anyone with the link can view' }))
 
     expect(onChangeVisibility).toHaveBeenCalledWith('c1', 'view')
+  })
+
+  it('shows a spinner and disables the visibility options while the PATCH is in flight', async () => {
+    const user = userEvent.setup()
+    let resolveChange: () => void
+    const onChangeVisibility = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveChange = () => resolve()
+        }),
+    )
+    render(
+      <ShareChatModal
+        chat={chat({ visibility: 'private' })}
+        onClose={vi.fn()}
+        onChangeVisibility={onChangeVisibility}
+      />,
+    )
+
+    await user.click(screen.getByRole('radio', { name: 'Anyone with the link can view' }))
+
+    expect(screen.getByTestId('visibility-spinner')).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'Private' })).toBeDisabled()
+    expect(screen.getByRole('radio', { name: 'Anyone with the link can view' })).toBeDisabled()
+
+    resolveChange!()
+    await waitFor(() =>
+      expect(screen.queryByTestId('visibility-spinner')).not.toBeInTheDocument(),
+    )
+    expect(screen.getByRole('radio', { name: 'Private' })).not.toBeDisabled()
   })
 })

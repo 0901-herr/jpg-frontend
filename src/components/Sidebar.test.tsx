@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import React from 'react'
@@ -286,6 +286,63 @@ describe('Sidebar — project grouping', () => {
     expect(
       screen.getByText('This project has no chats. It will be permanently deleted.'),
     ).toBeInTheDocument()
+  })
+
+  it('shows a spinner and disables the New project trigger while a create is in flight', async () => {
+    const user = userEvent.setup()
+    let resolveCreate: () => void
+    const onCreateProject = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveCreate = () => resolve()
+        }),
+    )
+    renderSidebar({ onCreateProject })
+
+    await user.click(screen.getByRole('button', { name: 'New project' }))
+    await user.type(screen.getByPlaceholderText('Project name'), 'Legal{Enter}')
+
+    expect(screen.getByTestId('create-project-spinner')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'New project' })).toBeDisabled()
+
+    resolveCreate!()
+    await waitFor(() =>
+      expect(screen.queryByTestId('create-project-spinner')).not.toBeInTheDocument(),
+    )
+    expect(screen.getByRole('button', { name: 'New project' })).not.toBeDisabled()
+  })
+
+  it('shows a "Deleting project" spinner near the Chats header while the cascade is in flight', async () => {
+    const user = userEvent.setup()
+    let resolveDelete: () => void
+    const onDeleteProject = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveDelete = () => resolve()
+        }),
+    )
+    renderSidebar({ onDeleteProject })
+
+    await user.click(screen.getByRole('button', { name: 'Project options' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Delete' }))
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
+
+    expect(onDeleteProject).toHaveBeenCalledWith('p1')
+    // The confirm modal's `open` prop is already false at this point
+    // (unchanged from before this task — antd keeps the closing dialog's
+    // markup mounted for its own exit transition, which jsdom doesn't run,
+    // so its title text can still be queried here; that's an antd/jsdom
+    // quirk unrelated to this task, not asserted on). The pending
+    // indicator lives at the Sidebar level instead, precisely because
+    // `deleteProject` optimistically removes the project row (and this
+    // header) synchronously — a row-local spinner would never be seen.
+    expect(screen.getByTestId('delete-project-spinner')).toBeInTheDocument()
+    expect(screen.getByText('Deleting project')).toBeInTheDocument()
+
+    resolveDelete!()
+    await waitFor(() =>
+      expect(screen.queryByTestId('delete-project-spinner')).not.toBeInTheDocument(),
+    )
   })
 })
 

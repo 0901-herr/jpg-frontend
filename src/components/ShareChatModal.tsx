@@ -1,4 +1,4 @@
-import { Input, Modal, Radio } from 'antd'
+import { Input, Modal, Radio, Spin } from 'antd'
 import { useState } from 'react'
 import { type, typeColor } from '../styles/typography'
 import type { ChatSession, ChatVisibility } from '../types'
@@ -53,16 +53,19 @@ export default function ShareChatModal({ chat, onClose, onChangeVisibility }: Sh
 
   return (
     <Modal open title="Share this chat" footer={null} onCancel={onClose} width={420} centered>
-      <Radio.Group
-        onChange={(e) => handleChange(e.target.value as ChatVisibility)}
-        value={visibility}
-        disabled={updating}
-        className="flex flex-col gap-3 mt-2"
-      >
-        <Radio value="private">Private</Radio>
-        <Radio value="view">Anyone with the link can view</Radio>
-        <Radio value="query">Anyone with the link can view and ask</Radio>
-      </Radio.Group>
+      <div className="flex items-start gap-2 mt-2">
+        <Radio.Group
+          onChange={(e) => handleChange(e.target.value as ChatVisibility)}
+          value={visibility}
+          disabled={updating}
+          className="flex flex-col gap-3"
+        >
+          <Radio value="private">Private</Radio>
+          <Radio value="view">Anyone with the link can view</Radio>
+          <Radio value="query">Anyone with the link can view and ask</Radio>
+        </Radio.Group>
+        {updating && <Spin size="small" data-testid="visibility-spinner" />}
+      </div>
 
       <p className={`mt-2 ${type.caption} ${typeColor.muted}`}>{EXPLANATIONS[visibility]}</p>
 
