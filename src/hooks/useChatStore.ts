@@ -313,43 +313,53 @@ export function useChatStore({
           ownerUsername: s.owner_username,
         }))
 
-        // Gated on "localStorage still has history" rather than "the
-        // server has zero sessions": a session can already exist
-        // server-side (a prior import got partway through before failing)
-        // while others are still stranded locally. Re-running the full
-        // import is safe — `createChatSession`/`postChatMessage` upsert by
-        // the client-supplied id, so an already-imported session is a
-        // no-op 200, not a duplicate — and it's the only way a partial
-        // failure ever gets a chance to finish on a later load. Once the
-        // whole batch succeeds, `clearChatHistory` stops this from running
-        // again.
+        // The local mirror is a recovery copy, not the source of truth for
+        // a session that the server already knows about. In particular it
+        // deliberately omits projectId, so replaying an existing mirror
+        // would turn a successful "Move to" PATCH back into `null` on the
+        // next refresh. Only import ids that are still absent server-side.
+        // This still resumes a partial import: sessions that made it to the
+        // server are left alone while the remaining local-only sessions are
+        // retried.
         const stored = loadChatHistory(chatUserId)
         if (stored?.sessions.length) {
-          try {
-            const imported = await importLocalHistory(stored.sessions)
-            const importedIds = new Set(imported.map((s) => s.id))
-            ownSessions = [...imported, ...ownSessions.filter((s) => !importedIds.has(s.id))]
-            clearChatHistory(chatUserId)
-          } catch {
-            // Still partially (or entirely) stuck locally — keep showing
-            // whatever's already confirmed server-side, plus whichever
-            // local sessions haven't made it there yet, so nothing
-            // disappears. localStorage is deliberately left alone so the
-            // next load retries.
-            const ownIds = new Set(ownSessions.map((s) => s.id))
-            const localOnly = stored.sessions
-              .filter((s) => !ownIds.has(s.id))
-              .map((s) => ({
+          const serverSessionIds = new Set(ownSessions.map((session) => session.id))
+          const localOnlySessions = stored.sessions.filter(
+            (session) => !serverSessionIds.has(session.id),
+          )
+          if (localOnlySessions.length) {
+            try {
+              const imported = await importLocalHistory(localOnlySessions)
+              const importedIds = new Set(imported.map((s) => s.id))
+              ownSessions = [...imported, ...ownSessions.filter((s) => !importedIds.has(s.id))]
+              // Imported sessions carry the local messages we just replayed,
+              // so their detail is already available in memory. Server
+              // summaries remain deliberately unmarked and will load on
+              // first activation below.
+              for (const session of imported) loadedMessagesRef.current.add(session.id)
+              clearChatHistory(chatUserId)
+            } catch {
+              // Still partially (or entirely) stuck locally — keep showing
+              // whatever's already confirmed server-side, plus whichever
+              // local sessions haven't made it there yet, so nothing
+              // disappears. localStorage is deliberately left alone so the
+              // next load retries.
+              const localOnly = localOnlySessions.map((s) => ({
                 ...s,
                 isOwner: true,
                 visibility: 'private' as const,
                 projectId: null,
                 canQuery: true,
               }))
-            ownSessions = [...ownSessions, ...localOnly]
-            message.warning(IMPORT_FAILURE_MESSAGE)
+              ownSessions = [...ownSessions, ...localOnly]
+              for (const session of localOnly) loadedMessagesRef.current.add(session.id)
+              message.warning(IMPORT_FAILURE_MESSAGE)
+            }
+          } else {
+            // All ids are already server-backed. Drop this stale recovery
+            // copy so it cannot be replayed on a later refresh either.
+            clearChatHistory(chatUserId)
           }
-          for (const s of ownSessions) loadedMessagesRef.current.add(s.id)
         }
 
         if (ownSessions.length === 0 && !hasPendingShare) {

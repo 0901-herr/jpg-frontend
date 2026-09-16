@@ -383,11 +383,12 @@ export default function AppLayout() {
     [activeSession?.messages],
   )
 
-  // True while `useChatStore`'s `ensureMessagesLoaded` is fetching the
-  // active chat's own history AND that chat has nothing to show yet —
-  // drives the message-pane skeleton below and ORs into ChatInput's
-  // `disabled`, alongside the pre-existing `sessionExpired` reason, rather
-  // than replacing it. The `messagePairs.length === 0` guard matters for a
+  // Keep the conversation area inert until the server has supplied the chat
+  // list. Before hydration finishes, `activeSession` is only the temporary
+  // client-side session created at mount, so showing its empty state invites
+  // a question against the wrong chat. Once hydrated, keep the skeleton only
+  // while `useChatStore` is fetching an active chat's own history and there
+  // is nothing to show yet. The `messagePairs.length === 0` guard matters for a
   // shared chat specifically: its branch of `ensureMessagesLoaded` is
   // deliberately ungated (re-fetches on every activation so a host-side
   // scope change is always picked up — see useChatStore.ts's
@@ -398,9 +399,9 @@ export default function AppLayout() {
   // correct message list into a skeleton and disable the composer for no
   // visible reason — mirrors FolderSidebar's own "loading but have
   // something to show already" distinction (fileTreeData.length === 0).
-  const isActiveChatMessagesLoading = Boolean(
-    activeChatId && messagesLoading.has(activeChatId) && messagePairs.length === 0,
-  )
+  const isActiveChatMessagesLoading =
+    !chatHydrated ||
+    Boolean(activeChatId && messagesLoading.has(activeChatId) && messagePairs.length === 0)
 
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -1291,6 +1292,7 @@ export default function AppLayout() {
                 sharedSessions={sharedSessions}
                 projects={chatStore.projects}
                 activeChatId={activeChatId}
+                isLoading={!chatHydrated}
                 isSharedChat={isSharedChat}
                 browse={browse}
                 selection={selection}
@@ -1446,6 +1448,7 @@ export default function AppLayout() {
             sharedSessions={sharedSessions}
             projects={chatStore.projects}
             activeChatId={activeChatId}
+            isLoading={!chatHydrated}
             isSharedChat={isSharedChat}
             browse={browse}
             selection={selection}

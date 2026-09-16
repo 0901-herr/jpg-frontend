@@ -88,6 +88,33 @@ describe('Sidebar branding', () => {
   })
 })
 
+describe('Sidebar — chat list loading', () => {
+  it('shows a compact loading state instead of temporary chat rows while sessions hydrate', () => {
+    render(
+      <MemoryRouter>
+        <Sidebar
+          width={280}
+          sessions={[{ id: 'temporary', title: 'Temporary chat', messages: [] }]}
+          activeChatId="temporary"
+          isLoading
+          browse={browseFixture()}
+          selection={selectionFixture()}
+          onSelectChat={vi.fn()}
+          onRenameChat={vi.fn()}
+          onDeleteChat={vi.fn()}
+          onNewChat={vi.fn()}
+          onCreateProject={vi.fn()}
+        />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByRole('status', { name: 'Loading chats' })).toBeInTheDocument()
+    expect(screen.queryByText('Temporary chat')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'New chat' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'New project' })).toBeDisabled()
+  })
+})
+
 describe('Sidebar — onNavigate (mobile Drawer close)', () => {
   function renderSidebar(onNavigate?: () => void) {
     return render(

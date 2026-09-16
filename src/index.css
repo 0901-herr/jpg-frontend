@@ -838,6 +838,24 @@ button.docu-citation-pill:hover {
   }
 }
 
+/* Tablet widths have enough room for the full action labels, but the
+   composer column can be narrower than the viewport once its page gutters
+   are included. Keep the three actions on the same toolbar line by using
+   the compact desktop spacing between phone and small laptop widths. */
+@media (min-width: 480px) and (max-width: 900px) {
+  .docu-chat-composer-toolbar,
+  .docu-chat-composer-actions {
+    gap: 0.375rem;
+  }
+
+  .docu-chat-composer-summarize,
+  .docu-chat-composer-categorize,
+  .docu-chat-composer-extract {
+    padding: 0 0.625rem;
+    font-size: 0.8125rem;
+  }
+}
+
 /* Slim top bar hamburger, shown below 768px in place of the desktop
    sidebar (AppLayout.tsx) — a `<button>`, so its font-size/color/margin
    live here in an unlayered rule for the same reason as

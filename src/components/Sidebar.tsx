@@ -1,4 +1,4 @@
-import { Avatar, Dropdown, Input, Layout, Modal, Spin, Tooltip } from 'antd'
+import { Avatar, Dropdown, Input, Layout, Modal, Skeleton, Spin, Tooltip } from 'antd'
 import { useEffect, useRef, useState } from 'react'
 import {
   ChatAddIcon,
@@ -216,6 +216,9 @@ interface SidebarProps {
   sharedSessions?: ChatSession[]
   projects?: ChatProject[]
   activeChatId: string
+  /** The server-backed chat list is being hydrated. Keep temporary local
+   * rows out of the navigation until the authoritative list is available. */
+  isLoading?: boolean
   /** True when the active chat is shared and the viewer doesn't own it —
    * computed once by AppLayout (from `activeSession?.isOwner === false`,
    * the same value that gates Summarize/Categorize/Extract metadata) and
@@ -264,6 +267,7 @@ export default function Sidebar({
   sharedSessions = [],
   projects = [],
   activeChatId,
+  isLoading = false,
   isSharedChat = false,
   browse,
   selection,
@@ -439,10 +443,13 @@ export default function Sidebar({
           <SidebarNavItem
             icon={<ChatAddIcon />}
             onClick={() => {
+              if (isLoading) return
               onNewChat()
               onNavigate?.()
             }}
             variant="secondary"
+            disabled={isLoading}
+            title={isLoading ? 'Chats are loading' : undefined}
           >
             New chat
           </SidebarNavItem>
@@ -481,7 +488,7 @@ export default function Sidebar({
                     type="button"
                     onClick={() => setCreatingProject(true)}
                     aria-label="New project"
-                    disabled={creatingProjectPending}
+                    disabled={isLoading || creatingProjectPending}
                     className={`shrink-0 p-1 mb-1.5 rounded-lg ${typeColor.muted} hover:text-[#404040] ${surface.hover} disabled:opacity-50 disabled:cursor-not-allowed`}
                   >
                     {creatingProjectPending ? (
@@ -513,31 +520,44 @@ export default function Sidebar({
             )}
 
             <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0">
-              {projects.map((project) => {
-                const projectChats = sessions.filter((s) => s.projectId === project.id)
-                const expanded = !collapsedProjectIds.has(project.id)
-                return (
-                  <div key={project.id} className="mb-2">
-                    <ProjectGroupHeader
-                      project={project}
-                      count={projectChats.length}
-                      expanded={expanded}
-                      onToggleExpand={() => toggleProjectExpanded(project.id)}
-                      onRename={(name) =>
-                        onRenameProject ? onRenameProject(project.id, name) : Promise.resolve()
-                      }
-                      onDelete={() => handleDeleteProject(project.id)}
-                    />
-                    {expanded && (
-                      <div className="pl-4 space-y-0.5">
-                        {projectChats.map(renderChatItem)}
+              {isLoading ? (
+                <div
+                  role="status"
+                  aria-label="Loading chats"
+                  data-testid="chats-loading"
+                  className="space-y-2 px-2 py-1"
+                >
+                  <Skeleton.Input active size="small" block />
+                  <Skeleton.Input active size="small" block />
+                  <Skeleton.Input active size="small" block />
+                </div>
+              ) : (
+                <>
+                  {projects.map((project) => {
+                    const projectChats = sessions.filter((s) => s.projectId === project.id)
+                    const expanded = !collapsedProjectIds.has(project.id)
+                    return (
+                      <div key={project.id} className="mb-2">
+                        <ProjectGroupHeader
+                          project={project}
+                          count={projectChats.length}
+                          expanded={expanded}
+                          onToggleExpand={() => toggleProjectExpanded(project.id)}
+                          onRename={(name) =>
+                            onRenameProject ? onRenameProject(project.id, name) : Promise.resolve()
+                          }
+                          onDelete={() => handleDeleteProject(project.id)}
+                        />
+                        {expanded && (
+                          <div className="pl-4 space-y-0.5">
+                            {projectChats.map(renderChatItem)}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                )
-              })}
+                    )
+                  })}
 
-              {/* Ungrouped chats sit outside any project — a plain list with
+                  {/* Ungrouped chats sit outside any project — a plain list with
                   no header of their own (unlike "Shared" below, which gets
                   one). A thin divider (same `#ececec` rule used elsewhere in
                   this sidebar, e.g. above the profile row) marks where the
@@ -548,36 +568,38 @@ export default function Sidebar({
                   shown when there's a project to separate from — an
                   all-ungrouped sidebar has nothing to distinguish this list
                   from. */}
-              <div
-                className={`space-y-0.5 ${
-                  projects.length > 0 ? 'mt-2 pt-2 border-t border-[#ececec]' : ''
-                }`}
-              >
-                {ungroupedChats.map(renderChatItem)}
-              </div>
-
-              {sharedSessions.length > 0 && (
-                <div className="mt-2">
-                  <span className={sectionLabel}>Shared</span>
-                  <div className="space-y-0.5">
-                    {sharedSessions.map((chat) => (
-                      <ChatListItem
-                        key={chat.id}
-                        chat={chat}
-                        isActive={activeChatId === chat.id}
-                        onSelect={() => {
-                          onSelectChat(chat.id)
-                          onNavigate?.()
-                        }}
-                        onRename={onRenameChat}
-                        onDelete={onDeleteChat}
-                        readOnly
-                        subtitle={chat.ownerUsername ? `by ${chat.ownerUsername}` : undefined}
-                        onRemove={onRemoveSharedChat}
-                      />
-                    ))}
+                  <div
+                    className={`space-y-0.5 ${
+                      projects.length > 0 ? 'mt-2 pt-2 border-t border-[#ececec]' : ''
+                    }`}
+                  >
+                    {ungroupedChats.map(renderChatItem)}
                   </div>
-                </div>
+
+                  {sharedSessions.length > 0 && (
+                    <div className="mt-2">
+                      <span className={sectionLabel}>Shared</span>
+                      <div className="space-y-0.5">
+                        {sharedSessions.map((chat) => (
+                          <ChatListItem
+                            key={chat.id}
+                            chat={chat}
+                            isActive={activeChatId === chat.id}
+                            onSelect={() => {
+                              onSelectChat(chat.id)
+                              onNavigate?.()
+                            }}
+                            onRename={onRenameChat}
+                            onDelete={onDeleteChat}
+                            readOnly
+                            subtitle={chat.ownerUsername ? `by ${chat.ownerUsername}` : undefined}
+                            onRemove={onRemoveSharedChat}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>

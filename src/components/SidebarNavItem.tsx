@@ -14,6 +14,7 @@ interface SidebarNavItemProps {
   variant?: 'default' | 'primary' | 'secondary'
   className?: string
   title?: string
+  disabled?: boolean
 }
 
 export default function SidebarNavItem({
@@ -24,16 +25,17 @@ export default function SidebarNavItem({
   variant = 'default',
   className = '',
   title,
+  disabled = false,
 }: SidebarNavItemProps) {
-  const Tag = onClick ? 'button' : 'div'
   const isPrimary = variant === 'primary'
   const isSecondary = variant === 'secondary'
 
   return (
-    <Tag
-      type={onClick ? 'button' : undefined}
+    <button
+      type="button"
       onClick={onClick}
       title={title}
+      disabled={disabled}
       className={`w-full flex items-center gap-2.5 px-2 py-1.5 text-left ${sidebarNav.row} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0084ff]/35 ${
         isPrimary
           ? 'bg-[#0084ff] text-white hover:bg-[#0077e6] font-medium'
@@ -50,7 +52,7 @@ export default function SidebarNavItem({
             : active
               ? typeColor.primary
               : typeColor.secondary
-      } ${className}`}
+      } ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${className}`}
     >
       <span
         className={`${isPrimary ? 'w-5 h-5 text-white' : sidebarNav.icon} shrink-0 flex items-center justify-center text-[14px]`}
@@ -58,6 +60,6 @@ export default function SidebarNavItem({
         {icon}
       </span>
       <span className="truncate min-w-0 flex-1">{children}</span>
-    </Tag>
+    </button>
   )
 }

@@ -176,6 +176,7 @@ vi.mock('./Sidebar', () => ({
     sessions: { id: string; title: string }[]
     sharedSessions?: { id: string; title: string }[]
     activeChatId?: string
+    isLoading?: boolean
     onNewChat: () => void
     onSelectChat: (id: string) => void
   }) => (
@@ -184,6 +185,7 @@ vi.mock('./Sidebar', () => ({
         New chat
       </button>
       <div data-testid="active-chat-id">{props.activeChatId}</div>
+      {props.isLoading && <div data-testid="chats-loading">Loading chats</div>}
       {props.sessions.map((s) => (
         <button key={s.id} type="button" onClick={() => props.onSelectChat(s.id)}>
           select:{s.title || s.id}
@@ -1853,6 +1855,38 @@ describe('AppLayout — message pane skeleton while a chat is loading messages',
     await waitFor(() => {
       expect(screen.queryByTestId('messages-skeleton')).not.toBeInTheDocument()
     })
+    expect(
+      screen.getByPlaceholderText('Ask a question about the selected documents'),
+    ).not.toBeDisabled()
+  })
+
+  it('keeps the chat area and composer in a loading state while the initial chat list is hydrating', async () => {
+    let resolveList: ((value: unknown) => void) | undefined
+    listChatSessions.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveList = resolve
+        }),
+    )
+
+    render(<AppLayout />)
+
+    // The mount-time empty session is only a temporary placeholder. It
+    // must not look interactive while the authoritative list is pending.
+    expect(screen.getByTestId('messages-skeleton')).toBeInTheDocument()
+    expect(screen.getByTestId('chats-loading')).toBeInTheDocument()
+    expect(
+      screen.getByPlaceholderText('Ask a question about the selected documents'),
+    ).toBeDisabled()
+
+    await act(async () => {
+      resolveList?.({ sessions: [], shared: [] })
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('messages-skeleton')).not.toBeInTheDocument()
+    })
+    expect(screen.queryByTestId('chats-loading')).not.toBeInTheDocument()
     expect(
       screen.getByPlaceholderText('Ask a question about the selected documents'),
     ).not.toBeDisabled()

@@ -312,7 +312,7 @@ function AssistantLabel() {
 function UserLabel({ name }: { name: string }) {
   const initial = name.trim().charAt(0).toUpperCase() || '?'
   return (
-    <div className="flex items-center gap-1.5 mb-0.5" aria-label={name}>
+    <div className="flex items-center gap-1.5 mb-1.5" aria-label={name}>
       <Avatar size={20} className="!bg-[#1e3a5f] !text-white !text-[11px] shrink-0">
         {initial}
       </Avatar>

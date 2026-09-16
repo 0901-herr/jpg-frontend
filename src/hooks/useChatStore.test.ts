@@ -156,10 +156,13 @@ describe('hydration', () => {
 
     await waitFor(() => expect(result.current.hydrated).toBe(true))
 
-    // Re-POSTs BOTH sessions with their client-supplied local ids — the
-    // already-existing one included, relying on the adapter's upsert
-    // (200 for an existing owned id) rather than skipping it.
-    expect(chatApi.createChatSession).toHaveBeenCalledWith({ id: 'local-1', title: 'Old chat 1' })
+    // The server-backed session is already authoritative and is not
+    // replayed from the browser mirror; only the still-missing session is
+    // retried.
+    expect(chatApi.createChatSession).not.toHaveBeenCalledWith({
+      id: 'local-1',
+      title: 'Old chat 1',
+    })
     expect(chatApi.createChatSession).toHaveBeenCalledWith({ id: 'local-2', title: 'Old chat 2' })
 
     // Both sessions present, no duplicates.
@@ -167,6 +170,82 @@ describe('hydration', () => {
 
     // The import finished this time — localStorage is cleared, so a third
     // load would not retry again.
+    expect(localStorage.getItem(`docu_chat_history_${chatUserId}`)).toBeNull()
+  })
+
+  it('keeps a server-backed project move when a stale local mirror exists after refresh', async () => {
+    vi.mocked(chatApi.listChatSessions).mockResolvedValue({
+      sessions: [
+        {
+          id: 's1',
+          title: 'Session 1',
+          project_id: 'project-1',
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-16T00:00:00Z',
+          updated_at: '2026-09-17T00:00:00Z',
+          message_count: 1,
+        },
+      ],
+      shared: [],
+    })
+    // Browser backups intentionally omit projectId. This is the payload
+    // produced before a page refresh immediately after a successful move.
+    persistChatHistory(
+      chatUserId,
+      [
+        {
+          id: 's1',
+          title: 'Session 1',
+          messages: [{ id: 'm1', role: 'user', content: 'Hello' }],
+        },
+      ],
+      's1',
+    )
+    vi.mocked(chatApi.getChatSession).mockResolvedValueOnce({
+      id: 's1',
+      title: 'Session 1',
+      project_id: 'project-1',
+      visibility: 'private',
+      share_token: null,
+      created_at: '2026-09-16T00:00:00Z',
+      updated_at: '2026-09-17T00:00:00Z',
+      message_count: 1,
+      owner_username: 'alice',
+      is_owner: true,
+      can_query: true,
+      scope_document_ids: [],
+      messages: [
+        {
+          id: 'm1',
+          seq: 1,
+          role: 'user',
+          content: 'Hello',
+          author_username: 'alice',
+          created_at: '2026-09-16T00:00:00Z',
+        },
+      ],
+    })
+
+    const { result } = renderHook(() => useChatStore(baseParams()))
+
+    await waitFor(() => expect(result.current.hydrated).toBe(true))
+
+    // Its stale local mirror was discarded, so the selected server summary
+    // must still fetch its detail instead of being treated as loaded.
+    await waitFor(() => expect(chatApi.getChatSession).toHaveBeenCalledWith('s1'))
+
+    await waitFor(() => {
+      expect(result.current.sessions).toEqual([
+        expect.objectContaining({
+          id: 's1',
+          projectId: 'project-1',
+          messages: [expect.objectContaining({ id: 'm1', content: 'Hello' })],
+        }),
+      ])
+    })
+    expect(chatApi.createChatSession).not.toHaveBeenCalled()
+    expect(chatApi.postChatMessage).not.toHaveBeenCalled()
     expect(localStorage.getItem(`docu_chat_history_${chatUserId}`)).toBeNull()
   })
 

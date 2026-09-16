@@ -16,10 +16,11 @@ import { useMediaQuery } from '../hooks/useMediaQuery'
 import QueryTierDropdown from './QueryTierDropdown'
 
 // Below this width the composer switches to a two-row toolbar (files chip +
-// tier dropdown on row 1, action buttons on row 2) and, only where a full
-// label still doesn't fit (Extract metadata), drops to a short visible
-// label with the full word moved into the tooltip.
-const PHONE_QUERY = '(max-width: 479.98px)'
+// tier dropdown on row 1, action buttons on row 2). This is based on the
+// available chat column rather than the viewport alone: at tablet widths the
+// persistent sidebar leaves roughly half the screen for the conversation.
+// Extract metadata uses its short label in this compact layout.
+const COMPACT_COMPOSER_QUERY = '(max-width: 900px)'
 
 /** The tooltip for a composer action button. Concise by design (client
  * feedback: no "<Action> — reason" prefix, no trailing explanation) — when
@@ -159,7 +160,7 @@ export default function ChatInput({
   isHostOfQueryShare = false,
 }: ChatInputProps) {
   const [value, setValue] = useState('')
-  const isPhone = useMediaQuery(PHONE_QUERY)
+  const isCompactComposer = useMediaQuery(COMPACT_COMPOSER_QUERY)
 
   const hasScope = !sharedScopeEmpty && (selectedCount > 0 || allowEmptySelection)
   const canSend = !isResponding && !disabled && !viewOnly && value.trim().length > 0 && hasScope
@@ -211,7 +212,7 @@ export default function ChatInput({
           // which wins regardless of any stylesheet's specificity, and
           // reuses the same `isPhone`/`PHONE_QUERY` breakpoint as the rest
           // of the composer instead of a parallel CSS media query.
-          styles={{ root: { maxWidth: isPhone ? 'calc(100vw - 32px)' : 440 } }}
+          styles={{ root: { maxWidth: isCompactComposer ? 'calc(100vw - 32px)' : 440 } }}
         >
           <span
             className="docu-chat-composer-files"
@@ -254,7 +255,7 @@ export default function ChatInput({
         placement="top"
         mouseEnterDelay={0.2}
         overlayClassName="docu-selected-files-tooltip"
-        styles={{ root: { maxWidth: isPhone ? 'calc(100vw - 32px)' : 440 } }}
+        styles={{ root: { maxWidth: isCompactComposer ? 'calc(100vw - 32px)' : 440 } }}
       >
         <span
           className="docu-chat-composer-files"
@@ -318,7 +319,7 @@ export default function ChatInput({
   // The one label that still abbreviates at phone width — "Extract
   // metadata" doesn't fit next to Summarize/Categorize's full words on
   // row 2 at 390px (Task 4 brief).
-  const extractLabel = isPhone ? 'Extract' : 'Extract metadata'
+  const extractLabel = isCompactComposer ? 'Extract' : 'Extract metadata'
   const extractButton = (
     <Tooltip
       title={composerTooltipTitle('Extract metadata', extractLabel, extractMetadataDisabledReason)}
@@ -416,7 +417,7 @@ export default function ChatInput({
             />
           </div>
 
-          {isPhone ? (
+          {isCompactComposer ? (
             // Phone (<480px): two rows (client feedback — "break the pills
             // into new line"). Row 1 keeps the files chip + tier dropdown
             // with the send button at its right; row 2 is the three action
