@@ -58,6 +58,10 @@ export interface QueryRequest {
   question: string
   documents: string[]
   tier?: QueryTier
+  /** The chat this question belongs to — lets the adapter gate a shared
+   * (non-owner) request against the chat's visibility. Omitted only for
+   * flows that don't have a persisted chat id yet. */
+  conversation_id?: string
 }
 
 export interface SendMessageRequest {

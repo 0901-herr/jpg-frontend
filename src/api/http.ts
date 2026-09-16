@@ -134,6 +134,19 @@ export async function apiPost<T>(
   return apiRequest<T>(path, { method: 'POST', body, auth, signal })
 }
 
+export async function apiPatch<T>(
+  path: string,
+  body?: unknown,
+  auth = true,
+  signal?: AbortSignal,
+): Promise<T> {
+  return apiRequest<T>(path, { method: 'PATCH', body, auth, signal })
+}
+
+export async function apiDelete<T>(path: string, auth = true, signal?: AbortSignal): Promise<T> {
+  return apiRequest<T>(path, { method: 'DELETE', auth, signal })
+}
+
 export interface SseEvent {
   event: string
   data: unknown
