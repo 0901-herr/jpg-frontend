@@ -131,7 +131,7 @@ describe('getCategorizeDisabledReason', () => {
         isResponding: false,
         disabled: false,
       }),
-    ).toBe('Not available in a leaf folder')
+    ).toBe('Already categorized')
   })
 
   it('stays enabled when the folder node is not loaded — the adapter 409 is the backstop', () => {

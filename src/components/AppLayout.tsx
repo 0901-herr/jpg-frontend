@@ -61,8 +61,8 @@ function pairMessages(messages: ChatMessage[]): { user: ChatMessage; assistant?:
  * has no `message` field at all per the contract; the others are a
  * defensive backstop in case a future response omits `message`. */
 const CATEGORIZE_ERROR_FALLBACKS: Record<string, string> = {
-  feature_disabled: 'Categorization is not enabled for this deployment.',
-  leaf_folder: 'This folder has no subfolders — there is nothing to categorize into.',
+  feature_disabled: 'Categorizing is not turned on for this site.',
+  leaf_folder: 'This file is already categorized.',
   document_not_ready: 'This file is not ready to categorize yet. Please try again shortly.',
   categorize_unavailable: 'Categorization is temporarily unavailable. Please try again.',
 }

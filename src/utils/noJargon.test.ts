@@ -98,6 +98,8 @@ const PREFIX_STEMS = [
   'fallback',
   'lookup',
   'passage',
+  'leaf',
+  'subfolder',
 ]
 
 /** "metadata" is deliberately never a banned stem, on either list above —
@@ -287,6 +289,11 @@ describe('no jargon anywhere in shipped, non-admin UI copy', () => {
     expect(findJargonViolations("const s = 'Retrieving your documents'")).toHaveLength(1)
     expect(findJargonViolations("const s = 'The answer is cached'")).toHaveLength(1)
     expect(findJargonViolations("const s = 'Now streaming your answer'")).toHaveLength(1)
+  })
+
+  it('self-test: "leaf" and "subfolder" are banned stems (round 6, Item A — "leaf folder" is jargon a non-technical user would not understand)', () => {
+    expect(findJargonViolations("const s = 'Not available in a leaf folder'")).toHaveLength(1)
+    expect(findJargonViolations("const s = 'This folder has no subfolders'")).toHaveLength(1)
   })
 
   it('self-test: a prefix stem does not false-positive into an unrelated word that starts the same way', () => {
