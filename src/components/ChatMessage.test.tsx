@@ -982,6 +982,19 @@ describe('author label', () => {
 
     expect(screen.getByText('Arche AI')).toBeInTheDocument()
   })
+
+  it('renders an avatar with the author initial next to the user label', () => {
+    render(
+      <ChatMessageItem
+        message={{ id: 'u1', role: 'user', content: 'Hi', authorUsername: 'admin' }}
+      />,
+    )
+
+    const label = screen.getByLabelText('admin')
+    const avatar = label.querySelector('.ant-avatar')
+    expect(avatar).not.toBeNull()
+    expect(avatar).toHaveTextContent('A')
+  })
 })
 
 describe('user bubble file tags (shared-scope queries)', () => {
