@@ -2,7 +2,7 @@ import { Dropdown, Input, Modal, Spin } from 'antd'
 import { ChatDeleteIcon, ChatEditIcon, ChatMoreIcon, ChatMoveIcon, ChatShareIcon } from '../icons/chat'
 import type { InputRef, MenuProps } from 'antd'
 import type { MouseEvent } from 'react'
-import { useEffect, useRef, useState } from 'react'
+import { forwardRef, useEffect, useRef, useState } from 'react'
 import { FEATURES } from '../config/features'
 import { sidebar, typeColor } from '../styles/typography'
 import { listRow, sidebarNav, surface } from '../styles/theme'
@@ -15,23 +15,32 @@ const NO_PROJECT_KEY = '__no_project__'
  * oversized-padding button). `px-2 py-1.5` matches `ProjectGroupHeader`'s
  * own "..." button (`Sidebar.tsx`) so the two dropdown triggers in the
  * sidebar look consistent. */
-function ChatOptionsButton({
-  menuOpen,
-  onClick,
-  disabled = false,
-}: {
-  menuOpen: boolean
-  onClick: (e: MouseEvent) => void
-  /** True while this row's own rename or move is in flight (Task 11
-   * follow-up) — blocks opening the menu again (and so starting a second
-   * overlapping rename/delete/move/share) until it settles. Delete itself
-   * needs no such guard here: its confirm modal already closes instantly
-   * and the row is gone from the list the moment the optimistic removal
-   * lands, so there's nothing left on this row to disable by then. */
-  disabled?: boolean
-}) {
+// `forwardRef` is required here, not cosmetic: antd's `Dropdown` clones its
+// trigger child with a ref it uses to measure and position the popup. A
+// plain function component silently drops that ref (React no longer warns
+// about this), so the popup's alignment effect never gets a real anchor
+// element and the menu stays stuck at its off-screen pre-measurement
+// position — reproduced live: the "..." menu on a chat row never appeared
+// next to the button. The equivalent "..." buttons elsewhere in the sidebar
+// (`ProjectGroupHeader`, the profile menu) render a plain `<button>` directly
+// as `Dropdown`'s child, which is why only this one broke.
+export const ChatOptionsButton = forwardRef<
+  HTMLButtonElement,
+  {
+    menuOpen: boolean
+    onClick: (e: MouseEvent) => void
+    /** True while this row's own rename or move is in flight (Task 11
+     * follow-up) — blocks opening the menu again (and so starting a second
+     * overlapping rename/delete/move/share) until it settles. Delete itself
+     * needs no such guard here: its confirm modal already closes instantly
+     * and the row is gone from the list the moment the optimistic removal
+     * lands, so there's nothing left on this row to disable by then. */
+    disabled?: boolean
+  }
+>(function ChatOptionsButton({ menuOpen, onClick, disabled = false }, ref) {
   return (
     <button
+      ref={ref}
       type="button"
       aria-label="Chat options"
       onClick={onClick}
@@ -43,7 +52,7 @@ function ChatOptionsButton({
       <ChatMoreIcon className={sidebar.caption} />
     </button>
   )
-}
+})
 
 interface ChatListItemProps {
   chat: ChatSession

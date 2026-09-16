@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
 import { vi } from 'vitest'
-import ChatListItem from './ChatListItem'
+import ChatListItem, { ChatOptionsButton } from './ChatListItem'
 import type { ChatSession } from '../types'
 
 // Sharing menu items/badge are gated behind this build-time flag (see
@@ -246,5 +246,20 @@ describe('ChatListItem', () => {
 
     expect(screen.getByTestId('move-chat-spinner')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Chat options' })).toBeDisabled()
+  })
+
+  it('forwards its ref to the underlying <button> DOM node', () => {
+    // Regression test for a live bug: antd's `Dropdown` clones this
+    // component with a ref it uses to measure/position the popup. Without
+    // `forwardRef`, that ref is silently dropped (no dev warning under
+    // React 19) and the "..." menu never gets positioned next to the
+    // button — it renders far off-screen. RTL's `getByRole` can't catch
+    // this (it finds the button in the DOM regardless of whether React
+    // ever attached a ref to it), so this asserts the ref contract
+    // directly instead.
+    const ref = React.createRef<HTMLButtonElement>()
+    render(<ChatOptionsButton ref={ref} menuOpen={false} onClick={vi.fn()} />)
+
+    expect(ref.current).toBeInstanceOf(HTMLButtonElement)
   })
 })

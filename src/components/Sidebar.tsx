@@ -8,6 +8,7 @@ import {
   ChatLogoutIcon,
   ChatMessageIcon,
   ChatMoreIcon,
+  ChatNewFolderIcon,
 } from '../icons/chat'
 import type { InputRef, MenuProps } from 'antd'
 import { useNavigate } from 'react-router-dom'
@@ -486,7 +487,7 @@ export default function Sidebar({
                     {creatingProjectPending ? (
                       <Spin size="small" data-testid="create-project-spinner" />
                     ) : (
-                      <ChatAddIcon sx={{ fontSize: 14 }} />
+                      <ChatNewFolderIcon />
                     )}
                   </button>
                 </Tooltip>
@@ -508,7 +509,7 @@ export default function Sidebar({
                     setCreatingProject(false)
                   }
                 }}
-                className={`mb-1.5 ${sidebar.body} !rounded-lg`}
+                className={`mb-3 ${sidebar.body} !rounded-lg`}
                 maxLength={200}
               />
             )}
@@ -531,12 +532,12 @@ export default function Sidebar({
               </span>
             )}
 
-            <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 space-y-0.5">
+            <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0">
               {projects.map((project) => {
                 const projectChats = sessions.filter((s) => s.projectId === project.id)
                 const expanded = !collapsedProjectIds.has(project.id)
                 return (
-                  <div key={project.id} className="mb-1">
+                  <div key={project.id} className="mb-2">
                     <ProjectGroupHeader
                       project={project}
                       count={projectChats.length}
@@ -556,7 +557,24 @@ export default function Sidebar({
                 )
               })}
 
-              {ungroupedChats.map(renderChatItem)}
+              {/* Ungrouped chats sit outside any project — a plain list with
+                  no header of their own (unlike "Shared" below, which gets
+                  one). A thin divider (same `#ececec` rule used elsewhere in
+                  this sidebar, e.g. above the profile row) marks where the
+                  last project group ends and this unlabeled list begins;
+                  without it the two read as one continuous list at the same
+                  row rhythm, as if the top chat still belonged to the
+                  project above it (client feedback: UI polish pass). Only
+                  shown when there's a project to separate from — an
+                  all-ungrouped sidebar has nothing to distinguish this list
+                  from. */}
+              <div
+                className={`space-y-0.5 ${
+                  projects.length > 0 ? 'mt-2 pt-2 border-t border-[#ececec]' : ''
+                }`}
+              >
+                {ungroupedChats.map(renderChatItem)}
+              </div>
 
               {sharedSessions.length > 0 && (
                 <div className="mt-2">
