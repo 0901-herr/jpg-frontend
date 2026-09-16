@@ -5,7 +5,6 @@ import type { AdminDocumentSummary } from '../../api/types/admin'
 import { ADMIN_EMPTY, ADMIN_TABLE_SCROLL } from '../../config/adminStyles'
 import { formatDateTime } from '../../utils/lifecycle'
 import CategoryTag from '../CategoryTag'
-import AdminCard from './AdminCard'
 import DocumentStatusBadge from './DocumentStatusBadge'
 import IngestionPipelineWaterfall from './IngestionPipelineWaterfall'
 
@@ -104,17 +103,16 @@ export default function DocumentTable({
   }
 
   return (
-    <AdminCard
-      title="Documents"
-      extra={
-        onRefresh ? (
+    <section>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h2 className="admin-list-heading">Documents</h2>
+        {onRefresh ? (
           <Button size="small" icon={<AdminRefreshIcon />} loading={refreshing} onClick={onRefresh}>
             Refresh
           </Button>
-        ) : undefined
-      }
-    >
-      <div className="min-w-0 overflow-x-auto -mx-1">
+        ) : null}
+      </div>
+      <div className="min-w-0 overflow-x-auto">
         <Table
           rowKey="source_document_id"
           className="admin-document-table"
@@ -132,6 +130,6 @@ export default function DocumentTable({
           locale={{ emptyText: 'No documents match your search' }}
         />
       </div>
-    </AdminCard>
+    </section>
   )
 }

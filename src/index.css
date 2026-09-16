@@ -1161,6 +1161,14 @@ button.docu-citation-pill:hover {
   color: var(--admin-text);
 }
 
+.admin-list-heading {
+  margin: 0;
+  font-size: var(--admin-font-lg);
+  font-weight: 600;
+  line-height: var(--admin-line-lg);
+  color: var(--admin-text);
+}
+
 .admin-pipeline-progress-action {
   display: flex;
   flex-shrink: 0;

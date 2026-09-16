@@ -45,7 +45,7 @@ describe('getPipelineProgress', () => {
 describe('buildDocumentQuery', () => {
   it('maps search fields to API query', () => {
     const q = buildDocumentQuery(
-      { search: '5052', searchBy: 'docId', failedOnly: false },
+      { search: '5052', failedOnly: false },
       1,
       50,
     )

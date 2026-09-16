@@ -82,10 +82,10 @@ describe('IngestionOverviewPage', () => {
   it('searches documents by docId', async () => {
     const user = userEvent.setup()
     renderPage()
-    const searchForm = (await screen.findByPlaceholderText('docId or filename')).closest(
+    const searchForm = (await screen.findByPlaceholderText('LogicalDOC ID or filename')).closest(
       'form',
     ) as HTMLElement
-    await user.type(within(searchForm).getByPlaceholderText('docId or filename'), '5052')
+    await user.type(within(searchForm).getByPlaceholderText('LogicalDOC ID or filename'), '5052')
     await user.click(within(searchForm).getByRole('button', { name: /search/i }))
     await waitFor(() =>
       expect(adminApi.fetchAdminDocuments).toHaveBeenCalledWith(
@@ -97,7 +97,7 @@ describe('IngestionOverviewPage', () => {
 
   it('keeps document search unboxed and removes ingestion actions', async () => {
     renderPage()
-    const search = await screen.findByPlaceholderText('docId or filename')
+    const search = await screen.findByPlaceholderText('LogicalDOC ID or filename')
     expect(search.closest('form')).toBeInTheDocument()
     expect(search.closest('.ant-card')).not.toBeInTheDocument()
     expect(screen.queryByText('Pipeline progress')).not.toBeInTheDocument()
@@ -109,7 +109,7 @@ describe('IngestionOverviewPage', () => {
   it('searches documents by filename', async () => {
     const { buildDocumentQuery } = await import('../../components/admin/DocumentSearch')
     const query = buildDocumentQuery(
-      { search: 'CT_Report', searchBy: 'filename', failedOnly: false },
+      { search: 'CT_Report', failedOnly: false },
       1,
       50,
     )
@@ -186,7 +186,7 @@ describe('IngestionOverviewPage', () => {
   it('applies failed-only filter', async () => {
     const user = userEvent.setup()
     renderPage()
-    const searchForm = (await screen.findByPlaceholderText('docId or filename')).closest(
+    const searchForm = (await screen.findByPlaceholderText('LogicalDOC ID or filename')).closest(
       'form',
     ) as HTMLElement
     await user.click(within(searchForm).getByRole('checkbox', { name: 'Failed only' }))

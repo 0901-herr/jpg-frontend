@@ -5,7 +5,6 @@ import { LIFECYCLE_LABELS } from '../../utils/lifecycle'
 
 export interface DocumentSearchValues {
   search: string
-  searchBy: 'docId' | 'filename'
   lifecycleStatus?: LifecycleStatus
   discoverySource?: string
   failedOnly: boolean
@@ -26,7 +25,7 @@ export function buildDocumentQuery(values: DocumentSearchValues, page: number, p
   const query: AdminDocumentQuery = { offset: (page - 1) * pageSize, limit: pageSize }
   const term = values.search.trim()
   if (term) {
-    if (values.searchBy === 'docId') query.docId = term
+    if (/^\d+$/.test(term)) query.docId = term
     else query.filename = term
   }
   if (values.failedOnly) query.lifecycleStatus = 'FAILED'
@@ -50,25 +49,18 @@ export default function DocumentSearch({ initialValues, loading, onSearch }: Doc
       layout="vertical"
       initialValues={{
         search: '',
-        searchBy: 'docId',
         failedOnly: false,
         ...initialValues,
       }}
       onFinish={() => submit()}
     >
       <Row gutter={16}>
-        <Col xs={24} md={8}>
+        <Col xs={24} md={12}>
           <Form.Item label="Search" name="search">
-            <Input placeholder="docId or filename" allowClear prefix={<AdminSearchIcon />} />
-          </Form.Item>
-        </Col>
-        <Col xs={24} md={4}>
-          <Form.Item label="Search by" name="searchBy">
-            <Select
-              options={[
-                { value: 'docId', label: 'LogicalDOC ID' },
-                { value: 'filename', label: 'Filename' },
-              ]}
+            <Input
+              placeholder="LogicalDOC ID or filename"
+              allowClear
+              prefix={<AdminSearchIcon />}
             />
           </Form.Item>
         </Col>
@@ -92,8 +84,10 @@ export default function DocumentSearch({ initialValues, loading, onSearch }: Doc
           </Form.Item>
         </Col>
         <Col xs={24} md={4}>
-          <Form.Item name="failedOnly" valuePropName="checked">
-            <Checkbox>Failed only</Checkbox>
+          <Form.Item label="Filter" name="failedOnly" valuePropName="checked">
+            <Checkbox aria-label="Failed only" className="h-8 !flex items-center">
+              Failed only
+            </Checkbox>
           </Form.Item>
         </Col>
       </Row>
