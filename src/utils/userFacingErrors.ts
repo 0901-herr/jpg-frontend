@@ -59,7 +59,12 @@ export function toUserFacingQueryError(
   }
 
   if (httpStatus === 403) {
-    return QUERY_PERMISSION_DENIED_ERROR
+    // A body message (e.g. "This chat is view-only") is more specific than
+    // the generic permission text and safe to show as-is — the adapter
+    // only ever puts jargon-free copy in this field. No message at all
+    // (a bare 403 with no parseable body) still falls back to the generic
+    // line rather than a raw HTTP reason phrase.
+    return raw?.trim() ? raw.trim() : QUERY_PERMISSION_DENIED_ERROR
   }
 
   if (httpStatus != null && httpStatus >= 500) {

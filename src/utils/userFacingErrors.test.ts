@@ -34,9 +34,15 @@ describe('toUserFacingQueryError', () => {
     )
   })
 
-  it('uses the permission-denied message for 403', () => {
-    expect(toUserFacingQueryError('Forbidden', { httpStatus: 403 })).toBe(
+  it('uses the permission-denied message for 403 with no body message', () => {
+    expect(toUserFacingQueryError(undefined, { httpStatus: 403 })).toBe(
       QUERY_PERMISSION_DENIED_ERROR,
+    )
+  })
+
+  it('surfaces the server message for a 403 that carries one (e.g. a view-only chat)', () => {
+    expect(toUserFacingQueryError('This chat is view-only', { httpStatus: 403 })).toBe(
+      'This chat is view-only',
     )
   })
 

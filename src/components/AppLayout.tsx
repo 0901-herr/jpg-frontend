@@ -83,6 +83,18 @@ function categorizeErrorMessage(err: unknown): string {
   return 'Could not categorize this file. Please try again.'
 }
 
+/** Best-effort human-readable body message for the query flow's error
+ * paths — `ApiError.detail` only (never falls back to `.message`, which is
+ * `detail ?? response.statusText`: a raw HTTP reason phrase like
+ * "Forbidden" is not a real server message and must not be shown as one,
+ * e.g. by `toUserFacingQueryError`'s 403 branch). A plain (non-API) Error
+ * still surfaces its own `.message` — those come from the streaming client
+ * itself, not a parsed HTTP body. */
+function queryErrorRawMessage(err: unknown): string | undefined {
+  if (err instanceof ApiError) return err.detail
+  return err instanceof Error ? err.message : undefined
+}
+
 function createInitialSession(): ChatSession {
   if (isCitationLoadingDemoEnabled()) return createCitationLoadingDemoSession()
   if (isCitationDemoEnabled()) return createCitationDemoSession()
@@ -539,7 +551,7 @@ export default function AppLayout() {
         if (controller.signal.aborted) return
         const httpStatus = err instanceof ApiError ? err.status : undefined
         const detail = friendlyQueryError(
-          err instanceof ApiError ? err.detail ?? err.message : 'Validation failed',
+          err instanceof ApiError ? queryErrorRawMessage(err) : 'Validation failed',
           httpStatus,
         )
         message.error(detail)
@@ -740,10 +752,7 @@ export default function AppLayout() {
         }
 
         const httpStatus = err instanceof ApiError ? err.status : undefined
-        const detail = friendlyQueryError(
-          err instanceof Error ? err.message : undefined,
-          httpStatus,
-        )
+        const detail = friendlyQueryError(queryErrorRawMessage(err), httpStatus)
         message.error(detail, 8)
         const errored = updateAssistantMessage(activeChatId, (msg) => ({
           ...msg,

@@ -24,6 +24,7 @@ const categorizeDocument = vi.fn<
 
 const fetchDocumentSummary = vi.fn()
 const postChatMessage = vi.fn().mockResolvedValue(undefined)
+const getSharedChatSession = vi.fn().mockRejectedValue(new Error('not found'))
 
 vi.mock('../api/browse', () => ({
   validateQueryScope: (...args: [string[], AbortSignal?]) => validateQueryScope(...args),
@@ -47,8 +48,7 @@ vi.mock('../api/chat', () => ({
   patchChatSession: vi.fn().mockResolvedValue({}),
   deleteChatSession: vi.fn().mockResolvedValue(undefined),
   postChatMessage: (...args: unknown[]) => postChatMessage(...args),
-  patchChatMessage: vi.fn().mockResolvedValue(undefined),
-  getSharedChatSession: vi.fn().mockResolvedValue({}),
+  getSharedChatSession: (...args: [string]) => getSharedChatSession(...args),
 }))
 
 vi.mock('../context/AuthContext', () => ({
@@ -128,6 +128,10 @@ vi.mock('../hooks/useDocumentSelection', () => ({
 // settles by rejecting once the caller's AbortSignal fires. `reset`
 // synchronously flips `isPending` back to false, exactly like the real hook.
 let currentSignal: AbortSignal | null = null
+// Test-controlled: when set, the next mutateAsync call rejects with this
+// immediately instead of only settling on abort — models a query call that
+// fails outright (e.g. a 403 before any streaming starts). Consumed once.
+let nextSendQueryRejection: unknown = null
 
 vi.mock('../hooks/mutations/useSendQuery', () => ({
   useSendQuery: () => {
@@ -139,6 +143,12 @@ vi.mock('../hooks/mutations/useSendQuery', () => ({
         new Promise<SendMessageResponse>((_resolve, reject) => {
           setIsPending(true)
           currentSignal = request.signal ?? null
+          if (nextSendQueryRejection) {
+            const err = nextSendQueryRejection
+            nextSendQueryRejection = null
+            reject(err)
+            return
+          }
           request.signal?.addEventListener('abort', () => {
             reject(new DOMException('Aborted', 'AbortError'))
           })
@@ -150,6 +160,7 @@ vi.mock('../hooks/mutations/useSendQuery', () => ({
 vi.mock('./Sidebar', () => ({
   default: (props: {
     sessions: { id: string; title: string }[]
+    sharedSessions?: { id: string; title: string }[]
     onNewChat: () => void
     onSelectChat: (id: string) => void
   }) => (
@@ -160,6 +171,12 @@ vi.mock('./Sidebar', () => ({
       {props.sessions.map((s) => (
         <button key={s.id} type="button" onClick={() => props.onSelectChat(s.id)}>
           select:{s.title || s.id}
+        </button>
+      ))}
+      {(props.sharedSessions?.length ?? 0) > 0 && <div>Shared</div>}
+      {(props.sharedSessions ?? []).map((s) => (
+        <button key={s.id} type="button" onClick={() => props.onSelectChat(s.id)}>
+          shared:{s.title || s.id}
         </button>
       ))}
     </div>
@@ -266,6 +283,142 @@ describe('AppLayout — abort on New chat / select chat while streaming', () => 
 
     expect(currentSignal?.aborted).toBe(true)
     expect(screen.queryByRole('button', { name: 'Stop response' })).not.toBeInTheDocument()
+  })
+})
+
+describe('AppLayout — query error messages', () => {
+  beforeEach(() => {
+    currentSignal = null
+    nextSendQueryRejection = null
+    initialSelectedIds = new Set(['doc-1'])
+    initialDocumentMeta = defaultDocumentMeta()
+    validateQueryScope.mockResolvedValue({
+      total_files: 1,
+      ready_files: 1,
+      indexing_files: 0,
+      failed_files: 0,
+      missing_files: 0,
+      accessible_document_ids: ['doc-1'],
+    })
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('surfaces the server message for a 403 that carries one (e.g. a view-only chat)', async () => {
+    const user = userEvent.setup()
+    nextSendQueryRejection = new ApiError(
+      'This chat is view-only',
+      403,
+      'This chat is view-only',
+      'view_only',
+    )
+
+    render(<AppLayout />)
+
+    const textarea = await screen.findByPlaceholderText(/ask a question/i)
+    await user.type(textarea, 'What is in the contract?')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    expect(await screen.findByText('This chat is view-only')).toBeInTheDocument()
+  })
+
+  it('falls back to the generic permission message for a 403 with no body message', async () => {
+    const user = userEvent.setup()
+    nextSendQueryRejection = new ApiError('Forbidden', 403)
+
+    render(<AppLayout />)
+
+    const textarea = await screen.findByPlaceholderText(/ask a question/i)
+    await user.type(textarea, 'What is in the contract?')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    expect(
+      await screen.findByText("You don't have permission to query the selected documents."),
+    ).toBeInTheDocument()
+  })
+})
+
+describe('AppLayout — shared link (?share=token)', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    currentSignal = null
+    initialSelectedIds = new Set(['doc-1'])
+    initialDocumentMeta = defaultDocumentMeta()
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+    window.history.pushState({}, '', '/')
+  })
+
+  it('loads the shared chat after auth, adds it to the Shared group, selects it, and strips the ?share param', async () => {
+    window.history.pushState({}, '', '/chat?share=tok123')
+    getSharedChatSession.mockResolvedValueOnce({
+      id: 'shared-1',
+      title: 'Shared Chat',
+      project_id: null,
+      visibility: 'view',
+      share_token: null,
+      created_at: '2026-09-01T00:00:00Z',
+      updated_at: '2026-09-01T00:00:00Z',
+      message_count: 2,
+      owner_username: 'alice',
+      is_owner: false,
+      can_query: false,
+      scope_document_ids: [],
+      messages: [
+        {
+          id: 'm1',
+          seq: 1,
+          role: 'user',
+          content: 'What is in the contract?',
+          author_username: 'alice',
+          created_at: '2026-09-01T00:00:00Z',
+        },
+        {
+          id: 'm2',
+          seq: 2,
+          role: 'assistant',
+          content: 'Shared answer content',
+          author_username: 'alice',
+          created_at: '2026-09-01T00:00:00Z',
+        },
+      ],
+    })
+
+    render(<AppLayout />)
+
+    // Parsed after auth (mocked as already settled) and passed to the
+    // Shared group, not the owner's own chat list.
+    expect(await screen.findByRole('button', { name: 'shared:Shared Chat' })).toBeInTheDocument()
+    expect(screen.getByText('Shared')).toBeInTheDocument()
+    expect(getSharedChatSession).toHaveBeenCalledWith('tok123')
+
+    // Selected — its own message renders in the chat pane without clicking
+    // anything.
+    expect(await screen.findByText('Shared answer content')).toBeInTheDocument()
+
+    // The `?share=` param is stripped from the URL via history.replaceState.
+    await waitFor(() => {
+      expect(window.location.search).not.toContain('share')
+    })
+  })
+
+  it('shows a toast and never crashes when the shared link is no longer available', async () => {
+    window.history.pushState({}, '', '/chat?share=badtoken')
+    getSharedChatSession.mockRejectedValueOnce(new Error('not found'))
+
+    render(<AppLayout />)
+
+    // Falls back to the normal (non-shared) chat screen — no fatal error.
+    expect(await screen.findByRole('button', { name: 'New chat' })).toBeInTheDocument()
+    expect(await screen.findByText('This shared chat link is no longer available.')).toBeInTheDocument()
+
+    await waitFor(() => {
+      expect(window.location.search).not.toContain('share')
+    })
   })
 })
 
