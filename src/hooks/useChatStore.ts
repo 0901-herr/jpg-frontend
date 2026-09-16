@@ -254,6 +254,11 @@ export function useChatStore({
   sessionsRef.current = sessions
   const sharedSessionsRef = useRef<ChatSession[]>(sharedSessions)
   sharedSessionsRef.current = sharedSessions
+  // Same "current value outside a setState updater" idiom as the refs
+  // above — used by `deleteProject` to restore the project row if its
+  // cascade delete turns out not to have fully succeeded server-side.
+  const projectsRef = useRef<ChatProject[]>(projects)
+  projectsRef.current = projects
   // Session ids whose messages are already known locally — created this
   // session, imported, or already fetched — so a chat is only ever
   // GET-ted once per app load.
@@ -614,37 +619,85 @@ export function useChatStore({
       // Same ref-read idiom as `moveChat`/`createChat` — captured before
       // the optimistic removal below so the cascade still knows which
       // chats to delete server-side even after they've disappeared from
-      // `sessions`.
+      // `sessions`, and so a partial failure below knows exactly which
+      // ones to roll back.
       const chatsInProject = sessionsRef.current.filter((s) => s.projectId === id)
       const removedIds = new Set(chatsInProject.map((c) => c.id))
+      // Same ref-read idiom, via `projectsRef` — so it's available to
+      // restore below if the project turns out not to have actually been
+      // deleted server-side. (A functional `setProjects` updater's own
+      // `prev` would look equivalent, but React doesn't guarantee it runs
+      // synchronously with this call, and the read below can't wait for it.)
+      const removedProject = projectsRef.current.find((p) => p.id === id)
       setProjects((prev) => prev.filter((p) => p.id !== id))
-      setSessions((prev) => {
-        // Same reselection idiom as `deleteChat` (never leave `activeChatId`
-        // pointing at a chat that's no longer in `sessions`), generalized
-        // from one removed id to the whole set this cascade removes.
-        const next = prev.filter((s) => s.projectId !== id)
-        if (next.length === 0) {
-          const fresh = createEmptySession(next)
-          loadedMessagesRef.current.add(fresh.id)
-          setActiveChatId(fresh.id)
-          return [fresh]
-        }
+
+      // Same reselection idiom as `deleteChat` (never leave `activeChatId`
+      // pointing at a chat that's no longer in `sessions`), generalized
+      // from one removed id to the whole set this cascade removes — computed
+      // here rather than inside the `setSessions` call below, so that call
+      // stays a plain state update instead of one whose updater function
+      // also reaches out and calls `setActiveChatId` as a side effect.
+      const next = sessionsRef.current.filter((s) => s.projectId !== id)
+      if (next.length === 0) {
+        const fresh = createEmptySession(next)
+        loadedMessagesRef.current.add(fresh.id)
+        setActiveChatId(fresh.id)
+        setSessions([fresh])
+      } else {
         if (removedIds.has(activeChatIdRef.current)) {
           setActiveChatId(next[0].id)
         }
-        return next
-      })
+        setSessions(next)
+      }
+
       if (!enabled) return
+
+      // The backend has no cascade-delete endpoint: deleting the project
+      // alone would only orphan these chats (project_id -> null), not
+      // remove them. Delete each chat first via the same single-chat
+      // delete call `deleteChat` already uses, then the now-empty project —
+      // but `allSettled`, not `all`: a fail-fast `Promise.all` would bail
+      // out of the whole cascade on the first rejection, silently leaving
+      // the rest of the chats (and the project itself) undeleted
+      // server-side while the optimistic update had already made all of
+      // them disappear from view. Distinguishing successes from failures
+      // here lets the UI stay honest about what actually happened.
+      const results = await Promise.allSettled(
+        chatsInProject.map((chat) => deleteChatSession(chat.id)),
+      )
+      const failedChats = chatsInProject.filter((_, i) => results[i].status === 'rejected')
+
+      if (failedChats.length > 0) {
+        // Some chats are still on the project server-side — don't delete
+        // the project itself, bring it and the chats that didn't actually
+        // get deleted back into view, and say so honestly (not "could not
+        // delete the project": most of it may well have worked).
+        setSessions((prev) => [...prev, ...failedChats])
+        if (removedProject) {
+          setProjects((prev) =>
+            [...prev, removedProject].sort((a, b) => a.name.localeCompare(b.name)),
+          )
+        }
+        message.error(
+          `${failedChats.length} of ${chatsInProject.length} chats could not be deleted. Please try again.`,
+        )
+        return
+      }
+
       try {
-        // The backend has no cascade-delete endpoint: deleting the project
-        // alone would only orphan these chats (project_id -> null), not
-        // remove them. Delete each chat first via the same single-chat
-        // delete call `deleteChat` already uses, then the now-empty
-        // project.
-        await Promise.all(chatsInProject.map((chat) => deleteChatSession(chat.id)))
         await deleteChatProject(id)
       } catch {
-        message.error('Could not fully delete this project. Please refresh and try again.')
+        // Every chat is genuinely gone server-side at this point (no
+        // rollback for those), but the project row itself is still there —
+        // bring it back so the user can retry deleting it.
+        if (removedProject) {
+          setProjects((prev) =>
+            [...prev, removedProject].sort((a, b) => a.name.localeCompare(b.name)),
+          )
+        }
+        message.error(
+          'Chats were deleted, but the project itself could not be removed. Please try again.',
+        )
       }
     },
     [enabled],

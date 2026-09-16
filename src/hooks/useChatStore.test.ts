@@ -1,4 +1,5 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
+import { message } from 'antd'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createEmptySession, useChatStore } from './useChatStore'
 import * as chatApi from '../api/chat'
@@ -493,6 +494,7 @@ describe('chat CRUD', () => {
   })
 
   it('rolls back the optimistic project move if the PATCH fails, and shows an error', async () => {
+    const errorSpy = vi.spyOn(message, 'error')
     const result = await hydrated()
     vi.mocked(chatApi.patchChatSession).mockRejectedValueOnce(new Error('network error'))
 
@@ -505,6 +507,7 @@ describe('chat CRUD', () => {
     await waitFor(() => {
       expect(result.current.sessions.find((s) => s.id === 's1')?.projectId).toBeNull()
     })
+    expect(errorSpy).toHaveBeenCalledWith('Could not move this chat. It has been moved back.')
   })
 
   it('deletes a project by cascading: deletes every chat in it via the existing single-chat-delete call, then deletes the project itself', async () => {
@@ -589,6 +592,93 @@ describe('chat CRUD', () => {
     // activeChatId pointing at a chat that's gone, same reselection
     // `deleteChat` already does for a single delete.
     expect(result.current.activeChatId).toBe('s3')
+  })
+
+  it('rolls back only the chats that failed to delete when a cascade delete partially fails, and does not delete the project', async () => {
+    const errorSpy = vi.spyOn(message, 'error')
+    vi.mocked(chatApi.listChatProjects).mockResolvedValue([
+      { id: 'proj-1', name: 'Research', created_at: '2026-09-16T00:00:00Z', updated_at: '2026-09-16T00:00:00Z' },
+    ])
+    vi.mocked(chatApi.listChatSessions).mockResolvedValue({
+      sessions: [
+        {
+          id: 's1',
+          title: 'Session 1',
+          project_id: 'proj-1',
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-16T00:00:00Z',
+          updated_at: '2026-09-16T00:00:00Z',
+          message_count: 0,
+        },
+        {
+          id: 's2',
+          title: 'Session 2',
+          project_id: 'proj-1',
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-16T00:00:00Z',
+          updated_at: '2026-09-16T00:00:00Z',
+          message_count: 0,
+        },
+        {
+          id: 's3',
+          title: 'Session 3',
+          project_id: null,
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-16T00:00:00Z',
+          updated_at: '2026-09-16T00:00:00Z',
+          message_count: 0,
+        },
+      ],
+      shared: [],
+    })
+    // s1 deletes fine; s2 fails (e.g. a transient network error).
+    vi.mocked(chatApi.deleteChatSession).mockImplementation((chatId: string) =>
+      chatId === 's2' ? Promise.reject(new Error('network error')) : Promise.resolve(undefined),
+    )
+    vi.mocked(chatApi.getChatSession).mockImplementation((requestedId: string) =>
+      Promise.resolve({
+        id: requestedId,
+        title: `Session ${requestedId}`,
+        project_id: requestedId === 's3' ? null : 'proj-1',
+        visibility: 'private',
+        share_token: null,
+        created_at: '2026-09-16T00:00:00Z',
+        updated_at: '2026-09-16T00:00:00Z',
+        message_count: 0,
+        owner_username: 'tester',
+        is_owner: true,
+        can_query: true,
+        scope_document_ids: [],
+        messages: [],
+      }),
+    )
+
+    const { result } = renderHook(() => useChatStore(baseParams()))
+    await waitFor(() => expect(result.current.hydrated).toBe(true))
+    expect(result.current.projects).toEqual([{ id: 'proj-1', name: 'Research' }])
+
+    await act(async () => {
+      await result.current.deleteProject('proj-1')
+    })
+
+    // The project still has a chat server-side (s2's delete failed), so
+    // the project itself must never be deleted, and comes back into view.
+    expect(chatApi.deleteChatProject).not.toHaveBeenCalled()
+    await waitFor(() => {
+      expect(result.current.projects).toEqual([{ id: 'proj-1', name: 'Research' }])
+    })
+
+    // s1 (succeeded) stays gone; s2 (failed) reappears.
+    await waitFor(() => {
+      expect(result.current.sessions.some((s) => s.id === 's2')).toBe(true)
+    })
+    expect(result.current.sessions.some((s) => s.id === 's1')).toBe(false)
+    expect(result.current.sessions.some((s) => s.id === 's3')).toBe(true)
+
+    expect(errorSpy).toHaveBeenCalledWith('1 of 2 chats could not be deleted. Please try again.')
   })
 })
 
