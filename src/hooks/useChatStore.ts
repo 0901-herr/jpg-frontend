@@ -204,7 +204,11 @@ export interface UseChatStoreResult {
   /** Fire-and-forget upsert of the assistant message by id — safe to call
    * repeatedly as the same turn progresses from streaming to done/error/
    * interrupted; the adapter updates the same row in place. */
-  recordAssistantMessage: (chatId: string, msg: ChatMessage) => void
+  /** Returns the persist promise (settles once posted, never rejects — the
+   * POST failure itself is already swallowed) so a caller that needs
+   * ordering, such as a post-answer refresh that must not race this same
+   * write, can await it. Safe to ignore otherwise. */
+  recordAssistantMessage: (chatId: string, msg: ChatMessage) => Promise<void>
   loadSharedSession: (token: string) => Promise<ChatSession | null>
   /** Forces an immediate re-fetch of a shared chat's own detail (scope +
    * messages) — used after a follower's answer completes, so a host scope
@@ -613,9 +617,15 @@ export function useChatStore({
   )
 
   const recordAssistantMessage = useCallback(
-    (chatId: string, msg: ChatMessage) => {
-      if (!enabled) return
-      void postChatMessage(chatId, {
+    (chatId: string, msg: ChatMessage): Promise<void> => {
+      if (!enabled) return Promise.resolve()
+      // Returns the persist promise (unlike `recordUserMessage`, which
+      // stays fire-and-forget) so a caller that needs ordering — e.g.
+      // AppLayout's shared-chat refresh, which must not race a detail GET
+      // against this very POST — can await it. Every other caller is free
+      // to ignore the return value, same fire-and-forget behaviour as
+      // before.
+      return postChatMessage(chatId, {
         id: msg.id,
         role: 'assistant',
         content: msg.content,

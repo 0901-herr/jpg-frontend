@@ -688,3 +688,69 @@ describe('removeSharedChat', () => {
     )
   })
 })
+
+describe('recordAssistantMessage', () => {
+  it('returns a promise that resolves only once the persist POST resolves, so a caller can await it', async () => {
+    vi.mocked(chatApi.listChatSessions).mockResolvedValue({
+      sessions: [
+        {
+          id: 's1',
+          title: 'Session 1',
+          project_id: null,
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-16T00:00:00Z',
+          updated_at: '2026-09-16T00:00:00Z',
+          message_count: 0,
+        },
+      ],
+      shared: [],
+    })
+    vi.mocked(chatApi.getChatSession).mockResolvedValue({
+      id: 's1',
+      title: 'Session 1',
+      project_id: null,
+      visibility: 'private',
+      share_token: null,
+      created_at: '2026-09-16T00:00:00Z',
+      updated_at: '2026-09-16T00:00:00Z',
+      message_count: 0,
+      owner_username: 'tester',
+      is_owner: true,
+      can_query: true,
+      scope_document_ids: [],
+      messages: [],
+    })
+
+    let resolvePost: (() => void) | undefined
+    vi.mocked(chatApi.postChatMessage).mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolvePost = resolve
+        }),
+    )
+
+    const { result } = renderHook(() => useChatStore(baseParams()))
+    await waitFor(() => expect(result.current.hydrated).toBe(true))
+
+    let settled = false
+    let persisted: Promise<void>
+    act(() => {
+      persisted = result.current.recordAssistantMessage('s1', {
+        id: 'm1',
+        role: 'assistant',
+        content: 'Answer',
+      })
+      persisted.then(() => {
+        settled = true
+      })
+    })
+
+    // Still pending — the mocked POST hasn't resolved yet.
+    await Promise.resolve()
+    expect(settled).toBe(false)
+
+    resolvePost?.()
+    await waitFor(() => expect(settled).toBe(true))
+  })
+})
