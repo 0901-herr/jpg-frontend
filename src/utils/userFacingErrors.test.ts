@@ -2,14 +2,15 @@ import { describe, expect, it } from 'vitest'
 import {
   FOLDER_LOAD_PERMISSION_ERROR,
   FOLDER_LOAD_SERVER_ERROR,
-  MQA_METADATA_GENERIC_ERROR,
+  METADATA_EXTRACTION_GENERIC_ERROR,
   QUERY_ALMOST_DONE_ERROR,
+  QUERY_NO_HOST_SCOPE_ERROR,
   QUERY_PARTIAL_ANSWER_ERROR,
   QUERY_PERMISSION_DENIED_ERROR,
   QUERY_SERVER_ERROR,
   QUERY_SESSION_EXPIRED_ERROR,
   toUserFacingFolderLoadError,
-  toUserFacingMqaMetadataError,
+  toUserFacingMetadataExtractionError,
   toUserFacingQueryError,
 } from './userFacingErrors'
 
@@ -34,10 +35,28 @@ describe('toUserFacingQueryError', () => {
     )
   })
 
-  it('uses the permission-denied message for 403', () => {
-    expect(toUserFacingQueryError('Forbidden', { httpStatus: 403 })).toBe(
+  it('uses the permission-denied message for 403 with no body message', () => {
+    expect(toUserFacingQueryError(undefined, { httpStatus: 403 })).toBe(
       QUERY_PERMISSION_DENIED_ERROR,
     )
+  })
+
+  it('surfaces the server message for a 403 that carries one (e.g. a view-only chat)', () => {
+    expect(toUserFacingQueryError('This chat is view-only', { httpStatus: 403 })).toBe(
+      'This chat is view-only',
+    )
+  })
+
+  it('uses the no-host-scope message for 409 with no body message', () => {
+    expect(toUserFacingQueryError(undefined, { httpStatus: 409 })).toBe(
+      QUERY_NO_HOST_SCOPE_ERROR,
+    )
+  })
+
+  it('surfaces the server message for a 409 that carries one (host has not chosen files)', () => {
+    expect(
+      toUserFacingQueryError('The chat owner has not chosen any files yet', { httpStatus: 409 }),
+    ).toBe('The chat owner has not chosen any files yet')
   })
 
   it('uses server error message for 5xx before streaming heuristics', () => {
@@ -64,21 +83,53 @@ describe('toUserFacingFolderLoadError', () => {
   })
 })
 
-describe('toUserFacingMqaMetadataError', () => {
+describe('toUserFacingMetadataExtractionError', () => {
+  // The contract's own detail strings are matched by their raw (technical)
+  // wording, but never shown verbatim — plain-language sweep: each known
+  // detail maps to its own jargon-free display line instead.
   it.each([
-    'Document is still being indexed. Try again when it is Ready.',
-    'Document is not ready for extraction.',
-    'Metadata extraction timed out. Please try again.',
-    'Metadata extraction failed. Please try again.',
-  ])('passes the contract detail "%s" through verbatim', (detail) => {
-    expect(toUserFacingMqaMetadataError(detail)).toBe(detail)
+    [
+      'Document is still being indexed. Try again when it is Ready.',
+      "This document isn't ready yet. Try again once it shows Ready.",
+    ],
+    [
+      'Document is not ready for extraction.',
+      "This document isn't ready for that yet. Please try again shortly.",
+    ],
+    [
+      'Metadata extraction timed out. Please try again.',
+      'That took too long. Please try again.',
+    ],
+    [
+      'Metadata extraction failed. Please try again.',
+      'That did not work. Please try again.',
+    ],
+  ])('maps the contract detail "%s" to a plain-language line', (detail, expected) => {
+    expect(toUserFacingMetadataExtractionError(detail)).toBe(expected)
   })
 
   it('falls back to the generic message for an unrecognized detail', () => {
-    expect(toUserFacingMqaMetadataError('Internal Server Error')).toBe(MQA_METADATA_GENERIC_ERROR)
+    expect(toUserFacingMetadataExtractionError('Internal Server Error')).toBe(
+      METADATA_EXTRACTION_GENERIC_ERROR,
+    )
   })
 
   it('falls back to the generic message when there is no detail at all', () => {
-    expect(toUserFacingMqaMetadataError(undefined)).toBe(MQA_METADATA_GENERIC_ERROR)
+    expect(toUserFacingMetadataExtractionError(undefined)).toBe(METADATA_EXTRACTION_GENERIC_ERROR)
   })
+
+  // Regression guard: an earlier version looked the detail up with the `in`
+  // operator on a plain object, which walks the prototype chain. An
+  // adapter `detail` of exactly "constructor" (or another Object.prototype
+  // member name) would then resolve to that prototype function instead of
+  // falling through to the generic string — a real crash risk wherever
+  // the result is rendered (e.g. as an antd `message.error` child).
+  it.each(['constructor', 'toString', 'valueOf', 'hasOwnProperty', 'toLocaleString'])(
+    'treats an adapter detail of "%s" as unrecognized, not an Object.prototype member',
+    (detail) => {
+      const result = toUserFacingMetadataExtractionError(detail)
+      expect(typeof result).toBe('string')
+      expect(result).toBe(METADATA_EXTRACTION_GENERIC_ERROR)
+    },
+  )
 })

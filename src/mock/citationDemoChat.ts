@@ -43,7 +43,7 @@ Revenue increased 12% year-over-year, with growth led by enterprise subscription
 
 Operating expenses fell 4% in Q3 following office consolidation [Doc2].
 
-Both figures come from the indexed excerpts below. Click a source to open the document preview in LogicalDOC.`
+Both figures come from the sections shown below. Click a source to open the document preview in LogicalDOC.`
 
 /** Sample chat with inline [DocN] refs, a completed answer, and a loading reply. */
 export function createCitationDemoSession(): ChatSession {

@@ -1,10 +1,41 @@
 @import 'tailwindcss';
 
+/* Round 6, Item B — root cause: on iOS Safari, 100vh is the height with
+   the browser chrome collapsed, so a `100vh` shell is taller than the
+   visible area and, with no `overflow` rule here, the *document itself*
+   scrolled (the top bar could scroll out of view, the composer could sit
+   partly below the bottom edge). html/body never scroll now — the chat
+   page's own scroll container (`.docu-chat-scroll`) and the sidebar/drawer
+   keep their own internal scrolling; admin pages don't rely on document
+   scroll either (`AdminLayout`/`ADMIN_SECTION_MAIN_CLASS` already scroll
+   internally), so this is safe to apply globally rather than scoping it
+   to the chat shell. `overscroll-behavior: none` stops the iOS
+   rubber-band bounce from revealing blank space past this (already inert)
+   edge. */
 html,
-body,
-#root {
+body {
   height: 100%;
   margin: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+#root {
+  height: 100%;
+}
+
+/* The app shell (AppLayout.tsx root): `100vh` first as the fallback for a
+   browser without `dvh` support, then `100dvh` (the *visible* viewport —
+   shrinks when iOS Safari's chrome expands) overriding it where supported,
+   same property declared twice so the cascade itself is the fallback.
+   `useVisualViewportHeight` (src/hooks) refines this further live via an
+   inline height, for the one case `dvh` doesn't cover: the on-screen
+   keyboard, which shrinks the *visual* viewport without changing `dvh` at
+   all. On desktop this is the same value either way, so nothing changes
+   there. */
+.docu-app-shell {
+  height: 100vh;
+  height: 100dvh;
 }
 
 body {
@@ -521,6 +552,29 @@ button.docu-citation-pill:hover {
 .docu-answer ul:last-child,
 .docu-answer ol:last-child {
   margin-bottom: 0;
+}
+
+/* Nested lists keep their indent from `pl-5` on every `<ul>`/`<ol>`, but
+   the `list-disc` / `list-decimal` utilities apply to every level, so a
+   sub-list was drawn with the same bullet as its parent and read as one
+   flat run (owner screenshot, 2026-09-16). Restore the browser's own
+   level markers — disc, circle, square for bullets; decimal, lower-alpha,
+   lower-roman for numbers. Unlayered on purpose: it must beat the layered
+   Tailwind utility on the nested element regardless of specificity. */
+.docu-answer li > ul {
+  list-style-type: circle;
+}
+
+.docu-answer li li > ul {
+  list-style-type: square;
+}
+
+.docu-answer li > ol {
+  list-style-type: lower-alpha;
+}
+
+.docu-answer li li > ol {
+  list-style-type: lower-roman;
 }
 
 /* Mainstream AI-chat layouts use a rounded rectangle for the composer, not

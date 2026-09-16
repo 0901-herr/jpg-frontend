@@ -36,7 +36,7 @@ describe('ChatInput', () => {
       extractMetadataDisabledReason: 'Select one document',
     })
 
-    const button = screen.getByRole('button', { name: 'Extract MQA metadata' })
+    const button = screen.getByRole('button', { name: 'Extract metadata' })
     expect(button).toBeDisabled()
   })
 
@@ -47,7 +47,7 @@ describe('ChatInput', () => {
       extractMetadataDisabledReason: 'Select only one document',
     })
 
-    const button = screen.getByRole('button', { name: 'Extract MQA metadata' })
+    const button = screen.getByRole('button', { name: 'Extract metadata' })
     expect(button).toBeDisabled()
 
     await user.hover(button.parentElement ?? button)
@@ -57,7 +57,7 @@ describe('ChatInput', () => {
   it('enables Extract metadata for exactly one ready file', () => {
     renderChatInput({ selectedCount: 1, extractMetadataDisabledReason: null })
 
-    expect(screen.getByRole('button', { name: 'Extract MQA metadata' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Extract metadata' })).toBeEnabled()
   })
 
   it('calls onExtractMetadata when clicked while enabled', async () => {
@@ -69,7 +69,7 @@ describe('ChatInput', () => {
       onExtractMetadata,
     })
 
-    await user.click(screen.getByRole('button', { name: 'Extract MQA metadata' }))
+    await user.click(screen.getByRole('button', { name: 'Extract metadata' }))
 
     expect(onExtractMetadata).toHaveBeenCalledTimes(1)
   })
@@ -170,7 +170,7 @@ describe('ChatInput — narrow phone widths (<480px)', () => {
 
     const summarize = screen.getByRole('button', { name: 'Summarize selected document' })
     const categorize = screen.getByRole('button', { name: 'Categorize selected document' })
-    const extract = screen.getByRole('button', { name: 'Extract MQA metadata' })
+    const extract = screen.getByRole('button', { name: 'Extract metadata' })
 
     expect(summarize).toHaveTextContent('Summarize')
     expect(categorize).toHaveTextContent('Categorize')
@@ -197,7 +197,7 @@ describe('ChatInput — narrow phone widths (<480px)', () => {
 
     renderChatInput({ selectedCount: 1, extractMetadataDisabledReason: null })
 
-    const extract = screen.getByRole('button', { name: 'Extract MQA metadata' })
+    const extract = screen.getByRole('button', { name: 'Extract metadata' })
     await user.hover(extract.parentElement ?? extract)
 
     expect(await screen.findByText('Extract metadata')).toBeInTheDocument()
@@ -231,7 +231,7 @@ describe('ChatInput — narrow phone widths (<480px)', () => {
     expect(
       screen.getByRole('button', { name: 'Categorize selected document' }),
     ).toHaveTextContent('Categorize')
-    expect(screen.getByRole('button', { name: 'Extract MQA metadata' })).toHaveTextContent(
+    expect(screen.getByRole('button', { name: 'Extract metadata' })).toHaveTextContent(
       'Extract metadata',
     )
   })
@@ -261,7 +261,7 @@ describe('ChatInput — narrow phone widths (<480px)', () => {
     expect(row2).toContainElement(
       screen.getByRole('button', { name: 'Categorize selected document' }),
     )
-    expect(row2).toContainElement(screen.getByRole('button', { name: 'Extract MQA metadata' }))
+    expect(row2).toContainElement(screen.getByRole('button', { name: 'Extract metadata' }))
     expect(row2).toHaveTextContent('Summarize')
     expect(row2).toHaveTextContent('Categorize')
   })
@@ -383,5 +383,105 @@ describe('docu-chat-composer-categorize CSS parity with summarize/extract', () =
     expect(css).toMatch(/\.docu-chat-composer-categorize:disabled/)
     expect(css).toMatch(/\.docu-chat-composer-categorize:focus,/)
     expect(css).toMatch(/\.docu-chat-composer-categorize:focus-visible,/)
+  })
+})
+
+describe('ChatInput — view-only (shared chat, view-only visibility)', () => {
+  it('disables the composer and shows the view-only placeholder, even with files selected', () => {
+    renderChatInput({
+      selectedCount: 2,
+      viewOnly: true,
+      viewOnlyPlaceholder: 'View only — the owner has not allowed questions here',
+    })
+
+    const textarea = screen.getByPlaceholderText(
+      'View only — the owner has not allowed questions here',
+    )
+    expect(textarea).toBeDisabled()
+  })
+
+  it('never calls onSend while view-only, even if Enter is pressed', async () => {
+    const user = userEvent.setup()
+    const onSend = vi.fn()
+    renderChatInput({ selectedCount: 2, viewOnly: true, onSend })
+
+    const textarea = screen.getByPlaceholderText('View only')
+    await user.type(textarea, 'Can I ask this?{Enter}')
+
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it('renders the normal placeholder and an enabled composer when not view-only', () => {
+    renderChatInput({ selectedCount: 1, viewOnly: false })
+
+    expect(
+      screen.getByPlaceholderText('Ask a question about the selected documents'),
+    ).not.toBeDisabled()
+  })
+})
+
+describe('ChatInput — shared queryable chat with no manual file selection', () => {
+  it('enables the composer with a scope-specific placeholder when allowEmptySelection is set', () => {
+    renderChatInput({
+      selectedCount: 0,
+      allowEmptySelection: true,
+      emptySelectionPlaceholder: 'Ask about the shared files',
+    })
+
+    const textarea = screen.getByPlaceholderText('Ask about the shared files')
+    expect(textarea).not.toBeDisabled()
+  })
+
+  it('still shows "Select documents first" and disables the composer when allowEmptySelection is off', () => {
+    renderChatInput({ selectedCount: 0 })
+
+    expect(screen.getByPlaceholderText('Select documents first')).toBeDisabled()
+  })
+
+  it('calls onSend with zero selected documents when allowEmptySelection is set', async () => {
+    const user = userEvent.setup()
+    const onSend = vi.fn()
+    renderChatInput({
+      selectedCount: 0,
+      allowEmptySelection: true,
+      emptySelectionPlaceholder: 'Ask about the shared files',
+      onSend,
+    })
+
+    const textarea = screen.getByPlaceholderText('Ask about the shared files')
+    await user.type(textarea, 'What is in these files?{Enter}')
+
+    expect(onSend).toHaveBeenCalledWith('What is in these files?')
+  })
+
+  it('renders the host-chosen files as read-only chips instead of the editable files pill', () => {
+    renderChatInput({
+      selectedCount: 0,
+      allowEmptySelection: true,
+      emptySelectionPlaceholder: 'Ask about the shared files',
+      sharedScopeFiles: [
+        { documentId: 'doc-9', filename: 'Contract.pdf' },
+        { documentId: 'doc-10', filename: null },
+      ],
+    })
+
+    expect(screen.getByText('Contract.pdf')).toBeInTheDocument()
+    expect(screen.getByText('File doc-10')).toBeInTheDocument()
+    // The normal editable chip (with its own "Clear selection" control)
+    // never renders alongside the read-only ones.
+    expect(screen.queryByLabelText('Clear selection')).not.toBeInTheDocument()
+  })
+
+  it('disables the composer with a distinct placeholder when the host has not chosen any files yet', () => {
+    renderChatInput({
+      selectedCount: 0,
+      allowEmptySelection: true,
+      emptySelectionPlaceholder: 'Ask about the shared files',
+      sharedScopeFiles: [],
+      sharedScopeEmpty: true,
+    })
+
+    const textarea = screen.getByPlaceholderText('The chat owner has not chosen files yet')
+    expect(textarea).toBeDisabled()
   })
 })

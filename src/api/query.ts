@@ -200,7 +200,13 @@ async function streamQuery(
 ): Promise<{ content: string; citations: Citation[]; coverage?: CoverageEvent; durationMs?: number }> {
   const toFriendlyStreamError = (err: unknown): string => {
     const httpStatus = err instanceof ApiError ? err.status : undefined
-    return toUserFacingQueryError(err instanceof Error ? err.message : undefined, { httpStatus })
+    // `ApiError.detail` only (not `.message`, which falls back to the raw
+    // HTTP reason phrase, e.g. "Forbidden") — `toUserFacingQueryError`'s
+    // 403 branch surfaces this verbatim when present, so it must be a real
+    // body message or nothing, never a technical statusText standing in
+    // for one.
+    const raw = err instanceof ApiError ? err.detail : err instanceof Error ? err.message : undefined
+    return toUserFacingQueryError(raw, { httpStatus })
   }
 
   let response: Response
@@ -431,8 +437,9 @@ export async function sendMessage(request: SendMessageRequest): Promise<SendMess
   const startedAt = Date.now()
   const payload: QueryRequest = {
     question: request.message,
-    documents: request.documents,
+    ...(request.omitDocuments ? {} : { documents: request.documents }),
     ...(request.tier ? { tier: request.tier } : {}),
+    ...(request.chatId ? { conversation_id: request.chatId } : {}),
   }
 
   const { content, citations, coverage, durationMs } = await streamQuery(

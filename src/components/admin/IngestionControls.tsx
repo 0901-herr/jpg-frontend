@@ -346,11 +346,11 @@ export default function IngestionControls({ overview }: IngestionControlsProps) 
       <AdminCard title="Operator">
         <ControlGroup>
           <ControlRow
-            title="ARCHE AI session"
+            title="Arche AI session"
             description="Opens operator chat using adapter LogicalDOC credentials."
             action={
               <IconControlButton
-                label="Open ARCHE AI session"
+                label="Open Arche AI session"
                 icon={<AdminOpenIcon />}
                 loading={chatSessionMutation.isPending}
                 onClick={() => chatSessionMutation.mutate()}

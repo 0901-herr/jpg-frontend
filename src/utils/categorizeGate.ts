@@ -24,7 +24,7 @@ export function getCategorizeDisabledReason(options: {
     return 'File not ready yet'
   }
   if (folder && !folder.has_children) {
-    return 'Not available in a leaf folder'
+    return 'Already categorized'
   }
   return null
 }

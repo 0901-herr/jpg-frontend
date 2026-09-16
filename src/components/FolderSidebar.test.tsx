@@ -171,10 +171,10 @@ describe('FolderSidebar category note', () => {
       screen.getByText('1 file is not shown because it has not been categorised yet.'),
     ).toBeInTheDocument()
     expect(
-      screen.getByText('Categories appear after ingestion classification completes.'),
+      screen.getByText('Categories appear once categorizing finishes for this folder.'),
     ).toBeInTheDocument()
     expect(
-      screen.getByText('No classification categories in this folder yet.'),
+      screen.getByText('No categories yet in this folder.'),
     ).toBeInTheDocument()
   })
 })
@@ -505,5 +505,38 @@ describe('FolderSidebar file row status icon', () => {
     // The filename keeps its own native title attribute — a separate
     // element/mechanism from the antd Tooltip asserted above.
     expect(screen.getByText('contract.pdf')).toHaveAttribute('title', 'contract.pdf')
+  })
+})
+
+describe('FolderSidebar disabled (shared chat, follower view)', () => {
+  it('renders a dimmed, non-interactive note instead of the file tree', () => {
+    render(
+      <FolderSidebar
+        browse={createBrowseFixture()}
+        selection={createSelectionFixture()}
+        disabled
+      />,
+    )
+
+    expect(
+      screen.getByText(
+        'Files are chosen by the chat owner. In a shared chat you can only ask about the files they picked.',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('tree')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Refresh document status' })).not.toBeInTheDocument()
+  })
+
+  it('takes priority over every other state (session expired, loading, etc.)', () => {
+    render(
+      <FolderSidebar
+        browse={createBrowseFixture({ sessionExpired: true })}
+        selection={createSelectionFixture()}
+        disabled
+      />,
+    )
+
+    expect(screen.getByText('Files are chosen by the chat owner.', { exact: false })).toBeInTheDocument()
+    expect(screen.queryByText('Session expired')).not.toBeInTheDocument()
   })
 })

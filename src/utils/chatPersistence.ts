@@ -56,10 +56,13 @@ export function loadChatHistory(userId: string): StoredChatHistory | null {
     }
     const sessions = parsed.sessions.map(sanitizeSession).filter((s) => s.messages.length > 0 || s.title)
     if (sessions.length === 0) return null
-    const activeChatId = sessions.some((s) => s.id === parsed.activeChatId)
-      ? parsed.activeChatId
-      : sessions[0].id
-    return { ...parsed, sessions, activeChatId }
+    // `activeChatId` is returned as-is, even when it doesn't match any of
+    // `sessions` here — this payload only ever holds the viewer's OWN
+    // chats, but the last active one may legitimately have been a shared
+    // chat that lives in a separate list entirely. Callers that need "is
+    // this still a real chat" check it against every list they have
+    // (own + shared), not just this one.
+    return { ...parsed, sessions, activeChatId: parsed.activeChatId }
   } catch {
     return null
   }
@@ -73,13 +76,12 @@ export function persistChatHistory(
   const sanitized = sessions.map(sanitizeSession).slice(0, MAX_SESSIONS)
   if (sanitized.length === 0) return
 
-  const resolvedActiveId = sanitized.some((s) => s.id === activeChatId)
-    ? activeChatId
-    : sanitized[0].id
-
+  // Stored as given, even when it names a chat outside `sessions` (e.g. a
+  // shared chat — this payload only ever holds the viewer's own) — see
+  // `loadChatHistory`'s matching comment.
   const payload: StoredChatHistory = {
     version: STORAGE_VERSION,
-    activeChatId: resolvedActiveId,
+    activeChatId,
     sessions: sanitized,
     updatedAt: new Date().toISOString(),
   }

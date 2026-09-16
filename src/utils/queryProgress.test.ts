@@ -20,8 +20,12 @@ describe('formatProgressStage', () => {
     )
   })
 
-  it('humanizes unknown stages without raw snake_case', () => {
-    expect(formatProgressStage('custom_stage')).toBe('Still working on Custom Stage')
+  it('falls back to a plain generic line for an unrecognized stage, never the raw stage name', () => {
+    // Owner feedback (plain-language sweep): a raw backend stage name like
+    // `tier_escalated` or `postprocessing` must never reach the user, even
+    // humanized — a fixed generic line stands in for all of them.
+    expect(formatProgressStage('custom_stage')).toBe('Working on it')
+    expect(formatProgressStage('tier_escalated')).toBe('Working on it')
   })
 
   it('classifying, embedding, and decontextualizing all mean "understanding"', () => {
@@ -30,12 +34,10 @@ describe('formatProgressStage', () => {
     expect(formatProgressStage('decontextualizing')).toBe('Understanding your question')
   })
 
-  it('rewriting appends the variant count only at 2 or more', () => {
+  it('rewriting is a fixed label regardless of the variant count (plain-language sweep: no "(N variants)" suffix)', () => {
     expect(formatProgressStage('rewriting', {})).toBe('Refining your question')
     expect(formatProgressStage('rewriting', { variants: 1 })).toBe('Refining your question')
-    expect(formatProgressStage('rewriting', { variants: 3 })).toBe(
-      'Refining your question (3 variants)',
-    )
+    expect(formatProgressStage('rewriting', { variants: 3 })).toBe('Refining your question')
   })
 
   it('retrieving names the documents in scope, falling back with none', () => {
@@ -51,52 +53,51 @@ describe('formatProgressStage', () => {
     expect(formatProgressStage('retrieving')).toBe('Searching your documents')
   })
 
-  it('retrieved counts candidates and documents, singular and plural', () => {
+  it('retrieved counts candidates and documents, singular and plural, in plain "section" language', () => {
     expect(formatProgressStage('retrieved', { candidates: 1, distinct_items: 1 })).toBe(
-      'Found 1 passage across 1 document',
+      'Found 1 section across 1 document',
     )
     expect(formatProgressStage('retrieved', { candidates: 5, distinct_items: 2 })).toBe(
-      'Found 5 passages across 2 documents',
+      'Found 5 sections across 2 documents',
     )
-    expect(formatProgressStage('retrieved', { candidates: 0 })).toBe('No matching passages yet')
-    expect(formatProgressStage('retrieved', {})).toBe('No matching passages yet')
+    expect(formatProgressStage('retrieved', { candidates: 0 })).toBe('Nothing matching yet')
+    expect(formatProgressStage('retrieved', {})).toBe('Nothing matching yet')
   })
 
-  it('reranking ranks a known total, falls back otherwise', () => {
-    expect(formatProgressStage('reranking', { total: 1 })).toBe('Ranking 1 passage by relevance')
-    expect(formatProgressStage('reranking', { total: 4 })).toBe(
-      'Ranking 4 passages by relevance',
-    )
+  it('reranking is always "Finding the best matches", regardless of total (plain-language sweep: no passage count)', () => {
+    expect(formatProgressStage('reranking', { total: 1 })).toBe('Finding the best matches')
+    expect(formatProgressStage('reranking', { total: 4 })).toBe('Finding the best matches')
     expect(formatProgressStage('reranking', {})).toBe('Finding the best matches')
   })
 
-  it('reranked reports the number selected', () => {
+  it('reranked reports the number selected, in plain "section" language', () => {
     expect(formatProgressStage('reranked', { selected: 1 })).toBe(
-      'Picked the 1 most relevant passage',
+      'Picked the 1 most relevant section',
     )
     expect(formatProgressStage('reranked', { selected: 3 })).toBe(
-      'Picked the 3 most relevant passages',
+      'Picked the 3 most relevant sections',
     )
   })
 
-  it('postprocessing reports the number kept', () => {
-    expect(formatProgressStage('postprocessing', { kept: 1 })).toBe('Checking 1 passage')
-    expect(formatProgressStage('postprocessing', { kept: 2 })).toBe('Checking 2 passages')
+  it('postprocessing reports the number kept, in plain "section" language', () => {
+    expect(formatProgressStage('postprocessing', { kept: 1 })).toBe('Checking 1 section')
+    expect(formatProgressStage('postprocessing', { kept: 2 })).toBe('Checking 2 sections')
   })
 
-  it('assembling reports the number of chunks', () => {
-    expect(formatProgressStage('assembling', { chunks: 1 })).toBe('Reading 1 passage')
-    expect(formatProgressStage('assembling', { chunks: 2 })).toBe('Reading 2 passages')
+  it('assembling reports the number of chunks, in plain "section" language', () => {
+    expect(formatProgressStage('assembling', { chunks: 1 })).toBe('Reading 1 section')
+    expect(formatProgressStage('assembling', { chunks: 2 })).toBe('Reading 2 sections')
   })
 
-  it('generating never names files — only "Writing your answer", regardless of context', () => {
+  it('generating never names files — only "Putting the answer together", regardless of context', () => {
     // Client feedback: naming files here read as if the model had already
     // decided its sources before writing anything. The retrieving stage
     // above still names what was searched; this one only says what's
-    // happening right now.
-    expect(formatProgressStage('generating')).toBe('Writing your answer')
+    // happening right now. ("Writing your answer" itself is gone — the
+    // owner wants that phrase off the ticker entirely.)
+    expect(formatProgressStage('generating')).toBe('Putting the answer together')
     expect(formatProgressStage('generating', {}, { filenames: ['A.pdf', 'B.pdf'] })).toBe(
-      'Writing your answer',
+      'Putting the answer together',
     )
   })
 
@@ -160,8 +161,9 @@ describe('listNames', () => {
 })
 
 describe('formatRouteLabel', () => {
-  it('maps simple lookup', () => {
-    expect(formatRouteLabel('simple_lookup')).toBe('Quick lookup')
+  it('maps simple lookup to a plain-language line (no "lookup" jargon)', () => {
+    expect(formatRouteLabel('simple_lookup')).toBe('Looking it up')
+    expect(formatRouteLabel('simple')).toBe('Looking it up')
   })
 
   it('carries no ellipsis for a known or an unknown strategy', () => {
@@ -210,19 +212,35 @@ describe('progressTickerLabel', () => {
     expect(progressTickerLabel(5, ctx)).toBe('Searching A.pdf')
   })
 
-  it('uses "Reading <file>" instead of "Searching" during the generating stage, and never names a folder', () => {
+  it('uses "Reading <file>" instead of "Searching" during the generating stage, cycling every tick with no stage label', () => {
+    // Generating never shows the stage label while there's something to
+    // name — every tick (not just odd ticks) advances to the next line.
     const ctx = {
-      stageLabel: 'Writing your answer',
+      stageLabel: 'Putting the answer together',
       stage: 'generating',
-      files: ['A.pdf', 'B.pdf'],
+      files: ['file1', 'file2', 'file3'],
+      folders: [],
+    }
+    expect(progressTickerLabel(0, ctx)).toBe('Reading file1')
+    expect(progressTickerLabel(1, ctx)).toBe('Reading file2')
+    expect(progressTickerLabel(2, ctx)).toBe('Reading file3')
+    expect(progressTickerLabel(3, ctx)).toBe('Reading file1')
+  })
+
+  it('during generating, cycles files then folders as "Reading folder <name>" — files first, folders after', () => {
+    const ctx = {
+      stageLabel: 'Putting the answer together',
+      stage: 'generating',
+      files: ['file1'],
       folders: ['Reports'],
     }
-    expect(progressTickerLabel(1, ctx)).toBe('Reading A.pdf')
-    expect(progressTickerLabel(3, ctx)).toBe('Reading B.pdf')
+    expect(progressTickerLabel(0, ctx)).toBe('Reading file1')
+    expect(progressTickerLabel(1, ctx)).toBe('Reading folder Reports')
+    expect(progressTickerLabel(2, ctx)).toBe('Reading file1')
   })
 
   it('is case-insensitive about the "generating" stage name', () => {
-    const ctx = { stageLabel: 'Writing your answer', stage: 'Generating', files: ['A.pdf'], folders: [] }
+    const ctx = { stageLabel: 'Putting the answer together', stage: 'Generating', files: ['A.pdf'], folders: [] }
     expect(progressTickerLabel(1, ctx)).toBe('Reading A.pdf')
   })
 
@@ -233,9 +251,10 @@ describe('progressTickerLabel', () => {
     expect(progressTickerLabel(2, ctx)).toBe('Understanding your question')
   })
 
-  it('falls back to the stage label during generating when no files are known yet', () => {
-    const ctx = { stageLabel: 'Writing your answer', stage: 'generating', files: [], folders: ['Reports'] }
-    expect(progressTickerLabel(1, ctx)).toBe('Writing your answer')
+  it('falls back to "Putting the answer together" during generating when there is no file or folder to name', () => {
+    const ctx = { stageLabel: 'Putting the answer together', stage: 'generating', files: [], folders: [] }
+    expect(progressTickerLabel(0, ctx)).toBe('Putting the answer together')
+    expect(progressTickerLabel(1, ctx)).toBe('Putting the answer together')
   })
 
   it('de-duplicates file and folder names before cycling', () => {
@@ -257,7 +276,7 @@ describe('progressTickerLabel', () => {
 
   it('produces no ellipsis in any scope line', () => {
     const ctx = {
-      stageLabel: 'Writing your answer',
+      stageLabel: 'Putting the answer together',
       stage: 'generating',
       files: ['A.pdf'],
       folders: [],

@@ -108,7 +108,7 @@ describe('DocumentChecklist status tooltip', () => {
     await user.hover(screen.getByText('contract.pdf'))
 
     const tooltips = await screen.findAllByRole('tooltip')
-    expect(tooltips.some((t) => t.textContent === 'Not indexed. Not queryable.')).toBe(true)
+    expect(tooltips.some((t) => t.textContent === 'Not ready yet. Not ready for questions.')).toBe(true)
   })
 
   it('shows no row-level tooltip when hovering the label of a selectable document', async () => {

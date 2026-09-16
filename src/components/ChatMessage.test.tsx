@@ -340,19 +340,19 @@ describe('progress label elapsed-time ticker', () => {
       <ChatMessageItem
         message={assistantMessage({
           status: 'thinking',
-          progressLabel: 'Writing your answer',
+          progressLabel: 'Putting the answer together',
           progressStage: 'generating',
           startedAt,
         })}
       />,
     )
 
-    expect(screen.getByText('Writing your answer · 0s')).toBeInTheDocument()
+    expect(screen.getByText('Putting the answer together · 0s')).toBeInTheDocument()
 
     act(() => {
       vi.advanceTimersByTime(2000)
     })
-    expect(screen.getByText('Writing your answer · 2s')).toBeInTheDocument()
+    expect(screen.getByText('Putting the answer together · 2s')).toBeInTheDocument()
   })
 
   it('shows the elapsed count exactly once — no separate standalone "{n}s" caption alongside the ticked headline', () => {
@@ -361,7 +361,7 @@ describe('progress label elapsed-time ticker', () => {
       <ChatMessageItem
         message={assistantMessage({
           status: 'thinking',
-          progressLabel: 'Writing your answer',
+          progressLabel: 'Putting the answer together',
           progressStage: 'generating',
           startedAt,
         })}
@@ -375,7 +375,7 @@ describe('progress label elapsed-time ticker', () => {
     // Only the compound headline carries the elapsed count — no standalone
     // "2s" caption below it duplicating the same number in a different
     // format (the MAJOR-2 regression: both used to render at once).
-    expect(screen.getByText('Writing your answer · 2s')).toBeInTheDocument()
+    expect(screen.getByText('Putting the answer together · 2s')).toBeInTheDocument()
     expect(screen.queryByText('2s')).not.toBeInTheDocument()
     expect(screen.getAllByText(/2s/)).toHaveLength(1)
   })
@@ -409,19 +409,19 @@ describe('progress label elapsed-time ticker', () => {
         message={assistantMessage({
           status: 'streaming',
           content: '',
-          progressLabel: 'Writing your answer',
+          progressLabel: 'Putting the answer together',
           progressStage: 'generating',
           startedAt,
         })}
       />,
     )
 
-    expect(screen.getByText('Writing your answer · 0s')).toBeInTheDocument()
+    expect(screen.getByText('Putting the answer together · 0s')).toBeInTheDocument()
 
     act(() => {
       vi.advanceTimersByTime(3000)
     })
-    expect(screen.getByText('Writing your answer · 3s')).toBeInTheDocument()
+    expect(screen.getByText('Putting the answer together · 3s')).toBeInTheDocument()
   })
 
   it('does not append the ticker suffix to the streaming label once content has arrived', () => {
@@ -430,7 +430,7 @@ describe('progress label elapsed-time ticker', () => {
         message={assistantMessage({
           status: 'streaming',
           content: 'Partial answer',
-          progressLabel: 'Writing your answer',
+          progressLabel: 'Putting the answer together',
           progressStage: 'generating',
           startedAt: Date.now(),
         })}
@@ -440,8 +440,8 @@ describe('progress label elapsed-time ticker', () => {
     // The label itself may still be shown (cleared separately once a delta
     // arrives, in AppLayout), but the elapsed-time ticker only applies to
     // the silent, content-free phase.
-    expect(screen.getByText('Writing your answer')).toBeInTheDocument()
-    expect(screen.queryByText(/Writing your answer ·/)).not.toBeInTheDocument()
+    expect(screen.getByText('Putting the answer together')).toBeInTheDocument()
+    expect(screen.queryByText(/Putting the answer together ·/)).not.toBeInTheDocument()
   })
 })
 
@@ -510,13 +510,13 @@ describe('progress ticker names the files/folders being searched', () => {
     expect(screen.getByText(/^Searching folder Reports/)).toBeInTheDocument()
   })
 
-  it('alternates "Writing your answer" with "Reading <file>" during generating, using cited files once available', () => {
+  it('never shows the stage label during generating — cycles "Reading <file>" on every tick, using cited files once available', () => {
     const startedAt = Date.now()
     const { rerender } = render(
       <ChatMessageItem
         message={assistantMessage({
           status: 'thinking',
-          progressLabel: 'Writing your answer',
+          progressLabel: 'Putting the answer together',
           progressStage: 'generating',
           progressScopeFiles: ['A.pdf'],
           startedAt,
@@ -529,6 +529,7 @@ describe('progress ticker names the files/folders being searched', () => {
       vi.advanceTimersByTime(2500)
     })
     expect(screen.getByText(/^Reading A\.pdf/)).toBeInTheDocument()
+    expect(screen.queryByText(/^Putting the answer together/)).not.toBeInTheDocument()
 
     // A citation for a different document arrives — the ticker now cites it
     // by name instead of the scoped fallback.
@@ -536,7 +537,7 @@ describe('progress ticker names the files/folders being searched', () => {
       <ChatMessageItem
         message={assistantMessage({
           status: 'thinking',
-          progressLabel: 'Writing your answer',
+          progressLabel: 'Putting the answer together',
           progressStage: 'generating',
           progressScopeFiles: ['A.pdf'],
           sources: [{ index: 1, filename: 'Cited.pdf' }],
@@ -545,24 +546,55 @@ describe('progress ticker names the files/folders being searched', () => {
       />,
     )
 
-    // Two more ticks (the component never unmounted, so the ticker's own
-    // count keeps running) lands back on an odd tick — the next scope line.
+    // With a single name in scope, every tick lands on it — the component
+    // never unmounted, so the ticker's own count keeps running.
     act(() => {
       vi.advanceTimersByTime(5000)
     })
     expect(screen.getByText(/^Reading Cited\.pdf/)).toBeInTheDocument()
   })
 
-  it('never names a folder during generating, even when one is in scope', () => {
+  it('names a folder as "Reading folder <name>" during generating too, cycling files then folders, never the stage label', () => {
     const startedAt = Date.now()
     render(
       <ChatMessageItem
         message={assistantMessage({
           status: 'thinking',
-          progressLabel: 'Writing your answer',
+          progressLabel: 'Putting the answer together',
+          progressStage: 'generating',
+          progressScopeFiles: ['A.pdf'],
+          progressScopeFolders: ['Reports'],
+          startedAt,
+        })}
+      />,
+    )
+
+    // Tick 0, on mount: the first scope line (a file) — no stage label.
+    expect(screen.getByText(/^Reading A\.pdf/)).toBeInTheDocument()
+
+    act(() => {
+      vi.advanceTimersByTime(2500)
+    })
+    expect(screen.getByText(/^Reading folder Reports/)).toBeInTheDocument()
+
+    act(() => {
+      vi.advanceTimersByTime(2500)
+    })
+    expect(screen.getByText(/^Reading A\.pdf/)).toBeInTheDocument()
+
+    expect(screen.queryByText(/^Putting the answer together/)).not.toBeInTheDocument()
+  })
+
+  it('falls back to "Putting the answer together" during generating when there is nothing to name', () => {
+    const startedAt = Date.now()
+    render(
+      <ChatMessageItem
+        message={assistantMessage({
+          status: 'thinking',
+          progressLabel: 'Putting the answer together',
           progressStage: 'generating',
           progressScopeFiles: [],
-          progressScopeFolders: ['Reports'],
+          progressScopeFolders: [],
           startedAt,
         })}
       />,
@@ -571,8 +603,7 @@ describe('progress ticker names the files/folders being searched', () => {
     act(() => {
       vi.advanceTimersByTime(10000)
     })
-    expect(screen.queryByText(/folder/)).not.toBeInTheDocument()
-    expect(screen.getAllByText(/^Writing your answer/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/^Putting the answer together/).length).toBeGreaterThan(0)
   })
 
   it('stops ticking scope names once the answer completes (no stray "Searching" text left behind)', () => {
@@ -582,7 +613,7 @@ describe('progress ticker names the files/folders being searched', () => {
         message={assistantMessage({
           status: 'streaming',
           content: '',
-          progressLabel: 'Writing your answer',
+          progressLabel: 'Putting the answer together',
           progressStage: 'generating',
           progressScopeFiles: ['A.pdf'],
           startedAt,
@@ -617,7 +648,7 @@ describe('progress ticker names the files/folders being searched', () => {
       <ChatMessageItem
         message={assistantMessage({
           status: 'thinking',
-          progressLabel: 'Writing your answer',
+          progressLabel: 'Putting the answer together',
           progressStage: 'generating',
           progressScopeFiles: ['A.pdf'],
           startedAt,
@@ -916,5 +947,80 @@ describe('answer-order citation numbering (client feedback: a second question us
     const highlighted = screen.getByText('students')
     expect(highlighted.tagName).toBe('SPAN')
     expect(highlighted.className).toContain('font-medium')
+  })
+})
+
+describe('author label', () => {
+  it('shows the message authorUsername above a user bubble once it has one', () => {
+    render(
+      <ChatMessageItem
+        message={{ id: 'u1', role: 'user', content: 'Hi', authorUsername: 'alice' }}
+        currentUsername="bob"
+      />,
+    )
+
+    expect(screen.getByText('alice')).toBeInTheDocument()
+    expect(screen.queryByText('bob')).not.toBeInTheDocument()
+  })
+
+  it('falls back to the viewer own display name when authorUsername has not arrived yet', () => {
+    render(
+      <ChatMessageItem message={{ id: 'u1', role: 'user', content: 'Hi' }} currentUsername="bob" />,
+    )
+
+    expect(screen.getByText('bob')).toBeInTheDocument()
+  })
+
+  it('falls back to "You" when neither authorUsername nor currentUsername is available', () => {
+    render(<ChatMessageItem message={{ id: 'u1', role: 'user', content: 'Hi' }} />)
+
+    expect(screen.getByText('You')).toBeInTheDocument()
+  })
+
+  it('always labels the assistant "Arche AI", regardless of any author field', () => {
+    render(<ChatMessageItem message={assistantMessage({ content: 'Answer.' })} />)
+
+    expect(screen.getByText('Arche AI')).toBeInTheDocument()
+  })
+})
+
+describe('user bubble file tags (shared-scope queries)', () => {
+  it('renders each file tag under the question', () => {
+    render(
+      <ChatMessageItem
+        message={{
+          id: 'u1',
+          role: 'user',
+          content: 'What is in these?',
+          fileTags: ['a.pdf', 'b.pdf'],
+        }}
+      />,
+    )
+
+    expect(screen.getByText('a.pdf')).toBeInTheDocument()
+    expect(screen.getByText('b.pdf')).toBeInTheDocument()
+  })
+
+  it('renders a fallback count tag when filenames could not be resolved', () => {
+    render(
+      <ChatMessageItem
+        message={{
+          id: 'u1',
+          role: 'user',
+          content: 'What is in these?',
+          fileTags: ['3 shared files'],
+        }}
+      />,
+    )
+
+    expect(screen.getByText('3 shared files')).toBeInTheDocument()
+  })
+
+  it('renders nothing extra when there are no file tags', () => {
+    const { container } = render(
+      <ChatMessageItem message={{ id: 'u1', role: 'user', content: 'Hi' }} />,
+    )
+
+    expect(container.querySelector('[data-testid="user-file-tags"]')).not.toBeInTheDocument()
   })
 })

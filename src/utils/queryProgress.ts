@@ -6,7 +6,7 @@ const STAGE_LABELS: Record<string, string> = {
   rewriting: 'Refining your question',
   retrieving: 'Searching your documents',
   reranking: 'Finding the best matches',
-  generating: 'Writing your answer',
+  generating: 'Putting the answer together',
   assembly: 'Almost done. Putting your answer together',
   assembling: 'Almost done. Putting your answer together',
   synthesizing: 'Almost done. Putting your answer together',
@@ -72,7 +72,10 @@ function legacyFallback(stage: string): string {
     return 'Understanding your question'
   }
 
-  return `Still working on ${humanizeStage(stage)}`
+  // Plain-language sweep: a raw backend stage name (e.g. `tier_escalated`)
+  // must never reach the user, humanized or not — a fixed generic line
+  // stands in for anything this function doesn't otherwise recognize.
+  return 'Working on it'
 }
 
 /** Turns one `progress` SSE stage into a specific, human-readable label.
@@ -98,11 +101,10 @@ export function formatProgressStage(
     case 'decontextualizing':
       return 'Understanding your question'
 
-    case 'rewriting': {
-      const variants = readNumber(p, 'variants')
-      const suffix = variants != null && variants >= 2 ? ` (${variants} variants)` : ''
-      return `Refining your question${suffix}`
-    }
+    case 'rewriting':
+      // Plain-language sweep: the owner asked for the "(N variants)" suffix
+      // gone — a fixed label regardless of how many rewrites ran.
+      return 'Refining your question'
 
     case 'retrieving':
       return filenames.length > 0
@@ -112,30 +114,29 @@ export function formatProgressStage(
     case 'retrieved': {
       const candidates = readNumber(p, 'candidates') ?? 0
       const distinctItems = readNumber(p, 'distinct_items') ?? 0
-      if (candidates === 0) return 'No matching passages yet'
-      return `Found ${candidates} ${plural(candidates, 'passage')} across ${distinctItems} ${plural(distinctItems, 'document')}`
+      if (candidates === 0) return 'Nothing matching yet'
+      return `Found ${candidates} ${plural(candidates, 'section')} across ${distinctItems} ${plural(distinctItems, 'document')}`
     }
 
-    case 'reranking': {
-      const total = readNumber(p, 'total')
-      return total != null
-        ? `Ranking ${total} ${plural(total, 'passage')} by relevance`
-        : 'Finding the best matches'
-    }
+    case 'reranking':
+      // Plain-language sweep: always the same fixed line — no passage
+      // count ("chunks"/"passages" are exactly the vocabulary the owner
+      // asked to remove).
+      return 'Finding the best matches'
 
     case 'reranked': {
       const selected = readNumber(p, 'selected') ?? 0
-      return `Picked the ${selected} most relevant ${plural(selected, 'passage')}`
+      return `Picked the ${selected} most relevant ${plural(selected, 'section')}`
     }
 
     case 'postprocessing': {
       const kept = readNumber(p, 'kept') ?? 0
-      return `Checking ${kept} ${plural(kept, 'passage')}`
+      return `Checking ${kept} ${plural(kept, 'section')}`
     }
 
     case 'assembling': {
       const chunks = readNumber(p, 'chunks') ?? 0
-      return `Reading ${chunks} ${plural(chunks, 'passage')}`
+      return `Reading ${chunks} ${plural(chunks, 'section')}`
     }
 
     case 'generating':
@@ -143,8 +144,11 @@ export function formatProgressStage(
       // "Writing your answer from X, Y" subtitle read as if the model had
       // already decided its sources before it had written anything) — the
       // earlier retrieving/retrieved stages above still name what was
-      // searched, this one just says what's happening now.
-      return 'Writing your answer'
+      // searched, this one just says what's happening now. The ticker
+      // (`progressTickerLabel` below) shows this label only when there is
+      // nothing to name yet — the owner wants "Writing your answer" itself
+      // gone from what the user sees.
+      return 'Putting the answer together'
 
     case 'planning': {
       const iteration = readNumber(p, 'iteration')
@@ -162,8 +166,8 @@ export function formatProgressStage(
 export function formatRouteLabel(strategy: string | undefined): string | undefined {
   if (!strategy) return undefined
   const labels: Record<string, string> = {
-    simple: 'Quick lookup',
-    simple_lookup: 'Quick lookup',
+    simple: 'Looking it up',
+    simple_lookup: 'Looking it up',
     aggregation: 'Summarizing across documents',
     agent: 'Working through your question',
   }
@@ -199,19 +203,26 @@ export interface ProgressTickerContext {
 /** Pure step function for the "searching/reading the files" ticker (client
  * feedback: "a status that says something like 'searching through files
  * XX, files XXX, or maybe folder XX' ... alternating the 'writing your
- * answer' so that the UI appears to be more interactive"). `tick` advances
- * roughly every 2.5s while a query is in flight (driven by
- * `useProgressTicker`, a plain interval — this function itself is a pure
- * lookup so it's cheap to unit test).
+ * answer' so that the UI appears to be more interactive", later narrowed
+ * to: "let's not have 'writing your answer', instead just show different
+ * status where the system reads different files for the answer ... only
+ * apply to the 'writing your answer' stage, since that's usually stuck the
+ * longest"). `tick` advances roughly every 2.5s while a query is in flight
+ * (driven by `useProgressTicker`, a plain interval — this function itself
+ * is a pure lookup so it's cheap to unit test).
  *
- * Even ticks always show the real stage label. Odd ticks show a scope
- * line that cycles through the known names, one per odd tick: "Searching
- * <file>" / "Searching folder <folder>" for every stage except
- * `generating`, which shows "Reading <file>" instead (and never names a
- * folder — client feedback: it should read like the model working through
- * specific sources, not searching a location). With nothing to name, the
- * scope line has nothing to show, so every tick just returns the stage
- * label unchanged. */
+ * `generating` is the special case the owner asked for: it never shows the
+ * stage label while there's at least one file or folder to name — every
+ * tick advances straight to the next "Reading <file>" / "Reading folder
+ * <folder>" line (files first, then folders), wrapping around. With
+ * nothing to name yet, it falls back to a neutral "Putting the answer
+ * together" line rather than the stage label.
+ *
+ * Every other stage keeps the original alternation: even ticks always show
+ * the real stage label, odd ticks cycle through "Searching <file>" /
+ * "Searching folder <folder>" lines one per odd tick. With nothing to
+ * name, the scope line has nothing to show, so every tick just returns the
+ * stage label unchanged. */
 export function progressTickerLabel(
   tick: number,
   { stageLabel, stage, files, folders }: ProgressTickerContext,
@@ -220,12 +231,19 @@ export function progressTickerLabel(
   const uniqueFiles = [...new Set(files.filter(Boolean))]
   const uniqueFolders = [...new Set(folders.filter(Boolean))]
 
-  const scopeLines = isGenerating
-    ? uniqueFiles.map((name) => `Reading ${name}`)
-    : [
-        ...uniqueFiles.map((name) => `Searching ${name}`),
-        ...uniqueFolders.map((name) => `Searching folder ${name}`),
-      ]
+  if (isGenerating) {
+    const scopeLines = [
+      ...uniqueFiles.map((name) => `Reading ${name}`),
+      ...uniqueFolders.map((name) => `Reading folder ${name}`),
+    ]
+    if (scopeLines.length === 0) return 'Putting the answer together'
+    return scopeLines[tick % scopeLines.length]
+  }
+
+  const scopeLines = [
+    ...uniqueFiles.map((name) => `Searching ${name}`),
+    ...uniqueFolders.map((name) => `Searching folder ${name}`),
+  ]
 
   if (scopeLines.length === 0) return stageLabel
   if (tick % 2 === 0) return stageLabel

@@ -17,6 +17,8 @@ export const QUERY_SESSION_EXPIRED_ERROR =
 export const QUERY_PERMISSION_DENIED_ERROR =
   "You don't have permission to query the selected documents."
 
+export const QUERY_NO_HOST_SCOPE_ERROR = 'The chat owner has not chosen any files yet.'
+
 export const QUERY_SERVER_ERROR =
   'Something went wrong on our side. Wait a moment and try again.'
 
@@ -59,7 +61,20 @@ export function toUserFacingQueryError(
   }
 
   if (httpStatus === 403) {
-    return QUERY_PERMISSION_DENIED_ERROR
+    // A body message (e.g. "This chat is view-only") is more specific than
+    // the generic permission text and safe to show as-is — the adapter
+    // only ever puts jargon-free copy in this field. No message at all
+    // (a bare 403 with no parseable body) still falls back to the generic
+    // line rather than a raw HTTP reason phrase.
+    return raw?.trim() ? raw.trim() : QUERY_PERMISSION_DENIED_ERROR
+  }
+
+  if (httpStatus === 409) {
+    // A shared query against a host who hasn't chosen any files yet — the
+    // adapter's body message is already jargon-free (same trust as the 403
+    // branch above); no body falls back to the generic line below rather
+    // than a raw HTTP reason phrase.
+    return raw?.trim() ? raw.trim() : QUERY_NO_HOST_SCOPE_ERROR
   }
 
   if (httpStatus != null && httpStatus >= 500) {
@@ -132,7 +147,7 @@ export interface FolderLoadError {
 
 export const FOLDER_LOAD_PERMISSION_ERROR: FolderLoadError = {
   title: 'You do not have access',
-  body: 'Your LogicalDOC session does not allow browsing these folders. Reopen ARCHE AI from LogicalDOC.',
+  body: 'Your LogicalDOC session does not allow browsing these folders. Reopen Arche AI from LogicalDOC.',
 }
 
 export const FOLDER_LOAD_SERVER_ERROR: FolderLoadError = {
@@ -148,22 +163,32 @@ export function toUserFacingFolderLoadError(httpStatus: number | undefined): Fol
   return FOLDER_LOAD_SERVER_ERROR
 }
 
-export const MQA_METADATA_GENERIC_ERROR = 'Could not extract metadata. Please try again.'
+export const METADATA_EXTRACTION_GENERIC_ERROR = 'Could not extract metadata. Please try again.'
 
-/** The mqa-metadata contract's own error details (409/504/502) are already
- * plain language — show them verbatim. Anything else (network failure,
- * an unexpected detail string, no detail at all) falls back to the
- * generic message rather than surfacing raw/technical text. 401 is not
- * handled here: it goes through the same session-expired path the query
- * flow uses (`toUserFacingQueryError` with httpStatus 401). */
-const MQA_METADATA_KNOWN_DETAILS = new Set([
-  'Document is still being indexed. Try again when it is Ready.',
-  'Document is not ready for extraction.',
-  'Metadata extraction timed out. Please try again.',
-  'Metadata extraction failed. Please try again.',
-])
+/** The extract-metadata contract's own error details (409/504/502) are
+ * matched by their raw (technical) wording below, but plain-language
+ * sweep: never shown verbatim — each known detail maps to its own
+ * jargon-free display line. Anything else (network failure, an
+ * unrecognized detail string, no detail at all) falls back to the generic
+ * message rather than surfacing raw/technical text. 401 is not handled
+ * here: it goes through the same session-expired path the query flow uses
+ * (`toUserFacingQueryError` with httpStatus 401). */
+const METADATA_EXTRACTION_KNOWN_DETAILS: Record<string, string> = {
+  'Document is still being indexed. Try again when it is Ready.':
+    "This document isn't ready yet. Try again once it shows Ready.",
+  'Document is not ready for extraction.':
+    "This document isn't ready for that yet. Please try again shortly.",
+  'Metadata extraction timed out. Please try again.': 'That took too long. Please try again.',
+  'Metadata extraction failed. Please try again.': 'That did not work. Please try again.',
+}
 
-export function toUserFacingMqaMetadataError(detail: string | undefined): string {
-  if (detail && MQA_METADATA_KNOWN_DETAILS.has(detail)) return detail
-  return MQA_METADATA_GENERIC_ERROR
+export function toUserFacingMetadataExtractionError(detail: string | undefined): string {
+  // `Object.hasOwn` (not `in`, which walks the prototype chain) — an
+  // adapter `detail` of exactly "constructor" or another Object.prototype
+  // member name must be treated as unrecognized, not resolve to that
+  // prototype function.
+  if (detail && Object.hasOwn(METADATA_EXTRACTION_KNOWN_DETAILS, detail)) {
+    return METADATA_EXTRACTION_KNOWN_DETAILS[detail]
+  }
+  return METADATA_EXTRACTION_GENERIC_ERROR
 }

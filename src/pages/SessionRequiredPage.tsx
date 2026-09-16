@@ -17,10 +17,10 @@ export default function SessionRequiredPage() {
       : 'Sign in required'
 
   const description = signedOut
-    ? 'You are no longer signed in to ARCHE AI.'
+    ? 'You are no longer signed in to Arche AI.'
     : sessionExpired
-      ? 'Your ARCHE AI session has expired.'
-      : 'You need an active LogicalDOC session to use ARCHE AI.'
+      ? 'Your Arche AI session has expired.'
+      : 'You need an active LogicalDOC session to use Arche AI.'
 
   return (
     <div className={`min-h-screen ${surface.page} flex items-center justify-center p-4`}>
@@ -40,7 +40,7 @@ export default function SessionRequiredPage() {
         </Paragraph>
 
         <Paragraph className={`!mt-3 !mb-6 ${type.body} ${typeColor.secondary}`}>
-          Open <strong>LogicalDOC</strong>, then launch <strong>ARCHE AI</strong> from there to
+          Open <strong>LogicalDOC</strong>, then launch <strong>Arche AI</strong> from there to
           continue.
         </Paragraph>
 

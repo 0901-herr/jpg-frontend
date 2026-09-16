@@ -69,7 +69,18 @@ export interface ChatMessage {
    * preceding user message in the session. Only query answers set this;
    * summary/categorize/metadata chat messages leave it unset. */
   question?: string
+  /** The display name of whoever asked/answered this turn — set server-side
+   * from the acting `AISession` and echoed back on every message
+   * (`src/api/chat.ts`). Rendered above every user bubble (see
+   * `ChatMessage.tsx`'s `AssistantLabel`/user branch); assistant messages
+   * always render "Arche AI" regardless of this field. Absent for a
+   * message that hasn't round-tripped to the server yet (still in flight,
+   * or a pre-persistence local session) — callers fall back to the
+   * current viewer's own display name. */
+  authorUsername?: string
 }
+
+export type ChatVisibility = 'private' | 'view' | 'query'
 
 export interface ChatSession {
   id: string
@@ -81,6 +92,53 @@ export interface ChatSession {
    * an older localStorage payload); those keep whatever title they already
    * had rather than being renamed. */
   createdAt?: string
+  /** The project this chat is grouped under in the sidebar, or `null`/
+   * `undefined` for an ungrouped chat. */
+  projectId?: string | null
+  /** Sharing state — `private` (default) never shows a link; `view` lets
+   * anyone with the link read the chat; `query` also lets them ask
+   * questions. */
+  visibility?: ChatVisibility
+  /** Present only once `visibility` has ever been set to `view`/`query` —
+   * `null`/`undefined` for a chat that has never been shared. */
+  shareToken?: string | null
+  /** Display name of the chat's owner — set on a session loaded from the
+   * `Shared` group; a chat the viewer owns doesn't need it (their own
+   * name), but it's populated there too when the server sends it. */
+  ownerUsername?: string
+  /** `false` only for a chat opened via a shared link the viewer doesn't
+   * own. Absent/`true` for every chat the viewer created themselves. */
+  isOwner?: boolean
+  /** Whether the composer accepts new questions on this chat — always
+   * `true` for an owned chat; for a shared chat this mirrors the owner's
+   * chosen visibility (`true` only for `query`). */
+  canQuery?: boolean
+  /** Server-reported message count — used for the sidebar project-group
+   * counts without requiring every chat's messages to be loaded. Falls
+   * back to `messages.length` once messages have been fetched. */
+  messageCount?: number
+  /** The document ids this chat is scoped to server-side (its own
+   * `scope_document_ids`, set from the query that started or last updated
+   * it) — only populated once the full session detail has loaded (`GET
+   * /chat/sessions/{id}` or `/chat/shared/{token}`), never from the
+   * lighter list/summary endpoints. Used as the query scope for a shared
+   * queryable chat when the viewer hasn't manually selected any documents
+   * of their own (they may not even be able to browse these). */
+  scopeDocumentIds?: string[]
+  /** Same documents as `scopeDocumentIds`, paired with a resolved
+   * filename (`null` when the viewer can't resolve one) — the composer's
+   * read-only chips for a shared queryable chat, and the source for a
+   * follower turn's user-bubble file tags, both come from this instead of
+   * the viewer's own (possibly nonexistent) browse-tree metadata. Same
+   * once-full-detail-loaded caveat as `scopeDocumentIds`. */
+  scopeDocuments?: { documentId: string; filename: string | null }[]
+}
+
+/** A named group a chat can be filed under (Sidebar's "New project"
+ * affordance) — purely organizational, never affects sharing or access. */
+export interface ChatProject {
+  id: string
+  name: string
 }
 
 export interface UserProfile {

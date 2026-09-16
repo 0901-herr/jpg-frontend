@@ -3,7 +3,7 @@ import { ChatBubbleIconLg, ChatCloseIcon, ChatMenuIcon } from '../icons/chat'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   categorizeDocument,
-  extractMqaMetadata,
+  extractMetadata,
   fetchDocumentSummary,
   validateQueryScope,
 } from '../api/browse'
@@ -14,22 +14,27 @@ import { useAuth } from '../context/AuthContext'
 import { useSendQuery } from '../hooks/mutations/useSendQuery'
 import type { DocumentsLoadedEvent } from '../hooks/useBrowseTree'
 import { useBrowseTree } from '../hooks/useBrowseTree'
+import { useChatStore, createEmptySession } from '../hooks/useChatStore'
 import { useDocumentSelection } from '../hooks/useDocumentSelection'
 import { useResizableWidth } from '../hooks/useResizableWidth'
 import { useMediaQuery } from '../hooks/useMediaQuery'
+import { useVisualViewportHeight } from '../hooks/useVisualViewportHeight'
 import { type, typeColor } from '../styles/typography'
 import { citationsToSources, mergeCitations } from '../utils/citations'
 import { appendStreamDelta } from '../utils/appendStreamDelta'
 import { formatProgressStage, formatRouteLabel, resolveProgressScope } from '../utils/queryProgress'
-import { loadChatHistory, persistChatHistory } from '../utils/chatPersistence'
+import { persistChatHistory } from '../utils/chatPersistence'
 import { getSummarizeDisabledReason, isSummaryReady } from '../utils/summaryGate'
-import { getExtractMetadataDisabledReason, isMqaMetadataReady } from '../utils/mqaMetadataGate'
+import {
+  getExtractMetadataDisabledReason,
+  isMetadataExtractionReady,
+} from '../utils/metadataExtractionGate'
 import { getCategorizeDisabledReason } from '../utils/categorizeGate'
 import { buildSummaryMessages } from '../utils/summaryMessages'
-import { buildMqaMetadataAnswer } from '../utils/mqaMetadataMessage'
+import { buildMetadataExtractionAnswer } from '../utils/metadataExtractionMessage'
 import { buildCategorizeMessages } from '../utils/categorizeMessages'
 import { DEFAULT_QUERY_TIER } from '../utils/queryTier'
-import { toUserFacingMqaMetadataError, toUserFacingQueryError } from '../utils/userFacingErrors'
+import { toUserFacingMetadataExtractionError, toUserFacingQueryError } from '../utils/userFacingErrors'
 import type { QueryTier } from '../api/types/query'
 import { isCitationDemoEnabled, isCitationLoadingDemoEnabled } from '../config/demo'
 import {
@@ -61,11 +66,21 @@ function pairMessages(messages: ChatMessage[]): { user: ChatMessage; assistant?:
  * has no `message` field at all per the contract; the others are a
  * defensive backstop in case a future response omits `message`. */
 const CATEGORIZE_ERROR_FALLBACKS: Record<string, string> = {
-  feature_disabled: 'Categorization is not enabled for this deployment.',
-  leaf_folder: 'This folder has no subfolders — there is nothing to categorize into.',
+  feature_disabled: 'Categorizing is not turned on for this site.',
+  leaf_folder: 'This file is already categorized.',
   document_not_ready: 'This file is not ready to categorize yet. Please try again shortly.',
   categorize_unavailable: 'Categorization is temporarily unavailable. Please try again.',
 }
+
+/** A follower can't choose documents in a shared chat at all (owner
+ * decision, 2026-09-16) — but `selection` is global state that outlives
+ * switching chats, so a document still selected from the viewer's OWN chat
+ * must not be usable to run Summarize/Categorize/Extract metadata against
+ * the shared conversation (it would post that content into it via
+ * `persistTurn`/`chatStore.recordUserMessage`, regardless of what's shown
+ * locally). Takes priority over every other disabled reason for these
+ * three actions. */
+const SHARED_CHAT_ACTION_DISABLED_REASON = 'Not available in a shared chat'
 
 /** Never a fatal screen: every categorize failure — a mapped adapter error,
  * an unmapped status, or a plain network/JS error — resolves to a message
@@ -81,46 +96,16 @@ function categorizeErrorMessage(err: unknown): string {
   return 'Could not categorize this file. Please try again.'
 }
 
-const SESSION_TITLE_MONTHS = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-] as const
-
-/** "15 Sep 2026" — day (no leading zero), short English month, full year. */
-function formatSessionDate(date: Date): string {
-  return `${date.getDate()} ${SESSION_TITLE_MONTHS[date.getMonth()]} ${date.getFullYear()}`
-}
-
-function isSameLocalDay(a: Date, b: Date): boolean {
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  )
-}
-
-/** "Session {date} (n)" — n is 1 + however many of `existingSessions` were
- * created on the same local calendar day. A session with no `createdAt`
- * (predates this field, or a demo/mock session) never counts toward that
- * total — its own title is left alone wherever it's displayed, and it
- * shouldn't silently renumber a same-day sibling either. */
-function nextSessionTitle(existingSessions: ChatSession[], now: Date): string {
-  const sameDay = existingSessions.filter(
-    (s) => s.createdAt && isSameLocalDay(new Date(s.createdAt), now),
-  )
-  return `Session ${formatSessionDate(now)} (${sameDay.length + 1})`
-}
-
-/** `existingSessions` is whatever sessions this new one will sit alongside
- * — pass the current list so the "(n)" count is right; omit only when
- * there truly are none yet (first-ever session). */
-function createEmptySession(existingSessions: ChatSession[] = []): ChatSession {
-  const now = new Date()
-  return {
-    id: crypto.randomUUID(),
-    title: nextSessionTitle(existingSessions, now),
-    createdAt: now.toISOString(),
-    messages: [],
-  }
+/** Best-effort human-readable body message for the query flow's error
+ * paths — `ApiError.detail` only (never falls back to `.message`, which is
+ * `detail ?? response.statusText`: a raw HTTP reason phrase like
+ * "Forbidden" is not a real server message and must not be shown as one,
+ * e.g. by `toUserFacingQueryError`'s 403 branch). A plain (non-API) Error
+ * still surfaces its own `.message` — those come from the streaming client
+ * itself, not a parsed HTTP body. */
+function queryErrorRawMessage(err: unknown): string | undefined {
+  if (err instanceof ApiError) return err.detail
+  return err instanceof Error ? err.message : undefined
 }
 
 function createInitialSession(): ChatSession {
@@ -133,8 +118,17 @@ function chatPersistenceEnabled(): boolean {
   return !isCitationDemoEnabled() && !isCitationLoadingDemoEnabled()
 }
 
+/** Read directly off `window.location` rather than `react-router`'s
+ * `useSearchParams`, which requires this component to be mounted under a
+ * `<Router>` — AppLayout itself has no such requirement otherwise, and its
+ * test suite renders it standalone. */
+function getShareTokenFromLocation(): string | null {
+  if (typeof window === 'undefined') return null
+  return new URLSearchParams(window.location.search).get('share')
+}
+
 // Below 768px the resizable desktop sidebar is replaced by a slim top bar
-// (hamburger + "ARCHE AI" + current session title) and the sidebar itself
+// (hamburger + "Arche AI" + current session title) and the sidebar itself
 // moves into an antd Drawer opened from that hamburger — see the Task 5
 // brief. 767.98px (not 768) so a device reporting exactly 768px CSS pixels
 // lands on the desktop side of the breakpoint, matching a `max-width: 767px`
@@ -145,14 +139,66 @@ const NARROW_LAYOUT_QUERY = '(max-width: 767.98px)'
 export default function AppLayout() {
   const { session: authSession, isLoading: authLoading } = useAuth()
   const initialSessionRef = useRef<ChatSession>(createInitialSession())
-  const [sessions, setSessions] = useState<ChatSession[]>([initialSessionRef.current])
-  const [activeChatId, setActiveChatId] = useState(initialSessionRef.current.id)
-  const [chatHydrated, setChatHydrated] = useState(false)
+  const chatUserId = authSession?.userId ?? (AUTH_BYPASS ? DEV_USER.userId : null)
+  // Shared-link handoff: `/chat?share=<token>` loads that chat into the
+  // Shared group and selects it (see the effect below) — declared here,
+  // before `useChatStore`, so its hydration can skip auto-creating an
+  // empty own chat while this is still pending (never selected, only to
+  // then be silently outranked by the shared one a moment later).
+  const [shareToken, setShareToken] = useState<string | null>(() => getShareTokenFromLocation())
+  const chatStore = useChatStore({
+    chatUserId,
+    authLoading,
+    enabled: chatPersistenceEnabled(),
+    initialSession: initialSessionRef.current,
+    hasPendingShare: shareToken != null,
+  })
+  const { sessions, setSessions, activeChatId, setActiveChatId, sharedSessions, setSharedSessions } =
+    chatStore
+  const chatHydrated = chatStore.hydrated
+  // Read (never written to trigger a render) wherever a callback needs the
+  // latest `sessions` synchronously right after calling `setSessions` —
+  // React may defer that call's own updater to a later microtask (it isn't
+  // always run eagerly, e.g. back-to-back calls in the same tick), so a
+  // capture-and-read-back-immediately pattern on the updater itself isn't
+  // reliable. Assigned in the render body itself (not an effect), so it's
+  // already current by the time any callback below runs.
+  const sessionsRef = useRef(sessions)
+  sessionsRef.current = sessions
+  const sharedSessionsRef = useRef(sharedSessions)
+  sharedSessionsRef.current = sharedSessions
+
+  // A chat being asked a question can live in either list — `sessions`
+  // (owned) or `sharedSessions` (a shared chat the viewer doesn't own,
+  // shared as queryable). Every place that appends/replaces a chat's
+  // messages by id (handleSend's own turns, streaming updates, abort)
+  // goes through this so it works for both rather than assuming "owned".
+  const updateChatMessages = useCallback(
+    (chatId: string, updater: (messages: ChatMessage[]) => ChatMessage[]) => {
+      if (sessionsRef.current.some((s) => s.id === chatId)) {
+        setSessions((prev) =>
+          prev.map((s) => (s.id === chatId ? { ...s, messages: updater(s.messages) } : s)),
+        )
+      } else {
+        setSharedSessions((prev) =>
+          prev.map((s) => (s.id === chatId ? { ...s, messages: updater(s.messages) } : s)),
+        )
+      }
+    },
+    [setSessions, setSharedSessions],
+  )
   const [inputBlockedReason, setInputBlockedReason] = useState<string | undefined>()
   const [queryTier, setQueryTier] = useState<QueryTier>(DEFAULT_QUERY_TIER)
   const { width: sidebarWidth, isResizing, startResize, sidebarRef } = useResizableWidth(280)
   const isNarrowLayout = useMediaQuery(NARROW_LAYOUT_QUERY)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  // Round 6, Item B: `.docu-app-shell`'s CSS `100dvh` (index.css) is the
+  // fallback for every browser; this refines it live for the one case
+  // `dvh` doesn't cover — the on-screen keyboard shrinks the *visual*
+  // viewport without changing `dvh` — so the shell shrinks and the
+  // composer sits directly above the keyboard. `undefined` on desktop and
+  // in any environment without `visualViewport` leaves the CSS rule alone.
+  const visualViewportHeight = useVisualViewportHeight()
   const sendQuery = useSendQuery()
   const selection = useDocumentSelection()
 
@@ -172,6 +218,11 @@ export default function AppLayout() {
   )
 
   const browse = useBrowseTree(handleDocumentsLoaded)
+  // Matches Sidebar's own display-name resolution (`browse.username` first
+  // — the LogicalDOC root-folder payload — then the cookie session) so a
+  // freshly sent message's author label agrees with whatever name the
+  // sidebar's profile row already shows for "you".
+  const currentUsername = browse.username ?? authSession?.username ?? 'You'
   const abortControllerRef = useRef<AbortController | null>(null)
   const streamingCitationsRef = useRef<Citation[]>([])
   const lastProgressStageRef = useRef<string | undefined>(undefined)
@@ -189,39 +240,39 @@ export default function AppLayout() {
     if (!isNarrowLayout) setDrawerOpen(false)
   }, [isNarrowLayout])
 
-  const chatUserId = authSession?.userId ?? (AUTH_BYPASS ? DEV_USER.userId : null)
-
-  useEffect(() => {
-    if (authLoading) return
-    if (!chatPersistenceEnabled()) {
-      setChatHydrated(true)
-      return
-    }
-    if (!chatUserId) {
-      setChatHydrated(true)
-      return
-    }
-
-    const stored = loadChatHistory(chatUserId)
-    if (stored?.sessions.length) {
-      setSessions(stored.sessions)
-      setActiveChatId(stored.activeChatId)
-    }
-    setChatHydrated(true)
-  }, [authLoading, chatUserId])
-
+  // Best-effort local mirror of the server-backed sessions — never the
+  // source of truth once hydrated (that's `useChatStore`'s GET /chat/
+  // sessions + lazy per-chat fetch), just a browser-local backup so a
+  // reload before a chat's first successful sync still shows something.
   useEffect(() => {
     if (!chatHydrated || !chatUserId || !chatPersistenceEnabled()) return
     persistChatHistory(chatUserId, sessions, activeChatId)
   }, [chatHydrated, chatUserId, sessions, activeChatId])
 
+  // Shared-link handoff: `/chat?share=<token>` loads that chat into the
+  // Shared group, selects it, and strips the query param — once per link,
+  // after auth has settled AND hydration has finished. The hydrated gate
+  // matters: hydration's own `setActiveChatId` (picking the viewer's own
+  // last-active or first chat) runs asynchronously too, and running this
+  // before it finished let it win the race and silently re-select an own
+  // chat out from under the shared one a moment later (live UI proof).
+  // Running strictly after guarantees this call's `setActiveChatId` is the
+  // last word.
+  const sharedLinkHandledRef = useRef(false)
   useEffect(() => {
-    if (sessions.length === 0) {
-      const session = createEmptySession()
-      setSessions([session])
-      setActiveChatId(session.id)
-    }
-  }, [sessions.length])
+    if (!shareToken || authLoading || !chatHydrated || sharedLinkHandledRef.current) return
+    sharedLinkHandledRef.current = true
+    void (async () => {
+      const shared = await chatStore.loadSharedSession(shareToken)
+      if (!shared) {
+        message.error('This shared chat link is no longer available.')
+      }
+      const url = new URL(window.location.href)
+      url.searchParams.delete('share')
+      window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`)
+      setShareToken(null)
+    })()
+  }, [shareToken, authLoading, chatHydrated, chatStore.loadSharedSession])
 
   // Reconcile a persisted selection against the backend once per app load:
   // ids restored from localStorage (a prior browser session) may point at
@@ -290,9 +341,29 @@ export default function AppLayout() {
   }, [authLoading, hasAuthSession])
 
   const activeSession = useMemo(
-    () => sessions.find((s) => s.id === activeChatId) ?? sessions[0],
-    [sessions, activeChatId],
+    () =>
+      sessions.find((s) => s.id === activeChatId) ??
+      sharedSessions.find((s) => s.id === activeChatId) ??
+      sessions[0],
+    [sessions, sharedSessions, activeChatId],
   )
+
+  // A shared chat the viewer doesn't own: the owner's chosen visibility
+  // decides whether the composer accepts new questions.
+  const isSharedViewOnly = activeSession?.isOwner === false && activeSession?.canQuery !== true
+  // The other side of that same coin — a shared chat the owner DID allow
+  // questions on. The viewer may not even be able to browse the files it's
+  // scoped to (that's the whole point of sharing), so `handleSend` falls
+  // back to the chat's own `scopeDocumentIds` here instead of requiring a
+  // manual selection.
+  const isSharedQueryable = activeSession?.isOwner === false && activeSession?.canQuery === true
+  // Owner decision (2026-09-16): a follower can't choose documents at all
+  // in ANY shared chat (view-only or queryable) — used to disable the
+  // Files pane and to make sure a leftover selection from the viewer's own
+  // chat never leaks into the composer while a shared chat is active.
+  const isSharedChat = activeSession?.isOwner === false
+  const sharedScopeIds = activeSession?.scopeDocumentIds ?? []
+  const sharedScopeDocuments = activeSession?.scopeDocuments ?? []
 
   const messagePairs = useMemo(
     () => pairMessages(activeSession?.messages ?? []),
@@ -319,6 +390,15 @@ export default function AppLayout() {
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
     messagesEndRef.current?.scrollIntoView({ behavior, block: 'end' })
   }, [])
+
+  // Round 6, Item B: with the keyboard open, Safari shrinks the visual
+  // viewport and can leave the chat pane scrolled to a position that no
+  // longer shows the latest turn above the composer. Scrolls to the
+  // bottom once, on focus, rather than on every keystroke/resize — so it
+  // never fights the user's own scroll afterward.
+  const handleComposerFocus = useCallback(() => {
+    scrollToBottom('auto')
+  }, [scrollToBottom])
 
   useEffect(() => {
     const container = scrollContainerRef.current
@@ -354,90 +434,108 @@ export default function AppLayout() {
     abortControllerRef.current = null
     sendQuery.reset()
 
-    setSessions((prev) =>
-      prev.map((s) => {
-        if (s.id !== chatId) return s
-        const messages = [...s.messages]
-        const lastIdx = messages.length - 1
-        if (lastIdx < 0 || messages[lastIdx].role !== 'assistant') return s
-        const msg = messages[lastIdx]
-        if (msg.status !== 'thinking' && msg.status !== 'streaming') return s
-        messages[lastIdx] = {
-          ...msg,
-          status: 'complete',
-          interrupted: true,
-          liveText: '',
-          progressLabel: undefined,
-        }
-        return { ...s, messages }
-      }),
-    )
-  }, [activeChatId, sendQuery])
+    const session =
+      sessionsRef.current.find((s) => s.id === chatId) ??
+      sharedSessionsRef.current.find((s) => s.id === chatId)
+    const lastMsg = session?.messages[session.messages.length - 1]
+    const interrupted: ChatMessage | undefined =
+      lastMsg && lastMsg.role === 'assistant' && (lastMsg.status === 'thinking' || lastMsg.status === 'streaming')
+        ? { ...lastMsg, status: 'complete', interrupted: true, liveText: '', progressLabel: undefined }
+        : undefined
+
+    if (interrupted) {
+      updateChatMessages(chatId, (messages) => {
+        const next = [...messages]
+        next[next.length - 1] = interrupted
+        return next
+      })
+      chatStore.recordAssistantMessage(chatId, interrupted)
+    }
+  }, [activeChatId, sendQuery, updateChatMessages, chatStore.recordAssistantMessage])
 
   const handleNewChat = useCallback(() => {
     abortActiveResponse()
-    setSessions((prev) => {
-      const newChat = createEmptySession(prev)
-      setActiveChatId(newChat.id)
-      return [newChat, ...prev]
-    })
-  }, [abortActiveResponse])
+    chatStore.createChat()
+  }, [abortActiveResponse, chatStore.createChat])
 
   const handleSelectChat = useCallback(
     (chatId: string) => {
       if (chatId !== activeChatId) abortActiveResponse()
       setActiveChatId(chatId)
     },
-    [abortActiveResponse, activeChatId],
+    [abortActiveResponse, activeChatId, setActiveChatId],
   )
 
-  const handleRenameChat = useCallback((chatId: string, title: string) => {
-    setSessions((prev) => prev.map((s) => (s.id === chatId ? { ...s, title } : s)))
-  }, [])
-
-  const handleDeleteChat = useCallback(
-    (chatId: string) => {
-      setSessions((prev) => {
-        const next = prev.filter((s) => s.id !== chatId)
-        if (next.length === 0) {
-          const fresh = createEmptySession(next)
-          setActiveChatId(fresh.id)
-          return [fresh]
-        }
-        if (chatId === activeChatId) {
-          setActiveChatId(next[0].id)
-        }
-        return next
-      })
-    },
-    [activeChatId],
-  )
+  const handleRenameChat = chatStore.renameChat
+  const handleDeleteChat = chatStore.deleteChat
 
   const handleStop = useCallback(() => {
     abortControllerRef.current?.abort()
   }, [])
 
   const updateAssistantMessage = useCallback(
-    (chatId: string, updater: (msg: ChatMessage) => ChatMessage) => {
-      setSessions((prev) =>
-        prev.map((s) => {
-          if (s.id !== chatId) return s
-          const messages = [...s.messages]
-          const lastIdx = messages.length - 1
-          if (lastIdx < 0 || messages[lastIdx].role !== 'assistant') return s
-          messages[lastIdx] = updater(messages[lastIdx])
-          return { ...s, messages }
-        }),
-      )
+    (chatId: string, updater: (msg: ChatMessage) => ChatMessage): ChatMessage | undefined => {
+      // `updated` is computed from `sessionsRef` up front, then applied via
+      // the setSessions updater below — not the other way around. React
+      // doesn't always run a state updater synchronously (it can defer to
+      // a later microtask, e.g. several calls back-to-back in one tick),
+      // so a caller reading a value captured *inside* that updater right
+      // after calling `setSessions` can't rely on it having run yet.
+      const session =
+        sessionsRef.current.find((s) => s.id === chatId) ??
+        sharedSessionsRef.current.find((s) => s.id === chatId)
+      const lastMsg = session?.messages[session.messages.length - 1]
+      if (!lastMsg || lastMsg.role !== 'assistant') return undefined
+      const updated = updater(lastMsg)
+      updateChatMessages(chatId, (messages) => {
+        const lastIdx = messages.length - 1
+        if (lastIdx < 0 || messages[lastIdx].role !== 'assistant') return messages
+        const next = [...messages]
+        next[lastIdx] = updated
+        return next
+      })
+      return updated
     },
-    [],
+    [updateChatMessages],
+  )
+
+  // Persists a non-streaming turn (Summarize/Categorize/Extract metadata:
+  // one user request, one already-complete answer, appended to local state
+  // in one shot) through the same chatStore.recordUserMessage/
+  // recordAssistantMessage calls handleSend uses for its own turns — one
+  // persistence path, so a chat's history round-trips the same way however
+  // the turn was produced. `scopeDocumentIds` defaults to empty: these
+  // flows act on one already-selected document, not a query's document
+  // scope, and the adapter only reads this field to update the session's
+  // own scope_document_ids — fine to leave alone for a turn that isn't a
+  // query.
+  const persistTurn = useCallback(
+    (userMsg: ChatMessage, assistantMsg: ChatMessage, scopeDocumentIds: string[] = []) => {
+      chatStore.recordUserMessage(activeChatId, userMsg, scopeDocumentIds)
+      chatStore.recordAssistantMessage(activeChatId, assistantMsg)
+    },
+    [activeChatId, chatStore.recordUserMessage, chatStore.recordAssistantMessage],
   )
 
   const handleSend = useCallback(
     async (text: string, options?: { displayText?: string }) => {
       const selectedDocs = [...selection.selectedIds]
-      if (selectedDocs.length === 0) {
-        message.warning('Select at least one document before asking a question.')
+      // A shared queryable chat always uses the host's own scope — the
+      // follower can't choose documents at all (owner decision,
+      // 2026-09-16), so any leftover selection from the viewer's own chat
+      // is ignored here, not just when nothing is selected. The viewer may
+      // not even be able to browse these files (that's the point of
+      // sharing), so there's nothing to validate client-side: send
+      // straight through, and if the adapter itself rejects it (403/409),
+      // the normal error path below shows that.
+      const useSharedScope = isSharedQueryable && sharedScopeIds.length > 0
+
+      if (!useSharedScope && selectedDocs.length === 0) {
+        message.warning(
+          isSharedQueryable
+            ? 'The chat owner has not chosen any files yet.'
+            : 'Select at least one document before asking a question.',
+        )
         return
       }
 
@@ -473,72 +571,107 @@ export default function AppLayout() {
       // goes through the browse tree's folder cache since
       // `BrowseDocumentItem` only carries a `folder_id`, not a name).
       let scopeFolders: string[] = []
+      // Tags shown under the sent question in the transcript — only set
+      // for the shared-scope path (a normal manual selection already has
+      // its own composer chip while typing, with nothing analogous once
+      // sent). Resolved names when available; a plain count when the
+      // viewer can't browse the files well enough to name them.
+      let userFileTags: string[] | undefined
 
-      try {
-        const scope = await validateQueryScope(selectedDocs, controller.signal)
-        if (controller.signal.aborted) return
-
-        const deniedCount = selectedDocs.length - scope.accessible_document_ids.length
-        if (deniedCount > 0) {
-          selection.trimSelection(scope.accessible_document_ids)
-          message.warning(
-            `${deniedCount} selected ${deniedCount === 1 ? 'document was' : 'documents were'} removed because you don't have access.`,
-          )
-        }
-
-        scopeDocuments = scope.accessible_document_ids
+      if (useSharedScope) {
+        scopeDocuments = sharedScopeIds
         const resolvedScope = resolveProgressScope(
           scopeDocuments,
           selection.documentMeta,
           browse.getFolderNode,
         )
-        scopeFilenames = resolvedScope.files
         scopeFolders = resolvedScope.folders
-
-        if (scopeDocuments.length === 0) {
-          const reason =
-            scope.failed_files > 0
-              ? 'None of the selected documents are ready to query (failed or not indexed).'
-              : 'No accessible documents in your selection.'
-          setInputBlockedReason(reason)
-          message.error(reason)
-          return
-        }
-
-        if (scope.ready_files === 0 && scope.indexing_files > 0) {
-          const reason = 'Documents are still indexing. Please wait until at least one is ready.'
-          setInputBlockedReason(reason)
-          message.warning(reason)
-          return
-        }
-
-        if (scope.ready_files === 0) {
-          const reason = 'No ready documents in your selection.'
-          setInputBlockedReason(reason)
-          message.error(reason)
-          return
-        }
-
-        if (scope.indexing_files > 0) {
-          message.info(
-            `${scope.indexing_files} selected ${scope.indexing_files === 1 ? 'document is' : 'documents are'} still indexing. Answers may be incomplete.`,
+        // Prefer the adapter's own resolved filenames (`scope_documents`)
+        // over the viewer's local browse-tree metadata — the whole point
+        // of a shared chat is that the follower may not be able to browse
+        // these files at all, so the host-sent names are the only
+        // trustworthy source. Falls back to the old resolution (then a
+        // bare count) only for a chat whose detail predates that field.
+        if (sharedScopeDocuments.length > 0) {
+          userFileTags = sharedScopeDocuments.map(
+            (doc) => doc.filename ?? `File ${doc.documentId}`,
           )
+          scopeFilenames = userFileTags
+        } else {
+          scopeFilenames = resolvedScope.files
+          userFileTags =
+            scopeFilenames.length > 0
+              ? scopeFilenames
+              : [`${scopeDocuments.length} shared file${scopeDocuments.length === 1 ? '' : 's'}`]
         }
-      } catch (err) {
-        if (controller.signal.aborted) return
-        const httpStatus = err instanceof ApiError ? err.status : undefined
-        const detail = friendlyQueryError(
-          err instanceof ApiError ? err.detail ?? err.message : 'Validation failed',
-          httpStatus,
-        )
-        message.error(detail)
-        return
+      } else {
+        try {
+          const scope = await validateQueryScope(selectedDocs, controller.signal)
+          if (controller.signal.aborted) return
+
+          const deniedCount = selectedDocs.length - scope.accessible_document_ids.length
+          if (deniedCount > 0) {
+            selection.trimSelection(scope.accessible_document_ids)
+            message.warning(
+              `${deniedCount} selected ${deniedCount === 1 ? 'document was' : 'documents were'} removed because you don't have access.`,
+            )
+          }
+
+          scopeDocuments = scope.accessible_document_ids
+          const resolvedScope = resolveProgressScope(
+            scopeDocuments,
+            selection.documentMeta,
+            browse.getFolderNode,
+          )
+          scopeFilenames = resolvedScope.files
+          scopeFolders = resolvedScope.folders
+
+          if (scopeDocuments.length === 0) {
+            const reason =
+              scope.failed_files > 0
+                ? 'None of the selected documents are ready to answer questions yet.'
+                : 'No accessible documents in your selection.'
+            setInputBlockedReason(reason)
+            message.error(reason)
+            return
+          }
+
+          if (scope.ready_files === 0 && scope.indexing_files > 0) {
+            const reason = 'Documents are still being prepared. Please wait until at least one is ready.'
+            setInputBlockedReason(reason)
+            message.warning(reason)
+            return
+          }
+
+          if (scope.ready_files === 0) {
+            const reason = 'No ready documents in your selection.'
+            setInputBlockedReason(reason)
+            message.error(reason)
+            return
+          }
+
+          if (scope.indexing_files > 0) {
+            message.info(
+              `${scope.indexing_files} selected ${scope.indexing_files === 1 ? 'document is' : 'documents are'} still being prepared. Answers may be incomplete.`,
+            )
+          }
+        } catch (err) {
+          if (controller.signal.aborted) return
+          const httpStatus = err instanceof ApiError ? err.status : undefined
+          const detail = friendlyQueryError(
+            err instanceof ApiError ? queryErrorRawMessage(err) : 'Validation failed',
+            httpStatus,
+          )
+          message.error(detail)
+          return
+        }
       }
 
       const userMsg: ChatMessage = {
         id: crypto.randomUUID(),
         role: 'user',
         content: options?.displayText ?? text,
+        fileTags: userFileTags,
       }
 
       const assistantId = crypto.randomUUID()
@@ -556,13 +689,8 @@ export default function AppLayout() {
 
       shouldStickToBottomRef.current = true
 
-      setSessions((prev) =>
-        prev.map((s) =>
-          s.id === activeChatId
-            ? { ...s, messages: [...s.messages, userMsg, thinkingMsg] }
-            : s,
-        ),
-      )
+      updateChatMessages(activeChatId, (messages) => [...messages, userMsg, thinkingMsg])
+      chatStore.recordUserMessage(activeChatId, userMsg, scopeDocuments)
 
       requestAnimationFrame(() => scrollToBottom('auto'))
 
@@ -571,12 +699,19 @@ export default function AppLayout() {
         filenames: scopeFilenames,
       })
       let coverage: CoverageInfo | undefined
+      // Captured from whichever branch below actually persists the
+      // assistant turn (success, stopped, or error) — awaited in
+      // `finally` before a shared-chat refresh, so that refresh's GET can
+      // never race this POST and clobber the just-finished answer with a
+      // detail fetched before it landed server-side.
+      let assistantPersistPromise: Promise<void> | undefined
 
       try {
         const response = await sendQuery.mutateAsync({
           chatId: activeChatId,
           message: text,
           documents: scopeDocuments,
+          omitDocuments: useSharedScope,
           tier: queryTier,
           signal: controller.signal,
           callbacks: {
@@ -693,19 +828,11 @@ export default function AppLayout() {
           question,
         }
 
-        setSessions((prev) =>
-          prev.map((s) =>
-            s.id === activeChatId
-              ? {
-                  ...s,
-                  // Sidebar titles are dated ("Session 15 Sep 2026 (1)"),
-                  // set once at session creation — no longer overwritten
-                  // with the first question.
-                  messages: [...s.messages.slice(0, -1), assistantMsg],
-                }
-              : s,
-          ),
-        )
+        // Sidebar titles are dated ("Session 15 Sep 2026 (1)"), set once
+        // at session creation — no longer overwritten with the first
+        // question.
+        updateChatMessages(activeChatId, (messages) => [...messages.slice(0, -1), assistantMsg])
+        assistantPersistPromise = chatStore.recordAssistantMessage(activeChatId, assistantMsg)
       } catch (err) {
         if (controller.signal.aborted) {
           // A "new chat" / "select another chat" abort (reason ===
@@ -714,24 +841,22 @@ export default function AppLayout() {
           // Only the explicit Stop button (no reason) needs handling in
           // this async continuation.
           if (controller.signal.reason !== 'navigation') {
-            updateAssistantMessage(activeChatId, (msg) => ({
+            const stopped = updateAssistantMessage(activeChatId, (msg) => ({
               ...msg,
               content: msg.content || 'Response stopped.',
               status: 'complete',
               liveText: '',
               thinkingSeconds: elapsedSeconds(),
             }))
+            if (stopped) assistantPersistPromise = chatStore.recordAssistantMessage(activeChatId, stopped)
           }
           return
         }
 
         const httpStatus = err instanceof ApiError ? err.status : undefined
-        const detail = friendlyQueryError(
-          err instanceof Error ? err.message : undefined,
-          httpStatus,
-        )
+        const detail = friendlyQueryError(queryErrorRawMessage(err), httpStatus)
         message.error(detail, 8)
-        updateAssistantMessage(activeChatId, (msg) => ({
+        const errored = updateAssistantMessage(activeChatId, (msg) => ({
           ...msg,
           content: detail,
           status: 'error',
@@ -739,13 +864,46 @@ export default function AppLayout() {
           progressLabel: formatProgressStage(lastProgressStageRef.current),
           thinkingSeconds: elapsedSeconds(),
         }))
+        if (errored) assistantPersistPromise = chatStore.recordAssistantMessage(activeChatId, errored)
       } finally {
         if (abortControllerRef.current === controller) {
           abortControllerRef.current = null
         }
+        // Picks up a host scope change made mid-conversation — the chat's
+        // activation-time fetch (`useChatStore`'s `ensureMessagesLoaded`)
+        // only runs when the viewer switches TO this chat, so a follower
+        // who stays on one shared chat and keeps asking otherwise never
+        // sees a scope the host changed after the initial load. Awaits the
+        // assistant-message persist first (if this turn produced one) so
+        // the refresh GET can never race that POST — firing concurrently
+        // could fetch a detail from before the just-finished answer landed
+        // server-side and briefly clobber it back out of local state.
+        if (isSharedChat) {
+          void (async () => {
+            await assistantPersistPromise
+            chatStore.refreshSharedChat(activeChatId)
+          })()
+        }
       }
     },
-    [activeChatId, queryTier, selection, browse, sendQuery, updateAssistantMessage, scrollToBottom],
+    [
+      activeChatId,
+      activeSession,
+      isSharedChat,
+      isSharedQueryable,
+      sharedScopeIds,
+      sharedScopeDocuments,
+      queryTier,
+      selection,
+      browse,
+      sendQuery,
+      updateAssistantMessage,
+      scrollToBottom,
+      chatStore.recordUserMessage,
+      chatStore.recordAssistantMessage,
+      chatStore.refreshSharedChat,
+      setSessions,
+    ],
   )
 
   const selectedDocument = useMemo(() => {
@@ -768,16 +926,19 @@ export default function AppLayout() {
 
   const summarizeDisabledReason = useMemo(
     () =>
-      getSummarizeDisabledReason({
-        selectedCount: selection.selectedCount,
-        document: selectedDocument,
-        isResponding: sendQuery.isPending || isSummarizing || isExtracting || isCategorizing,
-        disabled: browse.sessionExpired,
-      }),
+      isSharedChat
+        ? SHARED_CHAT_ACTION_DISABLED_REASON
+        : getSummarizeDisabledReason({
+            selectedCount: selection.selectedCount,
+            document: selectedDocument,
+            isResponding: sendQuery.isPending || isSummarizing || isExtracting || isCategorizing,
+            disabled: browse.sessionExpired,
+          }),
     [
       browse.sessionExpired,
       isCategorizing,
       isExtracting,
+      isSharedChat,
       isSummarizing,
       selectedDocument,
       selection.selectedCount,
@@ -787,16 +948,19 @@ export default function AppLayout() {
 
   const extractMetadataDisabledReason = useMemo(
     () =>
-      getExtractMetadataDisabledReason({
-        selectedCount: selection.selectedCount,
-        document: selectedDocument,
-        isResponding: sendQuery.isPending || isSummarizing || isExtracting || isCategorizing,
-        disabled: browse.sessionExpired,
-      }),
+      isSharedChat
+        ? SHARED_CHAT_ACTION_DISABLED_REASON
+        : getExtractMetadataDisabledReason({
+            selectedCount: selection.selectedCount,
+            document: selectedDocument,
+            isResponding: sendQuery.isPending || isSummarizing || isExtracting || isCategorizing,
+            disabled: browse.sessionExpired,
+          }),
     [
       browse.sessionExpired,
       isCategorizing,
       isExtracting,
+      isSharedChat,
       isSummarizing,
       selectedDocument,
       selection.selectedCount,
@@ -806,17 +970,20 @@ export default function AppLayout() {
 
   const categorizeDisabledReason = useMemo(
     () =>
-      getCategorizeDisabledReason({
-        selectedCount: selection.selectedCount,
-        document: selectedDocument,
-        folder: selectedDocumentFolder,
-        isResponding: sendQuery.isPending || isSummarizing || isExtracting || isCategorizing,
-        disabled: browse.sessionExpired,
-      }),
+      isSharedChat
+        ? SHARED_CHAT_ACTION_DISABLED_REASON
+        : getCategorizeDisabledReason({
+            selectedCount: selection.selectedCount,
+            document: selectedDocument,
+            folder: selectedDocumentFolder,
+            isResponding: sendQuery.isPending || isSummarizing || isExtracting || isCategorizing,
+            disabled: browse.sessionExpired,
+          }),
     [
       browse.sessionExpired,
       isCategorizing,
       isExtracting,
+      isSharedChat,
       isSummarizing,
       selectedDocument,
       selectedDocumentFolder,
@@ -826,6 +993,11 @@ export default function AppLayout() {
   )
 
   const handleSummarize = useCallback(() => {
+    // Hard guard, not just the disabled-reason short-circuit above: never
+    // run this against a shared chat even if some future caller reaches
+    // the handler directly (e.g. a keyboard shortcut bypassing the
+    // button's own disabled state).
+    if (isSharedChat) return
     if (summarizeDisabledReason) {
       message.warning(summarizeDisabledReason)
       return
@@ -857,6 +1029,7 @@ export default function AppLayout() {
               : s,
           ),
         )
+        persistTurn(userMessage, assistantMessage, [documentId])
         requestAnimationFrame(() => scrollToBottom('auto'))
       } catch (err) {
         const httpStatus = err instanceof ApiError ? err.status : undefined
@@ -872,14 +1045,15 @@ export default function AppLayout() {
         setIsSummarizing(false)
       }
     })()
-  }, [activeChatId, scrollToBottom, selectedDocument, summarizeDisabledReason])
+  }, [activeChatId, isSharedChat, persistTurn, scrollToBottom, selectedDocument, summarizeDisabledReason])
 
   const handleExtractMetadata = useCallback(() => {
+    if (isSharedChat) return
     if (extractMetadataDisabledReason) {
       message.warning(extractMetadataDisabledReason)
       return
     }
-    if (!selectedDocument || !isMqaMetadataReady(selectedDocument)) return
+    if (!selectedDocument || !isMetadataExtractionReady(selectedDocument)) return
     if (extractingRef.current) return
 
     const documentId = selectedDocument.document_id
@@ -894,7 +1068,7 @@ export default function AppLayout() {
     const userMsg: ChatMessage = {
       id: crypto.randomUUID(),
       role: 'user',
-      content: `Extract MQA metadata from ${filename}`,
+      content: `Extract metadata from ${filename}`,
     }
     const assistantId = crypto.randomUUID()
     const thinkingMsg: ChatMessage = {
@@ -913,29 +1087,37 @@ export default function AppLayout() {
           : s,
       ),
     )
+    // Posted immediately, same as handleSend's user turn — the "thinking"
+    // assistant placeholder is deliberately NOT posted here: on failure
+    // it's removed from local state entirely (see the catch branch below),
+    // so there'd be nothing left to reconcile it with, only a stray
+    // never-finished row on the server.
+    chatStore.recordUserMessage(activeChatId, userMsg, [documentId])
     requestAnimationFrame(() => scrollToBottom('auto'))
 
     void (async () => {
       try {
-        const response = await extractMqaMetadata(documentId, controller.signal)
+        const response = await extractMetadata(documentId, controller.signal)
         if (controller.signal.aborted) return
 
-        const content = buildMqaMetadataAnswer(response)
+        const content = buildMetadataExtractionAnswer(response)
+        const finalAssistantMsg: ChatMessage = {
+          ...thinkingMsg,
+          content,
+          status: 'complete',
+          progressLabel: undefined,
+        }
         setSessions((prev) =>
           prev.map((s) => {
             if (s.id !== activeChatId) return s
             const messages = [...s.messages]
             const idx = messages.findIndex((m) => m.id === assistantId)
             if (idx === -1) return s
-            messages[idx] = {
-              ...messages[idx],
-              content,
-              status: 'complete',
-              progressLabel: undefined,
-            }
+            messages[idx] = finalAssistantMsg
             return { ...s, messages }
           }),
         )
+        chatStore.recordAssistantMessage(activeChatId, finalAssistantMsg)
         requestAnimationFrame(() => scrollToBottom('auto'))
       } catch (err) {
         if (controller.signal.aborted) return
@@ -944,12 +1126,12 @@ export default function AppLayout() {
         const detail =
           httpStatus === 401
             ? toUserFacingQueryError(undefined, { httpStatus })
-            : toUserFacingMqaMetadataError(err instanceof ApiError ? err.detail : undefined)
+            : toUserFacingMetadataExtractionError(err instanceof ApiError ? err.detail : undefined)
         message.error(detail, 8)
 
         // Remove the thinking placeholder — the failed request appended
         // no answer, so nothing should linger where it was shown. The
-        // user's "Extract MQA metadata from <filename>" message stays.
+        // user's "Extract metadata from <filename>" message stays.
         setSessions((prev) =>
           prev.map((s) =>
             s.id === activeChatId
@@ -965,9 +1147,18 @@ export default function AppLayout() {
         setIsExtracting(false)
       }
     })()
-  }, [activeChatId, extractMetadataDisabledReason, scrollToBottom, selectedDocument])
+  }, [
+    activeChatId,
+    chatStore.recordUserMessage,
+    chatStore.recordAssistantMessage,
+    extractMetadataDisabledReason,
+    isSharedChat,
+    scrollToBottom,
+    selectedDocument,
+  ])
 
   const handleCategorize = useCallback(() => {
+    if (isSharedChat) return
     if (categorizeDisabledReason) {
       message.warning(categorizeDisabledReason)
       return
@@ -1013,15 +1204,26 @@ export default function AppLayout() {
           s.id === activeChatId ? { ...s, messages: [...s.messages, userMsg, assistantMsg] } : s,
         ),
       )
+      persistTurn(userMsg, assistantMsg, [documentId])
       requestAnimationFrame(() => scrollToBottom('auto'))
 
       categorizingRef.current = false
       setIsCategorizing(false)
     })()
-  }, [activeChatId, categorizeDisabledReason, scrollToBottom, selectedDocument])
+  }, [
+    activeChatId,
+    categorizeDisabledReason,
+    isSharedChat,
+    persistTurn,
+    scrollToBottom,
+    selectedDocument,
+  ])
 
   return (
-    <div className="h-screen flex flex-col min-h-0">
+    <div
+      className="docu-app-shell flex flex-col min-h-0"
+      style={visualViewportHeight != null ? { height: `${visualViewportHeight}px` } : undefined}
+    >
       {isNarrowLayout && (
         <div
           className="flex items-center gap-2 h-12 px-3 shrink-0 border-b border-[#ececec] bg-[var(--docu-bg-surface)] pt-[env(safe-area-inset-top,0px)]"
@@ -1034,7 +1236,7 @@ export default function AppLayout() {
           >
             <ChatMenuIcon />
           </button>
-          <span className={`shrink-0 font-semibold ${typeColor.primary}`}>ARCHE AI</span>
+          <span className={`shrink-0 font-semibold ${typeColor.primary}`}>Arche AI</span>
           <span className={`truncate min-w-0 flex-1 ${type.caption} ${typeColor.muted}`}>
             {activeSession?.title}
           </span>
@@ -1054,13 +1256,22 @@ export default function AppLayout() {
               <Sidebar
                 width={sidebarWidth}
                 sessions={sessions}
+                sharedSessions={sharedSessions}
+                projects={chatStore.projects}
                 activeChatId={activeChatId}
+                isSharedChat={isSharedChat}
                 browse={browse}
                 selection={selection}
                 onSelectChat={handleSelectChat}
                 onRenameChat={handleRenameChat}
                 onDeleteChat={handleDeleteChat}
                 onNewChat={handleNewChat}
+                onMoveChat={chatStore.moveChat}
+                onShareChat={chatStore.shareChat}
+                onCreateProject={chatStore.createProject}
+                onRenameProject={chatStore.renameProject}
+                onDeleteProject={chatStore.deleteProject}
+                onRemoveSharedChat={chatStore.removeSharedChat}
               />
             </div>
             <SidebarResizeHandle onPointerDown={startResize} isResizing={isResizing} />
@@ -1100,7 +1311,7 @@ export default function AppLayout() {
                         key={pair.user.id}
                         className={`min-w-0 ${isLastTurn ? 'docu-chat-last-turn min-h-[min(72vh,calc(100dvh-13rem))]' : ''}`}
                       >
-                        <ChatMessageItem message={pair.user} />
+                        <ChatMessageItem message={pair.user} currentUsername={currentUsername} />
                         {pair.assistant && (
                           <ChatMessageItem
                             message={pair.assistant}
@@ -1115,14 +1326,19 @@ export default function AppLayout() {
               </div>
             </div>
             <ChatInput
-              selectedCount={selection.selectedCount}
-              selectedFiles={selection.selectedFilenames}
+              // A leftover selection from the viewer's own chat must never
+              // apply to a shared one (owner decision, 2026-09-16) — the
+              // Files pane is disabled for it anyway, but the selection
+              // itself is global state that outlives switching chats.
+              selectedCount={isSharedChat ? 0 : selection.selectedCount}
+              selectedFiles={isSharedChat ? [] : selection.selectedFilenames}
               onClearSelection={selection.clearSelection}
               onSend={handleSend}
               onSummarize={handleSummarize}
               onCategorize={handleCategorize}
               onExtractMetadata={handleExtractMetadata}
               onStop={handleStop}
+              onComposerFocus={handleComposerFocus}
               isResponding={sendQuery.isPending}
               disabled={browse.sessionExpired}
               disabledReason={inputBlockedReason}
@@ -1131,6 +1347,12 @@ export default function AppLayout() {
               extractMetadataDisabledReason={extractMetadataDisabledReason}
               queryTier={queryTier}
               onQueryTierChange={setQueryTier}
+              viewOnly={isSharedViewOnly}
+              viewOnlyPlaceholder="View only — the owner has not allowed questions here"
+              allowEmptySelection={isSharedQueryable && sharedScopeIds.length > 0}
+              emptySelectionPlaceholder="Ask about the shared files"
+              sharedScopeFiles={isSharedQueryable ? sharedScopeDocuments : undefined}
+              sharedScopeEmpty={isSharedQueryable && sharedScopeIds.length === 0}
             />
           </Content>
         </Layout>
@@ -1164,7 +1386,7 @@ export default function AppLayout() {
           closeIcon={<ChatCloseIcon />}
           classNames={{ close: 'docu-mobile-drawer-close' }}
           // Fix round 1: the close button used to be the header's only
-          // content — an empty ~56px strip above Sidebar's own "ARCHE AI"
+          // content — an empty ~56px strip above Sidebar's own "Arche AI"
           // row. `title` puts the wordmark in antd's own header slot
           // (which already lays out title + close button as one flex
           // row), so they share a row instead; Sidebar itself skips its
@@ -1173,19 +1395,28 @@ export default function AppLayout() {
           // matches the sidebar body's own inset (`spacing.panelLg`,
           // 0.625rem) for a continuous left/right edge between the header
           // row and the "New chat" row directly under it.
-          title={<span className={`text-lg font-semibold ${typeColor.primary}`}>ARCHE AI</span>}
+          title={<span className={`text-lg font-semibold ${typeColor.primary}`}>Arche AI</span>}
           styles={{ header: { padding: '0.625rem' }, body: { padding: 0 } }}
         >
           <Sidebar
             width="100%"
             sessions={sessions}
+            sharedSessions={sharedSessions}
+            projects={chatStore.projects}
             activeChatId={activeChatId}
+            isSharedChat={isSharedChat}
             browse={browse}
             selection={selection}
             onSelectChat={handleSelectChat}
             onRenameChat={handleRenameChat}
             onDeleteChat={handleDeleteChat}
             onNewChat={handleNewChat}
+            onMoveChat={chatStore.moveChat}
+            onShareChat={chatStore.shareChat}
+            onCreateProject={chatStore.createProject}
+            onRenameProject={chatStore.renameProject}
+            onDeleteProject={chatStore.deleteProject}
+            onRemoveSharedChat={chatStore.removeSharedChat}
             onNavigate={() => setDrawerOpen(false)}
             inDrawer
           />

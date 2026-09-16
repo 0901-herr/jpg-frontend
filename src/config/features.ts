@@ -12,4 +12,12 @@ export const FEATURES = {
    * to turn it back on.
    */
   categoryView: import.meta.env.VITE_FEATURE_CATEGORY_VIEW === 'true',
+
+  /**
+   * "Share…" on a chat's options menu, and the share link/modal it opens.
+   * Projects and server-side chat persistence are always on regardless of
+   * this flag — it gates sharing specifically. Set
+   * `VITE_FEATURE_CHAT_SHARING=true` to turn it on.
+   */
+  chatSharing: import.meta.env.VITE_FEATURE_CHAT_SHARING === 'true',
 }

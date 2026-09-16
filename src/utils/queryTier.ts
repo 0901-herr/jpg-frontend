@@ -12,7 +12,7 @@ export function getQueryTierLabel(tier: QueryTier): string {
   return QUERY_TIER_OPTIONS.find((option) => option.value === tier)?.label ?? 'Normal'
 }
 
-export const QUERY_TIER_FAST_TOOLTIP = 'Fastest answer. Uses a smaller model; may miss detail.'
+export const QUERY_TIER_FAST_TOOLTIP = 'Fastest answer. May miss some detail.'
 
 export const QUERY_TIER_NORMAL_TOOLTIP =
   'Balanced speed and accuracy. Typically under a minute.'

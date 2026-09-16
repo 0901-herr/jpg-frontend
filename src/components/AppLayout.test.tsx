@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -7,7 +7,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { ApiError } from '../api/http'
 import type {
   DocumentCategorizeResponse,
-  MqaMetadataResponse,
+  MetadataExtractionResponse,
   QueryScopeResponse,
 } from '../api/types/browse'
 import type { SendMessageRequest, SendMessageResponse } from '../api/types/query'
@@ -15,18 +15,42 @@ import type { SendMessageRequest, SendMessageResponse } from '../api/types/query
 const validateQueryScope = vi.fn<
   (documents: string[], signal?: AbortSignal) => Promise<QueryScopeResponse>
 >()
-const extractMqaMetadata = vi.fn<
-  (documentId: string, signal?: AbortSignal) => Promise<MqaMetadataResponse>
+const extractMetadata = vi.fn<
+  (documentId: string, signal?: AbortSignal) => Promise<MetadataExtractionResponse>
 >()
 const categorizeDocument = vi.fn<
   (documentId: string, signal?: AbortSignal) => Promise<DocumentCategorizeResponse>
 >()
 
+const fetchDocumentSummary = vi.fn()
+const postChatMessage = vi.fn().mockResolvedValue(undefined)
+const getSharedChatSession = vi.fn().mockRejectedValue(new Error('not found'))
+const listChatSessions = vi.fn().mockResolvedValue({ sessions: [], shared: [] })
+const getChatSession = vi.fn().mockResolvedValue({})
+
 vi.mock('../api/browse', () => ({
   validateQueryScope: (...args: [string[], AbortSignal?]) => validateQueryScope(...args),
-  fetchDocumentSummary: vi.fn(),
-  extractMqaMetadata: (...args: [string, AbortSignal?]) => extractMqaMetadata(...args),
+  fetchDocumentSummary: (...args: [string]) => fetchDocumentSummary(...args),
+  extractMetadata: (...args: [string, AbortSignal?]) => extractMetadata(...args),
   categorizeDocument: (...args: [string, AbortSignal?]) => categorizeDocument(...args),
+}))
+
+// Persistence follow-up: Summarize/Categorize/Extract-metadata turns are
+// posted to the server through the same `postChatMessage` helper handleSend
+// uses (see useChatStore.ts). Mocked here so those flows never hit real
+// `fetch`, and so tests can assert the assistant content that got persisted.
+vi.mock('../api/chat', () => ({
+  listChatSessions: (...args: []) => listChatSessions(...args),
+  listChatProjects: vi.fn().mockResolvedValue([]),
+  createChatProject: vi.fn().mockResolvedValue({ id: 'p1', name: 'p1' }),
+  renameChatProject: vi.fn().mockResolvedValue({ id: 'p1', name: 'p1' }),
+  deleteChatProject: vi.fn().mockResolvedValue(undefined),
+  createChatSession: vi.fn().mockResolvedValue({}),
+  getChatSession: (...args: [string]) => getChatSession(...args),
+  patchChatSession: vi.fn().mockResolvedValue({}),
+  deleteChatSession: vi.fn().mockResolvedValue(undefined),
+  postChatMessage: (...args: unknown[]) => postChatMessage(...args),
+  getSharedChatSession: (...args: [string]) => getSharedChatSession(...args),
 }))
 
 vi.mock('../context/AuthContext', () => ({
@@ -106,6 +130,16 @@ vi.mock('../hooks/useDocumentSelection', () => ({
 // settles by rejecting once the caller's AbortSignal fires. `reset`
 // synchronously flips `isPending` back to false, exactly like the real hook.
 let currentSignal: AbortSignal | null = null
+let lastSendQueryRequest: SendMessageRequest | null = null
+// Test-controlled: when set, the next mutateAsync call rejects with this
+// immediately instead of only settling on abort — models a query call that
+// fails outright (e.g. a 403 before any streaming starts). Consumed once.
+let nextSendQueryRejection: unknown = null
+// Test-controlled, same one-shot pattern as `nextSendQueryRejection`: when
+// set, the next mutateAsync call resolves with this immediately instead of
+// hanging until abort — models a query that actually completes, for tests
+// that need the success path (e.g. the post-answer shared-chat refresh).
+let nextSendQueryResolution: SendMessageResponse | null = null
 
 vi.mock('../hooks/mutations/useSendQuery', () => ({
   useSendQuery: () => {
@@ -114,9 +148,22 @@ vi.mock('../hooks/mutations/useSendQuery', () => ({
       isPending,
       reset: () => setIsPending(false),
       mutateAsync: (request: SendMessageRequest) =>
-        new Promise<SendMessageResponse>((_resolve, reject) => {
+        new Promise<SendMessageResponse>((resolve, reject) => {
           setIsPending(true)
           currentSignal = request.signal ?? null
+          lastSendQueryRequest = request
+          if (nextSendQueryRejection) {
+            const err = nextSendQueryRejection
+            nextSendQueryRejection = null
+            reject(err)
+            return
+          }
+          if (nextSendQueryResolution) {
+            const res = nextSendQueryResolution
+            nextSendQueryResolution = null
+            resolve(res)
+            return
+          }
           request.signal?.addEventListener('abort', () => {
             reject(new DOMException('Aborted', 'AbortError'))
           })
@@ -128,6 +175,8 @@ vi.mock('../hooks/mutations/useSendQuery', () => ({
 vi.mock('./Sidebar', () => ({
   default: (props: {
     sessions: { id: string; title: string }[]
+    sharedSessions?: { id: string; title: string }[]
+    activeChatId?: string
     onNewChat: () => void
     onSelectChat: (id: string) => void
   }) => (
@@ -135,9 +184,16 @@ vi.mock('./Sidebar', () => ({
       <button type="button" onClick={props.onNewChat}>
         New chat
       </button>
+      <div data-testid="active-chat-id">{props.activeChatId}</div>
       {props.sessions.map((s) => (
         <button key={s.id} type="button" onClick={() => props.onSelectChat(s.id)}>
           select:{s.title || s.id}
+        </button>
+      ))}
+      {(props.sharedSessions?.length ?? 0) > 0 && <div>Shared</div>}
+      {(props.sharedSessions ?? []).map((s) => (
+        <button key={s.id} type="button" onClick={() => props.onSelectChat(s.id)}>
+          shared:{s.title || s.id}
         </button>
       ))}
     </div>
@@ -247,6 +303,593 @@ describe('AppLayout — abort on New chat / select chat while streaming', () => 
   })
 })
 
+describe('AppLayout — query error messages', () => {
+  beforeEach(() => {
+    currentSignal = null
+    nextSendQueryRejection = null
+    initialSelectedIds = new Set(['doc-1'])
+    initialDocumentMeta = defaultDocumentMeta()
+    validateQueryScope.mockResolvedValue({
+      total_files: 1,
+      ready_files: 1,
+      indexing_files: 0,
+      failed_files: 0,
+      missing_files: 0,
+      accessible_document_ids: ['doc-1'],
+    })
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('surfaces the server message for a 403 that carries one (e.g. a view-only chat)', async () => {
+    const user = userEvent.setup()
+    nextSendQueryRejection = new ApiError(
+      'This chat is view-only',
+      403,
+      'This chat is view-only',
+      'view_only',
+    )
+
+    render(<AppLayout />)
+
+    const textarea = await screen.findByPlaceholderText(/ask a question/i)
+    await user.type(textarea, 'What is in the contract?')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    expect(await screen.findByText('This chat is view-only')).toBeInTheDocument()
+  })
+
+  it('falls back to the generic permission message for a 403 with no body message', async () => {
+    const user = userEvent.setup()
+    nextSendQueryRejection = new ApiError('Forbidden', 403)
+
+    render(<AppLayout />)
+
+    const textarea = await screen.findByPlaceholderText(/ask a question/i)
+    await user.type(textarea, 'What is in the contract?')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    expect(
+      await screen.findByText("You don't have permission to query the selected documents."),
+    ).toBeInTheDocument()
+  })
+
+  it('surfaces the server message for a 409 (a shared chat whose host has not chosen files yet)', async () => {
+    const user = userEvent.setup()
+    nextSendQueryRejection = new ApiError(
+      'The chat owner has not chosen any files yet',
+      409,
+      'The chat owner has not chosen any files yet',
+    )
+
+    render(<AppLayout />)
+
+    const textarea = await screen.findByPlaceholderText(/ask a question/i)
+    await user.type(textarea, 'What is in the contract?')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    expect(
+      await screen.findByText('The chat owner has not chosen any files yet'),
+    ).toBeInTheDocument()
+  })
+})
+
+describe('AppLayout — shared link (?share=token)', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    currentSignal = null
+    initialSelectedIds = new Set(['doc-1'])
+    initialDocumentMeta = defaultDocumentMeta()
+    // A shared chat's detail is now re-fetched every time it becomes
+    // active (`useChatStore`'s `ensureMessagesLoaded`), not just once —
+    // reset any per-id `mockImplementation` a previous test in this block
+    // left behind so it can't leak into this one's own activation fetch.
+    getChatSession.mockReset()
+    getChatSession.mockResolvedValue({})
+    // Same reasoning for postChatMessage — a test below controls when its
+    // promise resolves, which must not leak into a later test's default.
+    postChatMessage.mockReset()
+    postChatMessage.mockResolvedValue(undefined)
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+    window.history.pushState({}, '', '/')
+  })
+
+  it('loads the shared chat after auth, adds it to the Shared group, selects it, and strips the ?share param', async () => {
+    window.history.pushState({}, '', '/chat?share=tok123')
+    getSharedChatSession.mockResolvedValueOnce({
+      id: 'shared-1',
+      title: 'Shared Chat',
+      project_id: null,
+      visibility: 'view',
+      share_token: null,
+      created_at: '2026-09-01T00:00:00Z',
+      updated_at: '2026-09-01T00:00:00Z',
+      message_count: 2,
+      owner_username: 'alice',
+      is_owner: false,
+      can_query: false,
+      scope_document_ids: [],
+      messages: [
+        {
+          id: 'm1',
+          seq: 1,
+          role: 'user',
+          content: 'What is in the contract?',
+          author_username: 'alice',
+          created_at: '2026-09-01T00:00:00Z',
+        },
+        {
+          id: 'm2',
+          seq: 2,
+          role: 'assistant',
+          content: 'Shared answer content',
+          author_username: 'alice',
+          created_at: '2026-09-01T00:00:00Z',
+        },
+      ],
+    })
+
+    render(<AppLayout />)
+
+    // Parsed after auth (mocked as already settled) and passed to the
+    // Shared group, not the owner's own chat list.
+    expect(await screen.findByRole('button', { name: 'shared:Shared Chat' })).toBeInTheDocument()
+    expect(screen.getByText('Shared')).toBeInTheDocument()
+    expect(getSharedChatSession).toHaveBeenCalledWith('tok123')
+
+    // Selected — its own message renders in the chat pane without clicking
+    // anything.
+    expect(await screen.findByText('Shared answer content')).toBeInTheDocument()
+
+    // Live UI proof regression: no throwaway auto-created own chat ("New
+    // chat"'s dated title) ever appears, and it never wins the selection
+    // out from under the shared one either.
+    expect(screen.queryByRole('button', { name: /^select:Session / })).not.toBeInTheDocument()
+
+    // The `?share=` param is stripped from the URL via history.replaceState.
+    await waitFor(() => {
+      expect(window.location.search).not.toContain('share')
+    })
+  })
+
+  it('shows a toast and never crashes when the shared link is no longer available', async () => {
+    window.history.pushState({}, '', '/chat?share=badtoken')
+    getSharedChatSession.mockRejectedValueOnce(new Error('not found'))
+
+    render(<AppLayout />)
+
+    // Falls back to the normal (non-shared) chat screen — no fatal error.
+    expect(await screen.findByRole('button', { name: 'New chat' })).toBeInTheDocument()
+    expect(await screen.findByText('This shared chat link is no longer available.')).toBeInTheDocument()
+
+    await waitFor(() => {
+      expect(window.location.search).not.toContain('share')
+    })
+  })
+
+  it('keeps the last active chat selected on a plain reload (no ?share= param), even when it was a shared one', async () => {
+    // No ?share= this time — a normal reload of /chat.
+    window.history.pushState({}, '', '/chat')
+    localStorage.setItem(
+      'docu_chat_history_user-1',
+      JSON.stringify({
+        version: 1,
+        activeChatId: 'shared-1',
+        sessions: [{ id: 's1', title: 'My own chat', messages: [], createdAt: '2026-09-01T00:00:00.000Z' }],
+        updatedAt: '2026-09-01T00:00:00.000Z',
+      }),
+    )
+    getChatSession.mockImplementation((id: string) => Promise.resolve({ id, title: id, messages: [] }))
+    listChatSessions.mockResolvedValueOnce({
+      sessions: [
+        {
+          id: 's1',
+          title: 'My own chat',
+          project_id: null,
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-01T00:00:00Z',
+          updated_at: '2026-09-01T00:00:00Z',
+          message_count: 0,
+        },
+      ],
+      shared: [
+        {
+          id: 'shared-1',
+          title: 'Shared Chat',
+          owner_username: 'alice',
+          visibility: 'query',
+          opened_at: '2026-09-01T00:00:00Z',
+        },
+      ],
+    })
+
+    render(<AppLayout />)
+
+    expect(await screen.findByRole('button', { name: 'shared:Shared Chat' })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByTestId('active-chat-id').textContent).toBe('shared-1')
+    })
+  })
+
+  it('fetches a restored shared chat’s detail on reload — messages render and sending uses the stored scope', async () => {
+    const user = userEvent.setup()
+    initialSelectedIds = new Set()
+    // No ?share= — a plain reload of /chat with a shared chat as the last
+    // active one, same as the previous test, but this one also proves the
+    // reload path loads that chat's messages/scope rather than leaving it
+    // an empty summary (live UI proof: chat pane showed the empty state
+    // and sending silently did nothing).
+    window.history.pushState({}, '', '/chat')
+    localStorage.setItem(
+      'docu_chat_history_user-1',
+      JSON.stringify({
+        version: 1,
+        activeChatId: 'shared-1',
+        sessions: [{ id: 's1', title: 'My own chat', messages: [], createdAt: '2026-09-01T00:00:00.000Z' }],
+        updatedAt: '2026-09-01T00:00:00.000Z',
+      }),
+    )
+    listChatSessions.mockResolvedValueOnce({
+      sessions: [
+        {
+          id: 's1',
+          title: 'My own chat',
+          project_id: null,
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-01T00:00:00Z',
+          updated_at: '2026-09-01T00:00:00Z',
+          message_count: 0,
+        },
+      ],
+      shared: [
+        {
+          id: 'shared-1',
+          title: 'Shared Chat',
+          owner_username: 'alice',
+          visibility: 'query',
+          opened_at: '2026-09-01T00:00:00Z',
+        },
+      ],
+    })
+    getChatSession.mockImplementation((id: string) =>
+      id === 'shared-1'
+        ? Promise.resolve({
+            id: 'shared-1',
+            title: 'Shared Chat',
+            project_id: null,
+            visibility: 'query',
+            share_token: null,
+            created_at: '2026-09-01T00:00:00Z',
+            updated_at: '2026-09-01T00:00:00Z',
+            message_count: 1,
+            owner_username: 'alice',
+            is_owner: false,
+            can_query: true,
+            scope_document_ids: ['doc-9', 'doc-10'],
+            messages: [
+              {
+                id: 'm1',
+                seq: 1,
+                role: 'user',
+                content: 'Earlier shared question',
+                author_username: 'alice',
+                created_at: '2026-09-01T00:00:00Z',
+              },
+              {
+                id: 'm2',
+                seq: 2,
+                role: 'assistant',
+                content: 'Earlier shared answer',
+                author_username: 'alice',
+                created_at: '2026-09-01T00:00:00Z',
+              },
+            ],
+          })
+        : Promise.resolve({ id, title: id, messages: [] }),
+    )
+
+    render(<AppLayout />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('active-chat-id').textContent).toBe('shared-1')
+    })
+
+    // The chat pane loads this chat's messages instead of showing the
+    // empty state.
+    expect(await screen.findByText('Earlier shared answer')).toBeInTheDocument()
+
+    // Composer is enabled with no manual selection, using the fetched
+    // scope, and a question actually reaches the adapter.
+    const textarea = await screen.findByPlaceholderText('Ask about the shared files')
+    await user.type(textarea, 'What do these say?')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    expect(await screen.findByText('What do these say?')).toBeInTheDocument()
+    await waitFor(() => expect(lastSendQueryRequest?.documents).toEqual(['doc-9', 'doc-10']))
+  })
+
+  it('lets a shared queryable chat be asked without a manual file selection, using the chat scope', async () => {
+    const user = userEvent.setup()
+    initialSelectedIds = new Set()
+    window.history.pushState({}, '', '/chat?share=tok456')
+    getSharedChatSession.mockResolvedValueOnce({
+      id: 'shared-2',
+      title: 'Shared Queryable Chat',
+      project_id: null,
+      visibility: 'query',
+      share_token: null,
+      created_at: '2026-09-01T00:00:00Z',
+      updated_at: '2026-09-01T00:00:00Z',
+      message_count: 0,
+      owner_username: 'alice',
+      is_owner: false,
+      can_query: true,
+      // Files the viewer can't necessarily browse themselves — not in
+      // `initialDocumentMeta`, so their names can't be resolved locally.
+      scope_document_ids: ['doc-9', 'doc-10'],
+      messages: [],
+    })
+
+    render(<AppLayout />)
+
+    const textarea = await screen.findByPlaceholderText('Ask about the shared files')
+    expect(textarea).not.toBeDisabled()
+
+    await user.type(textarea, 'What do these say?')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    expect(await screen.findByText('What do these say?')).toBeInTheDocument()
+    // Filenames couldn't be resolved locally — falls back to a count.
+    expect(await screen.findByText('2 shared files')).toBeInTheDocument()
+    expect(lastSendQueryRequest?.documents).toEqual(['doc-9', 'doc-10'])
+
+    await waitFor(() => {
+      expect(postChatMessage).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          role: 'user',
+          content: 'What do these say?',
+          scope_document_ids: ['doc-9', 'doc-10'],
+        }),
+      )
+    })
+  })
+
+  it('disables the composer with a distinct placeholder when the host has not chosen any files yet', async () => {
+    initialSelectedIds = new Set()
+    window.history.pushState({}, '', '/chat?share=tok-empty')
+    getSharedChatSession.mockResolvedValueOnce({
+      id: 'shared-3',
+      title: 'Shared Empty Chat',
+      project_id: null,
+      visibility: 'query',
+      share_token: null,
+      created_at: '2026-09-01T00:00:00Z',
+      updated_at: '2026-09-01T00:00:00Z',
+      message_count: 0,
+      owner_username: 'alice',
+      is_owner: false,
+      can_query: true,
+      scope_document_ids: [],
+      messages: [],
+    })
+
+    render(<AppLayout />)
+
+    const textarea = await screen.findByPlaceholderText(
+      'The chat owner has not chosen files yet',
+    )
+    expect(textarea).toBeDisabled()
+  })
+
+  it('renders read-only chips from scope_documents and omits the document list when a follower asks', async () => {
+    const user = userEvent.setup()
+    initialSelectedIds = new Set()
+    window.history.pushState({}, '', '/chat?share=tok-chips')
+    getSharedChatSession.mockResolvedValueOnce({
+      id: 'shared-4',
+      title: 'Shared Chat With Names',
+      project_id: null,
+      visibility: 'query',
+      share_token: null,
+      created_at: '2026-09-01T00:00:00Z',
+      updated_at: '2026-09-01T00:00:00Z',
+      message_count: 0,
+      owner_username: 'alice',
+      is_owner: false,
+      can_query: true,
+      scope_document_ids: ['doc-9', 'doc-10'],
+      scope_documents: [
+        { document_id: 'doc-9', filename: 'Contract.pdf' },
+        { document_id: 'doc-10', filename: null },
+      ],
+      messages: [],
+    })
+
+    render(<AppLayout />)
+
+    expect(await screen.findByText('Contract.pdf')).toBeInTheDocument()
+    expect(screen.getByText('File doc-10')).toBeInTheDocument()
+    expect(screen.getAllByText('Contract.pdf')).toHaveLength(1)
+
+    const textarea = screen.getByPlaceholderText('Ask about the shared files')
+    await user.type(textarea, 'What do these say?')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    await waitFor(() => expect(lastSendQueryRequest?.omitDocuments).toBe(true))
+    // The sent question's own file tags (user bubble) come from the
+    // resolved scope filenames too — a second "Contract.pdf" alongside
+    // the composer's own read-only chip.
+    await waitFor(() => expect(screen.getAllByText('Contract.pdf')).toHaveLength(2))
+  })
+
+  it("refreshes the shared chat's own detail after the follower's answer completes", async () => {
+    const user = userEvent.setup()
+    initialSelectedIds = new Set()
+    window.history.pushState({}, '', '/chat?share=tok-refresh')
+    getSharedChatSession.mockResolvedValueOnce({
+      id: 'shared-5',
+      title: 'Shared Refresh Chat',
+      project_id: null,
+      visibility: 'query',
+      share_token: null,
+      created_at: '2026-09-01T00:00:00Z',
+      updated_at: '2026-09-01T00:00:00Z',
+      message_count: 0,
+      owner_username: 'alice',
+      is_owner: false,
+      can_query: true,
+      scope_document_ids: ['doc-9'],
+      messages: [],
+    })
+    nextSendQueryResolution = { messageId: 'm1', content: 'The answer.' }
+
+    render(<AppLayout />)
+
+    const textarea = await screen.findByPlaceholderText('Ask about the shared files')
+    // The chat's own activation already triggers one refetch (`useChatStore`'s
+    // always-refetch-on-activation for a shared chat) — capture that count
+    // before sending so the assertion below proves an ADDITIONAL fetch, not
+    // just the one from activation.
+    await waitFor(() =>
+      expect(
+        getChatSession.mock.calls.filter(([id]) => id === 'shared-5').length,
+      ).toBeGreaterThanOrEqual(1),
+    )
+    const beforeCount = getChatSession.mock.calls.filter(([id]) => id === 'shared-5').length
+
+    await user.type(textarea, 'What do these say?')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    expect(await screen.findByText('The answer.')).toBeInTheDocument()
+
+    await waitFor(() => {
+      const count = getChatSession.mock.calls.filter(([id]) => id === 'shared-5').length
+      expect(count).toBeGreaterThan(beforeCount)
+    })
+  })
+
+  it('awaits the assistant-message persist before refreshing, so the refresh cannot race the just-finished answer', async () => {
+    const user = userEvent.setup()
+    initialSelectedIds = new Set()
+    window.history.pushState({}, '', '/chat?share=tok-order')
+    getSharedChatSession.mockResolvedValueOnce({
+      id: 'shared-7',
+      title: 'Shared Ordering Chat',
+      project_id: null,
+      visibility: 'query',
+      share_token: null,
+      created_at: '2026-09-01T00:00:00Z',
+      updated_at: '2026-09-01T00:00:00Z',
+      message_count: 0,
+      owner_username: 'alice',
+      is_owner: false,
+      can_query: true,
+      scope_document_ids: ['doc-9'],
+      messages: [],
+    })
+    nextSendQueryResolution = { messageId: 'm1', content: 'The answer.' }
+
+    // The assistant-message POST hangs until `resolvePost` is called
+    // below — proves the refresh GET waits for it rather than firing
+    // concurrently (a race that could clobber the just-persisted answer
+    // with a detail fetched before it landed).
+    let resolvePost: (() => void) | undefined
+    postChatMessage.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolvePost = resolve
+        }),
+    )
+
+    render(<AppLayout />)
+
+    const textarea = await screen.findByPlaceholderText('Ask about the shared files')
+    await waitFor(() =>
+      expect(
+        getChatSession.mock.calls.filter(([id]) => id === 'shared-7').length,
+      ).toBeGreaterThanOrEqual(1),
+    )
+    const beforeCount = getChatSession.mock.calls.filter(([id]) => id === 'shared-7').length
+
+    await user.type(textarea, 'What do these say?')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    expect(await screen.findByText('The answer.')).toBeInTheDocument()
+
+    // Flush pending microtasks — the refresh GET must NOT have fired yet,
+    // because the assistant-message POST above is still unresolved.
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(getChatSession.mock.calls.filter(([id]) => id === 'shared-7').length).toBe(beforeCount)
+
+    resolvePost?.()
+
+    await waitFor(() => {
+      const count = getChatSession.mock.calls.filter(([id]) => id === 'shared-7').length
+      expect(count).toBeGreaterThan(beforeCount)
+    })
+  })
+})
+
+describe('AppLayout — Summarize', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    currentSignal = null
+    initialSelectedIds = new Set(['doc-1'])
+    initialDocumentMeta = defaultDocumentMeta()
+    validateQueryScope.mockResolvedValue({
+      total_files: 1,
+      ready_files: 1,
+      indexing_files: 0,
+      failed_files: 0,
+      missing_files: 0,
+      accessible_document_ids: ['doc-1'],
+    })
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('persists both the user request and the summary answer to the server', async () => {
+    const user = userEvent.setup()
+    fetchDocumentSummary.mockResolvedValueOnce({ summary: 'This document covers Q3 minutes.' })
+
+    render(<AppLayout />)
+
+    await user.click(screen.getByRole('button', { name: 'Summarize selected document' }))
+
+    expect(await screen.findByText('Summarize this document')).toBeInTheDocument()
+    expect(await screen.findByText('This document covers Q3 minutes.')).toBeInTheDocument()
+
+    await waitFor(() => {
+      expect(postChatMessage).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ role: 'user', content: 'Summarize this document' }),
+      )
+    })
+    await waitFor(() => {
+      expect(postChatMessage).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          role: 'assistant',
+          content: 'This document covers Q3 minutes.',
+          status: 'complete',
+        }),
+      )
+    })
+  })
+})
+
 describe('AppLayout — Extract metadata', () => {
   beforeEach(() => {
     // Each test mounts its own AppLayout: without this, chat history
@@ -272,19 +915,19 @@ describe('AppLayout — Extract metadata', () => {
 
   it('shows the thinking placeholder, then renders the metadata table on success', async () => {
     const user = userEvent.setup()
-    let resolveExtract: ((value: MqaMetadataResponse) => void) | undefined
-    extractMqaMetadata.mockImplementation(
+    let resolveExtract: ((value: MetadataExtractionResponse) => void) | undefined
+    extractMetadata.mockImplementation(
       () =>
-        new Promise<MqaMetadataResponse>((resolve) => {
+        new Promise<MetadataExtractionResponse>((resolve) => {
           resolveExtract = resolve
         }),
     )
 
     render(<AppLayout />)
 
-    await user.click(screen.getByRole('button', { name: 'Extract MQA metadata' }))
+    await user.click(screen.getByRole('button', { name: 'Extract metadata' }))
 
-    expect(screen.getByText('Extract MQA metadata from doc-1.pdf')).toBeInTheDocument()
+    expect(screen.getByText('Extract metadata from doc-1.pdf')).toBeInTheDocument()
     expect(
       screen.getByText('Extracting metadata. This can take up to a minute.'),
     ).toBeInTheDocument()
@@ -301,6 +944,14 @@ describe('AppLayout — Extract metadata', () => {
           'Accreditation body': 'Not stated',
           'Programme Coordinator': 'Not stated',
         },
+        field_order: [
+          'Document Title',
+          'Faculty',
+          'Programme name and code',
+          'Academic year',
+          'Accreditation body',
+          'Programme Coordinator',
+        ],
         comment: 'Arche AI extracted metadata — Document Title: Meeting Minutes; ...',
         pushed: true,
         push_error: null,
@@ -308,7 +959,7 @@ describe('AppLayout — Extract metadata', () => {
       await Promise.resolve()
     })
 
-    expect(await screen.findByText('MQA metadata — doc-1.pdf')).toBeInTheDocument()
+    expect(await screen.findByText('Extracted metadata — doc-1.pdf')).toBeInTheDocument()
     expect(screen.getByText('Meeting Minutes')).toBeInTheDocument()
     expect(screen.getByText('Saved to LogicalDOC as extended properties.')).toBeInTheDocument()
     expect(
@@ -319,16 +970,16 @@ describe('AppLayout — Extract metadata', () => {
   it('removes the placeholder and re-enables the button on a contract error', async () => {
     const user = userEvent.setup()
     let rejectExtract: ((err: unknown) => void) | undefined
-    extractMqaMetadata.mockImplementation(
+    extractMetadata.mockImplementation(
       () =>
-        new Promise<MqaMetadataResponse>((_resolve, reject) => {
+        new Promise<MetadataExtractionResponse>((_resolve, reject) => {
           rejectExtract = reject
         }),
     )
 
     render(<AppLayout />)
 
-    await user.click(screen.getByRole('button', { name: 'Extract MQA metadata' }))
+    await user.click(screen.getByRole('button', { name: 'Extract metadata' }))
     expect(
       await screen.findByText('Extracting metadata. This can take up to a minute.'),
     ).toBeInTheDocument()
@@ -349,20 +1000,20 @@ describe('AppLayout — Extract metadata', () => {
     expect(
       screen.queryByText('Extracting metadata. This can take up to a minute.'),
     ).not.toBeInTheDocument()
-    expect(screen.getByText('Extract MQA metadata from doc-1.pdf')).toBeInTheDocument()
-    expect(screen.queryByText(/MQA metadata —/)).not.toBeInTheDocument()
+    expect(screen.getByText('Extract metadata from doc-1.pdf')).toBeInTheDocument()
+    expect(screen.queryByText(/Extracted metadata —/)).not.toBeInTheDocument()
 
     // The composer is idle again — the button is enabled once more.
-    expect(await screen.findByRole('button', { name: 'Extract MQA metadata' })).toBeEnabled()
+    expect(await screen.findByRole('button', { name: 'Extract metadata' })).toBeEnabled()
   })
 
   it('aborts an in-flight extraction on New chat and marks it interrupted', async () => {
     const user = userEvent.setup()
-    extractMqaMetadata.mockImplementation(() => new Promise<MqaMetadataResponse>(() => {}))
+    extractMetadata.mockImplementation(() => new Promise<MetadataExtractionResponse>(() => {}))
 
     render(<AppLayout />)
 
-    await user.click(screen.getByRole('button', { name: 'Extract MQA metadata' }))
+    await user.click(screen.getByRole('button', { name: 'Extract metadata' }))
     expect(
       await screen.findByText('Extracting metadata. This can take up to a minute.'),
     ).toBeInTheDocument()
@@ -373,7 +1024,56 @@ describe('AppLayout — Extract metadata', () => {
     await user.click(oldChatButtons[oldChatButtons.length - 1])
 
     expect(await screen.findByText('Answer interrupted.')).toBeInTheDocument()
-    expect(screen.getByText('Extract MQA metadata from doc-1.pdf')).toBeInTheDocument()
+    expect(screen.getByText('Extract metadata from doc-1.pdf')).toBeInTheDocument()
+  })
+
+  it('persists both the user request and the extracted metadata to the server', async () => {
+    const user = userEvent.setup()
+    extractMetadata.mockResolvedValueOnce({
+      document_id: 'doc-1',
+      filename: 'doc-1.pdf',
+      fields: {
+        'Document Title': 'Meeting Minutes',
+        Faculty: 'Not stated',
+        'Programme name and code': 'Not stated',
+        'Academic year': 'Not stated',
+        'Accreditation body': 'Not stated',
+        'Programme Coordinator': 'Not stated',
+      },
+      field_order: [
+        'Document Title',
+        'Faculty',
+        'Programme name and code',
+        'Academic year',
+        'Accreditation body',
+        'Programme Coordinator',
+      ],
+      comment: 'Arche AI extracted metadata — Document Title: Meeting Minutes; ...',
+      pushed: true,
+      push_error: null,
+    })
+
+    render(<AppLayout />)
+
+    await user.click(screen.getByRole('button', { name: 'Extract metadata' }))
+    expect(await screen.findByText('Extracted metadata — doc-1.pdf')).toBeInTheDocument()
+
+    await waitFor(() => {
+      expect(postChatMessage).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ role: 'user', content: 'Extract metadata from doc-1.pdf' }),
+      )
+    })
+    await waitFor(() => {
+      expect(postChatMessage).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          role: 'assistant',
+          content: expect.stringContaining('Extracted metadata — doc-1.pdf'),
+          status: 'complete',
+        }),
+      )
+    })
   })
 })
 
@@ -476,6 +1176,96 @@ describe('AppLayout — Categorize', () => {
     expect(
       await screen.findByRole('button', { name: 'Categorize selected document' }),
     ).toBeEnabled()
+  })
+
+  it('persists both the user request and the categorize answer to the server', async () => {
+    const user = userEvent.setup()
+    categorizeDocument.mockResolvedValueOnce(matchedResponse())
+
+    render(<AppLayout />)
+
+    await user.click(screen.getByRole('button', { name: 'Categorize selected document' }))
+    expect(await screen.findByText('Categorize "doc-1.pdf"')).toBeInTheDocument()
+
+    await waitFor(() => {
+      expect(postChatMessage).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ role: 'user', content: 'Categorize "doc-1.pdf"' }),
+      )
+    })
+    await waitFor(() => {
+      expect(postChatMessage).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          role: 'assistant',
+          content: expect.stringContaining('Approved'),
+        }),
+      )
+    })
+  })
+})
+
+describe('AppLayout — Summarize/Categorize/Extract metadata blocked in a shared chat', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    currentSignal = null
+    // A leftover selection from the viewer's OWN chat, still resolvable
+    // (doc-1 is READY/queryable) — the bug this guards against: switching
+    // into a shared chat must not let this selection drive these actions
+    // there too.
+    initialSelectedIds = new Set(['doc-1'])
+    initialDocumentMeta = defaultDocumentMeta()
+    getChatSession.mockReset()
+    getChatSession.mockResolvedValue({})
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+    window.history.pushState({}, '', '/')
+  })
+
+  it('disables Summarize/Categorize/Extract metadata and never posts anything for a shared chat with a leftover own-chat selection', async () => {
+    const user = userEvent.setup()
+    window.history.pushState({}, '', '/chat?share=tok-actions')
+    getSharedChatSession.mockResolvedValueOnce({
+      id: 'shared-6',
+      title: 'Shared Actions Chat',
+      project_id: null,
+      visibility: 'query',
+      share_token: null,
+      created_at: '2026-09-01T00:00:00Z',
+      updated_at: '2026-09-01T00:00:00Z',
+      message_count: 0,
+      owner_username: 'alice',
+      is_owner: false,
+      can_query: true,
+      scope_document_ids: ['doc-9'],
+      messages: [],
+    })
+
+    render(<AppLayout />)
+
+    // Wait for the shared chat to actually become active — the buttons
+    // exist from the very first render (against the default own chat),
+    // so asserting on them before this would race the `?share=` load.
+    await waitFor(() => expect(screen.getByTestId('active-chat-id').textContent).toBe('shared-6'))
+
+    const summarizeBtn = screen.getByRole('button', { name: 'Summarize selected document' })
+    const categorizeBtn = screen.getByRole('button', { name: 'Categorize selected document' })
+    const extractBtn = screen.getByRole('button', { name: 'Extract metadata' })
+
+    await waitFor(() => expect(summarizeBtn).toBeDisabled())
+    expect(categorizeBtn).toBeDisabled()
+    expect(extractBtn).toBeDisabled()
+
+    await user.click(summarizeBtn)
+    await user.click(categorizeBtn)
+    await user.click(extractBtn)
+
+    expect(fetchDocumentSummary).not.toHaveBeenCalled()
+    expect(categorizeDocument).not.toHaveBeenCalled()
+    expect(extractMetadata).not.toHaveBeenCalled()
+    expect(postChatMessage).not.toHaveBeenCalled()
   })
 })
 
@@ -740,7 +1530,7 @@ describe('AppLayout — responsive layout', () => {
     // synchronous render in the file, which is exactly what would surface
     // an un-awaited update as a stray "not wrapped in act" warning.
     expect(await screen.findByLabelText('Open menu')).toBeInTheDocument()
-    expect(screen.getByText('ARCHE AI')).toBeInTheDocument()
+    expect(screen.getByText('Arche AI')).toBeInTheDocument()
     expect(screen.queryByRole('separator', { name: 'Resize sidebar' })).not.toBeInTheDocument()
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
@@ -785,7 +1575,7 @@ describe('AppLayout — responsive layout', () => {
 
     expect(await screen.findByRole('separator', { name: 'Resize sidebar' })).toBeInTheDocument()
     expect(screen.queryByLabelText('Open menu')).not.toBeInTheDocument()
-    expect(screen.queryByText('ARCHE AI')).not.toBeInTheDocument()
+    expect(screen.queryByText('Arche AI')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'New chat' })).toBeInTheDocument()
   })
 })
@@ -845,5 +1635,89 @@ describe('.docu-mobile-drawer-close CSS contract', () => {
       else if (css[i] === '}') depth--
     }
     expect(depth).toBe(0)
+  })
+})
+
+// Round 6, Item B — root cause (verified in code): the shell was
+// `h-screen` (`height: 100vh`), and on iOS Safari 100vh is the height
+// with the browser chrome collapsed, so the shell was taller than the
+// visible area and the *document itself* scrolled; html/body had no
+// `overflow` rule to stop that. The fix: html/body never scroll, the
+// shell tracks the visible viewport (100dvh, refined live by
+// `useVisualViewportHeight` off `window.visualViewport` for the on-screen
+// keyboard), and `.docu-chat-scroll` stays the only scroll container.
+describe('html/body document-scroll CSS contract (Item B)', () => {
+  it('html and body never scroll — the chat pane is the only scroll container, not the document', () => {
+    const css = readFileSync(path.resolve(__dirname, '../index.css'), 'utf-8')
+    const match = css.match(/html,\s*\nbody\s*\{([^}]*)\}/)
+
+    expect(match).not.toBeNull()
+    const body = match![1]
+    expect(body).toMatch(/height\s*:\s*100%/)
+    expect(body).toMatch(/overflow\s*:\s*hidden/)
+    expect(body).toMatch(/overscroll-behavior\s*:\s*none/)
+  })
+})
+
+describe('.docu-app-shell CSS contract (Item B)', () => {
+  it('sizes to 100vh with a 100dvh fallback, so the shell follows the visible viewport (collapsed browser chrome) rather than the layout viewport', () => {
+    const css = readFileSync(path.resolve(__dirname, '../index.css'), 'utf-8')
+    const match = css.match(/\.docu-app-shell\s*\{([^}]*)\}/)
+
+    expect(match).not.toBeNull()
+    const body = match![1]
+    expect(body).toMatch(/height\s*:\s*100vh/)
+    expect(body).toMatch(/height\s*:\s*100dvh/)
+  })
+})
+
+describe('AppLayout shell (Item B — mobile viewport overlap)', () => {
+  it('the shell root carries the dvh-fallback sizing class instead of a bare h-screen', () => {
+    const { container } = render(<AppLayout />)
+    const shell = container.firstChild as HTMLElement
+
+    expect(shell.className).toMatch(/\bdocu-app-shell\b/)
+    expect(shell.className).not.toMatch(/\bh-screen\b/)
+  })
+
+  it('the top bar and the composer are shrink-0 children of the shell, so they stay visible when the chat pane shrinks', () => {
+    render(<AppLayout />)
+
+    const composerFooter = document.querySelector('.docu-chat-input-footer')
+    expect(composerFooter).not.toBeNull()
+    expect(composerFooter!.className).toMatch(/\bshrink-0\b/)
+  })
+
+  it('the composer clears the home indicator with a safe-area bottom inset', () => {
+    render(<AppLayout />)
+
+    const composerFooter = document.querySelector('.docu-chat-input-footer')
+    expect(composerFooter!.className).toMatch(/pb-\[env\(safe-area-inset-bottom,0px\)\]/)
+  })
+
+  it('scrolls the chat pane to the bottom once when the composer textarea gains focus', async () => {
+    const scrollIntoViewSpy = vi.spyOn(HTMLElement.prototype, 'scrollIntoView')
+
+    const { unmount } = render(<AppLayout />)
+    const textarea = screen.getByRole('textbox')
+
+    scrollIntoViewSpy.mockClear()
+    fireEvent.focus(textarea)
+
+    expect(scrollIntoViewSpy).toHaveBeenCalledTimes(1)
+
+    // rc-textarea's own autoSize measurement (unrelated to this fix)
+    // schedules React's own low-priority follow-up work on focus via
+    // `setImmediate` — flushing that macrotask here, and unmounting
+    // explicitly, keeps it from firing after this file's jsdom
+    // environment has already torn down (an intermittent "window is not
+    // defined" from inside react-dom's scheduler, seen without this).
+    await act(async () => {
+      for (let i = 0; i < 5; i++) {
+        await new Promise((resolve) => setImmediate(resolve))
+      }
+    })
+    unmount()
+    scrollIntoViewSpy.mockRestore()
   })
 })

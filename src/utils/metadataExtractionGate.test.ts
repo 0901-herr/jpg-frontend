@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { BrowseDocumentItem } from '../api/types/browse'
-import { getExtractMetadataDisabledReason, isMqaMetadataReady } from './mqaMetadataGate'
+import { getExtractMetadataDisabledReason, isMetadataExtractionReady } from './metadataExtractionGate'
 
 function doc(overrides: Partial<BrowseDocumentItem> = {}): BrowseDocumentItem {
   return {
@@ -17,14 +17,16 @@ function doc(overrides: Partial<BrowseDocumentItem> = {}): BrowseDocumentItem {
   }
 }
 
-describe('mqaMetadataGate', () => {
+describe('metadataExtractionGate', () => {
   it('is ready whenever the document is queryable, regardless of its summary', () => {
-    expect(isMqaMetadataReady(doc())).toBe(true)
-    expect(isMqaMetadataReady(doc({ summary_status: 'PENDING' }))).toBe(true)
-    expect(isMqaMetadataReady(doc({ indexing_status: 'PARTIAL' }))).toBe(true)
-    expect(isMqaMetadataReady(doc({ indexing_status: 'FAILED', queryable: false }))).toBe(false)
-    expect(isMqaMetadataReady(doc({ queryable: false }))).toBe(false)
-    expect(isMqaMetadataReady(undefined)).toBe(false)
+    expect(isMetadataExtractionReady(doc())).toBe(true)
+    expect(isMetadataExtractionReady(doc({ summary_status: 'PENDING' }))).toBe(true)
+    expect(isMetadataExtractionReady(doc({ indexing_status: 'PARTIAL' }))).toBe(true)
+    expect(isMetadataExtractionReady(doc({ indexing_status: 'FAILED', queryable: false }))).toBe(
+      false,
+    )
+    expect(isMetadataExtractionReady(doc({ queryable: false }))).toBe(false)
+    expect(isMetadataExtractionReady(undefined)).toBe(false)
   })
 
   it('blocks extraction until one ready document is selected', () => {
@@ -62,7 +64,7 @@ describe('mqaMetadataGate', () => {
         isResponding: false,
         disabled: false,
       }),
-    ).toBe('Not indexed. Not queryable.')
+    ).toBe('Not ready yet. Not ready for questions.')
 
     expect(
       getExtractMetadataDisabledReason({

@@ -35,6 +35,18 @@ describe('getSendDisabledReason', () => {
     ).toBe('Sign in to continue')
   })
 
+  it('allows sending with zero selected documents when the chat has its own shared scope', () => {
+    expect(
+      getSendDisabledReason({
+        selectedCount: 0,
+        hasMessage: true,
+        isResponding: false,
+        disabled: false,
+        allowEmptySelection: true,
+      }),
+    ).toBeNull()
+  })
+
   it('returns null when send is allowed or while responding', () => {
     expect(
       getSendDisabledReason({

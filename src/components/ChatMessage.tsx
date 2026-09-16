@@ -37,9 +37,10 @@ function progressFilesFor(message: ChatMessage): string[] {
 }
 
 function progressFoldersFor(message: ChatMessage): string[] {
-  // `generating` never names a folder (`progressTickerLabel` already drops
-  // folders for that stage) — no point resolving them here either.
-  return message.progressStage === 'generating' ? [] : message.progressScopeFolders ?? []
+  // `generating` now names folders too (after the files) — owner request:
+  // cycle through every file/folder in scope while the answer is being
+  // written, since that stage is usually stuck the longest.
+  return message.progressScopeFolders ?? []
 }
 
 /** Drives one message's progress headline: ticks (via `useProgressTicker`)
@@ -175,11 +176,13 @@ function CoverageNotice({ coverage }: { coverage?: CoverageInfo }) {
   const total = coverage?.total_files
   const ready = coverage?.ready_files ?? 0
   const scope =
-    total != null ? `${ready} of ${total} selected documents ready` : `${indexing} still indexing`
+    total != null
+      ? `${ready} of ${total} selected documents ready`
+      : `${indexing} still getting ready`
 
   return (
     <p className={`${type.caption} ${typeColor.muted} leading-relaxed`} role="status">
-      {scope}. Some documents are still indexing, so the answer may be incomplete.
+      {scope}. Some documents are still getting ready, so the answer may be incomplete.
     </p>
   )
 }
@@ -295,7 +298,41 @@ function AssistantLabel() {
   return (
     <div className="flex items-center gap-1.5 mb-2" aria-hidden="true">
       <ChatBubbleIcon sx={{ fontSize: 16 }} className={typeColor.muted} />
-      <span className={`${type.caption} font-medium ${typeColor.muted}`}>ARCHE AI</span>
+      <span className={`${type.caption} font-medium ${typeColor.muted}`}>Arche AI</span>
+    </div>
+  )
+}
+
+/** The equivalent label above a user bubble — who asked it, in a project
+ * or shared chat where more than one person's turns can show up in the
+ * same conversation. `message.authorUsername` is set once a message has
+ * round-tripped to the server (`src/api/chat.ts`); a message still only
+ * local (just sent, or from before this field existed) falls back to the
+ * viewer's own display name. */
+function UserLabel({ name }: { name: string }) {
+  return (
+    <span className={`block ${type.caption} font-medium ${typeColor.muted} mb-1`}>{name}</span>
+  )
+}
+
+/** Small tag row under a user bubble naming the files a question was
+ * scoped to — mainly useful for a shared queryable chat, where the viewer
+ * never manually picked files (no composer chip to look back at). Each
+ * entry is either a resolved filename or, when the viewer can't browse
+ * the shared files so no name is available, a single fallback like "3
+ * shared files" (`AppLayout.tsx`'s `handleSend`). */
+function UserFileTags({ tags }: { tags: string[] }) {
+  if (tags.length === 0) return null
+  return (
+    <div data-testid="user-file-tags" className="mt-1.5 flex flex-wrap gap-1">
+      {tags.map((tag) => (
+        <span
+          key={tag}
+          className={`inline-block bg-[#f4f4f4] ${radius.md} px-2 py-0.5 ${type.caption} ${typeColor.muted}`}
+        >
+          {tag}
+        </span>
+      ))}
     </div>
   )
 }
@@ -303,16 +340,27 @@ function AssistantLabel() {
 interface ChatMessageItemProps {
   message: ChatMessage
   showDivider?: boolean
+  /** The signed-in viewer's own display name — shown above a user bubble
+   * whose `authorUsername` hasn't arrived from the server yet. */
+  currentUsername?: string
 }
 
-export default function ChatMessageItem({ message, showDivider }: ChatMessageItemProps) {
+export default function ChatMessageItem({
+  message,
+  showDivider,
+  currentUsername,
+}: ChatMessageItemProps) {
   return (
     <div className="min-w-0">
       {message.role === 'user' ? (
-        <div
-          className={`inline-block bg-[#f4f4f4] ${radius.lg} px-4 py-3 mt-6 mb-4 max-w-[min(36rem,100%)] min-w-0 break-words [overflow-wrap:anywhere]`}
-        >
-          <Text className={`${type.body} ${typeColor.body}`}>{message.content}</Text>
+        <div className="mt-6 mb-4">
+          <UserLabel name={message.authorUsername ?? currentUsername ?? 'You'} />
+          <div
+            className={`inline-block bg-[#f4f4f4] ${radius.lg} px-4 py-3 max-w-[min(36rem,100%)] min-w-0 break-words [overflow-wrap:anywhere]`}
+          >
+            <Text className={`${type.body} ${typeColor.body}`}>{message.content}</Text>
+          </div>
+          <UserFileTags tags={message.fileTags ?? []} />
         </div>
       ) : (
         <div className="mb-4">
