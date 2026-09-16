@@ -14,6 +14,7 @@ import { useAuth } from '../context/AuthContext'
 import { useSendQuery } from '../hooks/mutations/useSendQuery'
 import type { DocumentsLoadedEvent } from '../hooks/useBrowseTree'
 import { useBrowseTree } from '../hooks/useBrowseTree'
+import { useChatStore, createEmptySession } from '../hooks/useChatStore'
 import { useDocumentSelection } from '../hooks/useDocumentSelection'
 import { useResizableWidth } from '../hooks/useResizableWidth'
 import { useMediaQuery } from '../hooks/useMediaQuery'
@@ -22,7 +23,7 @@ import { type, typeColor } from '../styles/typography'
 import { citationsToSources, mergeCitations } from '../utils/citations'
 import { appendStreamDelta } from '../utils/appendStreamDelta'
 import { formatProgressStage, formatRouteLabel, resolveProgressScope } from '../utils/queryProgress'
-import { loadChatHistory, persistChatHistory } from '../utils/chatPersistence'
+import { persistChatHistory } from '../utils/chatPersistence'
 import { getSummarizeDisabledReason, isSummaryReady } from '../utils/summaryGate'
 import { getExtractMetadataDisabledReason, isMqaMetadataReady } from '../utils/mqaMetadataGate'
 import { getCategorizeDisabledReason } from '../utils/categorizeGate'
@@ -82,48 +83,6 @@ function categorizeErrorMessage(err: unknown): string {
   return 'Could not categorize this file. Please try again.'
 }
 
-const SESSION_TITLE_MONTHS = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-] as const
-
-/** "15 Sep 2026" — day (no leading zero), short English month, full year. */
-function formatSessionDate(date: Date): string {
-  return `${date.getDate()} ${SESSION_TITLE_MONTHS[date.getMonth()]} ${date.getFullYear()}`
-}
-
-function isSameLocalDay(a: Date, b: Date): boolean {
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  )
-}
-
-/** "Session {date} (n)" — n is 1 + however many of `existingSessions` were
- * created on the same local calendar day. A session with no `createdAt`
- * (predates this field, or a demo/mock session) never counts toward that
- * total — its own title is left alone wherever it's displayed, and it
- * shouldn't silently renumber a same-day sibling either. */
-function nextSessionTitle(existingSessions: ChatSession[], now: Date): string {
-  const sameDay = existingSessions.filter(
-    (s) => s.createdAt && isSameLocalDay(new Date(s.createdAt), now),
-  )
-  return `Session ${formatSessionDate(now)} (${sameDay.length + 1})`
-}
-
-/** `existingSessions` is whatever sessions this new one will sit alongside
- * — pass the current list so the "(n)" count is right; omit only when
- * there truly are none yet (first-ever session). */
-function createEmptySession(existingSessions: ChatSession[] = []): ChatSession {
-  const now = new Date()
-  return {
-    id: crypto.randomUUID(),
-    title: nextSessionTitle(existingSessions, now),
-    createdAt: now.toISOString(),
-    messages: [],
-  }
-}
-
 function createInitialSession(): ChatSession {
   if (isCitationLoadingDemoEnabled()) return createCitationLoadingDemoSession()
   if (isCitationDemoEnabled()) return createCitationDemoSession()
@@ -146,9 +105,24 @@ const NARROW_LAYOUT_QUERY = '(max-width: 767.98px)'
 export default function AppLayout() {
   const { session: authSession, isLoading: authLoading } = useAuth()
   const initialSessionRef = useRef<ChatSession>(createInitialSession())
-  const [sessions, setSessions] = useState<ChatSession[]>([initialSessionRef.current])
-  const [activeChatId, setActiveChatId] = useState(initialSessionRef.current.id)
-  const [chatHydrated, setChatHydrated] = useState(false)
+  const chatUserId = authSession?.userId ?? (AUTH_BYPASS ? DEV_USER.userId : null)
+  const chatStore = useChatStore({
+    chatUserId,
+    authLoading,
+    enabled: chatPersistenceEnabled(),
+    initialSession: initialSessionRef.current,
+  })
+  const { sessions, setSessions, activeChatId, setActiveChatId, sharedSessions } = chatStore
+  const chatHydrated = chatStore.hydrated
+  // Read (never written to trigger a render) wherever a callback needs the
+  // latest `sessions` synchronously right after calling `setSessions` —
+  // React may defer that call's own updater to a later microtask (it isn't
+  // always run eagerly, e.g. back-to-back calls in the same tick), so a
+  // capture-and-read-back-immediately pattern on the updater itself isn't
+  // reliable. Assigned in the render body itself (not an effect), so it's
+  // already current by the time any callback below runs.
+  const sessionsRef = useRef(sessions)
+  sessionsRef.current = sessions
   const [inputBlockedReason, setInputBlockedReason] = useState<string | undefined>()
   const [queryTier, setQueryTier] = useState<QueryTier>(DEFAULT_QUERY_TIER)
   const { width: sidebarWidth, isResizing, startResize, sidebarRef } = useResizableWidth(280)
@@ -180,6 +154,11 @@ export default function AppLayout() {
   )
 
   const browse = useBrowseTree(handleDocumentsLoaded)
+  // Matches Sidebar's own display-name resolution (`browse.username` first
+  // — the LogicalDOC root-folder payload — then the cookie session) so a
+  // freshly sent message's author label agrees with whatever name the
+  // sidebar's profile row already shows for "you".
+  const currentUsername = browse.username ?? authSession?.username ?? 'You'
   const abortControllerRef = useRef<AbortController | null>(null)
   const streamingCitationsRef = useRef<Citation[]>([])
   const lastProgressStageRef = useRef<string | undefined>(undefined)
@@ -197,39 +176,41 @@ export default function AppLayout() {
     if (!isNarrowLayout) setDrawerOpen(false)
   }, [isNarrowLayout])
 
-  const chatUserId = authSession?.userId ?? (AUTH_BYPASS ? DEV_USER.userId : null)
-
-  useEffect(() => {
-    if (authLoading) return
-    if (!chatPersistenceEnabled()) {
-      setChatHydrated(true)
-      return
-    }
-    if (!chatUserId) {
-      setChatHydrated(true)
-      return
-    }
-
-    const stored = loadChatHistory(chatUserId)
-    if (stored?.sessions.length) {
-      setSessions(stored.sessions)
-      setActiveChatId(stored.activeChatId)
-    }
-    setChatHydrated(true)
-  }, [authLoading, chatUserId])
-
+  // Best-effort local mirror of the server-backed sessions — never the
+  // source of truth once hydrated (that's `useChatStore`'s GET /chat/
+  // sessions + lazy per-chat fetch), just a browser-local backup so a
+  // reload before a chat's first successful sync still shows something.
   useEffect(() => {
     if (!chatHydrated || !chatUserId || !chatPersistenceEnabled()) return
     persistChatHistory(chatUserId, sessions, activeChatId)
   }, [chatHydrated, chatUserId, sessions, activeChatId])
 
+  // Shared-link handoff: `/chat?share=<token>` loads that chat into the
+  // Shared group, selects it, and strips the query param — once per link,
+  // after auth has settled. Read directly off `window.location` (via
+  // `history.replaceState` to strip it, per the brief) rather than
+  // `react-router`'s `useSearchParams`, which requires this component to
+  // be mounted under a `<Router>` — AppLayout itself has no such
+  // requirement otherwise, and its test suite renders it standalone.
+  const [shareToken, setShareToken] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null
+    return new URLSearchParams(window.location.search).get('share')
+  })
+  const sharedLinkHandledRef = useRef(false)
   useEffect(() => {
-    if (sessions.length === 0) {
-      const session = createEmptySession()
-      setSessions([session])
-      setActiveChatId(session.id)
-    }
-  }, [sessions.length])
+    if (!shareToken || authLoading || sharedLinkHandledRef.current) return
+    sharedLinkHandledRef.current = true
+    void (async () => {
+      const shared = await chatStore.loadSharedSession(shareToken)
+      if (!shared) {
+        message.error('This shared chat link is no longer available.')
+      }
+      const url = new URL(window.location.href)
+      url.searchParams.delete('share')
+      window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`)
+      setShareToken(null)
+    })()
+  }, [shareToken, authLoading, chatStore.loadSharedSession])
 
   // Reconcile a persisted selection against the backend once per app load:
   // ids restored from localStorage (a prior browser session) may point at
@@ -298,9 +279,16 @@ export default function AppLayout() {
   }, [authLoading, hasAuthSession])
 
   const activeSession = useMemo(
-    () => sessions.find((s) => s.id === activeChatId) ?? sessions[0],
-    [sessions, activeChatId],
+    () =>
+      sessions.find((s) => s.id === activeChatId) ??
+      sharedSessions.find((s) => s.id === activeChatId) ??
+      sessions[0],
+    [sessions, sharedSessions, activeChatId],
   )
+
+  // A shared chat the viewer doesn't own: the owner's chosen visibility
+  // decides whether the composer accepts new questions.
+  const isSharedViewOnly = activeSession?.isOwner === false && activeSession?.canQuery !== true
 
   const messagePairs = useMemo(
     () => pairMessages(activeSession?.messages ?? []),
@@ -371,83 +359,71 @@ export default function AppLayout() {
     abortControllerRef.current = null
     sendQuery.reset()
 
-    setSessions((prev) =>
-      prev.map((s) => {
-        if (s.id !== chatId) return s
-        const messages = [...s.messages]
-        const lastIdx = messages.length - 1
-        if (lastIdx < 0 || messages[lastIdx].role !== 'assistant') return s
-        const msg = messages[lastIdx]
-        if (msg.status !== 'thinking' && msg.status !== 'streaming') return s
-        messages[lastIdx] = {
-          ...msg,
-          status: 'complete',
-          interrupted: true,
-          liveText: '',
-          progressLabel: undefined,
-        }
-        return { ...s, messages }
-      }),
-    )
-  }, [activeChatId, sendQuery])
+    const session = sessionsRef.current.find((s) => s.id === chatId)
+    const lastMsg = session?.messages[session.messages.length - 1]
+    const interrupted: ChatMessage | undefined =
+      lastMsg && lastMsg.role === 'assistant' && (lastMsg.status === 'thinking' || lastMsg.status === 'streaming')
+        ? { ...lastMsg, status: 'complete', interrupted: true, liveText: '', progressLabel: undefined }
+        : undefined
+
+    if (interrupted) {
+      setSessions((prev) =>
+        prev.map((s) => {
+          if (s.id !== chatId) return s
+          const messages = [...s.messages]
+          messages[messages.length - 1] = interrupted
+          return { ...s, messages }
+        }),
+      )
+      chatStore.recordAssistantMessage(chatId, interrupted)
+    }
+  }, [activeChatId, sendQuery, setSessions, chatStore.recordAssistantMessage])
 
   const handleNewChat = useCallback(() => {
     abortActiveResponse()
-    setSessions((prev) => {
-      const newChat = createEmptySession(prev)
-      setActiveChatId(newChat.id)
-      return [newChat, ...prev]
-    })
-  }, [abortActiveResponse])
+    chatStore.createChat()
+  }, [abortActiveResponse, chatStore.createChat])
 
   const handleSelectChat = useCallback(
     (chatId: string) => {
       if (chatId !== activeChatId) abortActiveResponse()
       setActiveChatId(chatId)
     },
-    [abortActiveResponse, activeChatId],
+    [abortActiveResponse, activeChatId, setActiveChatId],
   )
 
-  const handleRenameChat = useCallback((chatId: string, title: string) => {
-    setSessions((prev) => prev.map((s) => (s.id === chatId ? { ...s, title } : s)))
-  }, [])
-
-  const handleDeleteChat = useCallback(
-    (chatId: string) => {
-      setSessions((prev) => {
-        const next = prev.filter((s) => s.id !== chatId)
-        if (next.length === 0) {
-          const fresh = createEmptySession(next)
-          setActiveChatId(fresh.id)
-          return [fresh]
-        }
-        if (chatId === activeChatId) {
-          setActiveChatId(next[0].id)
-        }
-        return next
-      })
-    },
-    [activeChatId],
-  )
+  const handleRenameChat = chatStore.renameChat
+  const handleDeleteChat = chatStore.deleteChat
 
   const handleStop = useCallback(() => {
     abortControllerRef.current?.abort()
   }, [])
 
   const updateAssistantMessage = useCallback(
-    (chatId: string, updater: (msg: ChatMessage) => ChatMessage) => {
+    (chatId: string, updater: (msg: ChatMessage) => ChatMessage): ChatMessage | undefined => {
+      // `updated` is computed from `sessionsRef` up front, then applied via
+      // the setSessions updater below — not the other way around. React
+      // doesn't always run a state updater synchronously (it can defer to
+      // a later microtask, e.g. several calls back-to-back in one tick),
+      // so a caller reading a value captured *inside* that updater right
+      // after calling `setSessions` can't rely on it having run yet.
+      const session = sessionsRef.current.find((s) => s.id === chatId)
+      const lastMsg = session?.messages[session.messages.length - 1]
+      if (!lastMsg || lastMsg.role !== 'assistant') return undefined
+      const updated = updater(lastMsg)
       setSessions((prev) =>
         prev.map((s) => {
           if (s.id !== chatId) return s
           const messages = [...s.messages]
           const lastIdx = messages.length - 1
           if (lastIdx < 0 || messages[lastIdx].role !== 'assistant') return s
-          messages[lastIdx] = updater(messages[lastIdx])
+          messages[lastIdx] = updated
           return { ...s, messages }
         }),
       )
+      return updated
     },
-    [],
+    [setSessions],
   )
 
   const handleSend = useCallback(
@@ -580,6 +556,7 @@ export default function AppLayout() {
             : s,
         ),
       )
+      chatStore.recordUserMessage(activeChatId, userMsg, scopeDocuments)
 
       requestAnimationFrame(() => scrollToBottom('auto'))
 
@@ -723,6 +700,7 @@ export default function AppLayout() {
               : s,
           ),
         )
+        chatStore.recordAssistantMessage(activeChatId, assistantMsg)
       } catch (err) {
         if (controller.signal.aborted) {
           // A "new chat" / "select another chat" abort (reason ===
@@ -731,13 +709,14 @@ export default function AppLayout() {
           // Only the explicit Stop button (no reason) needs handling in
           // this async continuation.
           if (controller.signal.reason !== 'navigation') {
-            updateAssistantMessage(activeChatId, (msg) => ({
+            const stopped = updateAssistantMessage(activeChatId, (msg) => ({
               ...msg,
               content: msg.content || 'Response stopped.',
               status: 'complete',
               liveText: '',
               thinkingSeconds: elapsedSeconds(),
             }))
+            if (stopped) chatStore.recordAssistantMessage(activeChatId, stopped)
           }
           return
         }
@@ -748,7 +727,7 @@ export default function AppLayout() {
           httpStatus,
         )
         message.error(detail, 8)
-        updateAssistantMessage(activeChatId, (msg) => ({
+        const errored = updateAssistantMessage(activeChatId, (msg) => ({
           ...msg,
           content: detail,
           status: 'error',
@@ -756,13 +735,25 @@ export default function AppLayout() {
           progressLabel: formatProgressStage(lastProgressStageRef.current),
           thinkingSeconds: elapsedSeconds(),
         }))
+        if (errored) chatStore.recordAssistantMessage(activeChatId, errored)
       } finally {
         if (abortControllerRef.current === controller) {
           abortControllerRef.current = null
         }
       }
     },
-    [activeChatId, queryTier, selection, browse, sendQuery, updateAssistantMessage, scrollToBottom],
+    [
+      activeChatId,
+      queryTier,
+      selection,
+      browse,
+      sendQuery,
+      updateAssistantMessage,
+      scrollToBottom,
+      chatStore.recordUserMessage,
+      chatStore.recordAssistantMessage,
+      setSessions,
+    ],
   )
 
   const selectedDocument = useMemo(() => {
@@ -1074,6 +1065,8 @@ export default function AppLayout() {
               <Sidebar
                 width={sidebarWidth}
                 sessions={sessions}
+                sharedSessions={sharedSessions}
+                projects={chatStore.projects}
                 activeChatId={activeChatId}
                 browse={browse}
                 selection={selection}
@@ -1081,6 +1074,11 @@ export default function AppLayout() {
                 onRenameChat={handleRenameChat}
                 onDeleteChat={handleDeleteChat}
                 onNewChat={handleNewChat}
+                onMoveChat={chatStore.moveChat}
+                onShareChat={chatStore.shareChat}
+                onCreateProject={chatStore.createProject}
+                onRenameProject={chatStore.renameProject}
+                onDeleteProject={chatStore.deleteProject}
               />
             </div>
             <SidebarResizeHandle onPointerDown={startResize} isResizing={isResizing} />
@@ -1120,7 +1118,7 @@ export default function AppLayout() {
                         key={pair.user.id}
                         className={`min-w-0 ${isLastTurn ? 'docu-chat-last-turn min-h-[min(72vh,calc(100dvh-13rem))]' : ''}`}
                       >
-                        <ChatMessageItem message={pair.user} />
+                        <ChatMessageItem message={pair.user} currentUsername={currentUsername} />
                         {pair.assistant && (
                           <ChatMessageItem
                             message={pair.assistant}
@@ -1152,6 +1150,8 @@ export default function AppLayout() {
               extractMetadataDisabledReason={extractMetadataDisabledReason}
               queryTier={queryTier}
               onQueryTierChange={setQueryTier}
+              viewOnly={isSharedViewOnly}
+              viewOnlyPlaceholder="View only — the owner has not allowed questions here"
             />
           </Content>
         </Layout>
@@ -1200,6 +1200,8 @@ export default function AppLayout() {
           <Sidebar
             width="100%"
             sessions={sessions}
+            sharedSessions={sharedSessions}
+            projects={chatStore.projects}
             activeChatId={activeChatId}
             browse={browse}
             selection={selection}
@@ -1207,6 +1209,11 @@ export default function AppLayout() {
             onRenameChat={handleRenameChat}
             onDeleteChat={handleDeleteChat}
             onNewChat={handleNewChat}
+            onMoveChat={chatStore.moveChat}
+            onShareChat={chatStore.shareChat}
+            onCreateProject={chatStore.createProject}
+            onRenameProject={chatStore.renameProject}
+            onDeleteProject={chatStore.deleteProject}
             onNavigate={() => setDrawerOpen(false)}
             inDrawer
           />
