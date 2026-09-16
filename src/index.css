@@ -1286,6 +1286,20 @@ button.docu-citation-pill:hover {
   box-shadow: none !important;
 }
 
+.admin-system-status-card.ant-card .ant-card-body {
+  padding-top: 0.75rem !important;
+}
+
+.admin-system-descriptions .ant-descriptions-row > th,
+.admin-system-descriptions .ant-descriptions-row > td {
+  padding-bottom: 0.5rem !important;
+}
+
+.admin-system-descriptions .ant-descriptions-row:last-child > th,
+.admin-system-descriptions .ant-descriptions-row:last-child > td {
+  padding-bottom: 0 !important;
+}
+
 .admin-document-table .ant-table,
 .admin-document-table .ant-table-container,
 .admin-document-table .ant-table-thead > tr > th,

@@ -18,12 +18,12 @@ export default function AuditSyncStatus({ overview }: AuditSyncStatusProps) {
     Date.now() - new Date(pollAt).getTime() > STALE_MINUTES * 60 * 1000
 
   return (
-    <AdminCard title="LogicalDOC sync">
+    <AdminCard title="LogicalDOC sync" className="admin-system-status-card">
       {!overview.audit_sync_enabled ? (
         <Tag>Disabled</Tag>
       ) : (
         <>
-          <Descriptions column={1} size="small">
+          <Descriptions column={1} size="small" className="admin-system-descriptions">
             <Descriptions.Item label="Enabled">Yes</Descriptions.Item>
             <Descriptions.Item label="Last poll">
               {pollAt ? `${formatRelativeTime(pollAt)} (${formatDateTime(pollAt)})` : 'Never'}
@@ -40,7 +40,7 @@ export default function AuditSyncStatus({ overview }: AuditSyncStatusProps) {
           </Descriptions>
           {stale && (
             <Alert
-              className="mt-4"
+              className="mt-2"
               type="warning"
               showIcon
               message={`Audit sync stale for ${STALE_MINUTES}+ minutes`}
