@@ -393,7 +393,7 @@ describe('Sidebar — host revocation ("Stop sharing")', () => {
     expect(screen.queryByText('Stop sharing')).not.toBeInTheDocument()
   })
 
-  it('offers "Stop sharing" from inside the share modal too', async () => {
+  it('revokes sharing from inside the share modal by selecting the Private row', async () => {
     const user = userEvent.setup()
     const onShareChat = vi.fn().mockResolvedValue(undefined)
     renderSidebar(onShareChat)
@@ -402,7 +402,11 @@ describe('Sidebar — host revocation ("Stop sharing")', () => {
     await user.click(screen.getByText('Share'))
     expect(screen.getByText('Share this chat')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Stop sharing' }))
+    // The modal has no separate "Stop sharing" button — selecting Private
+    // has the same revoking effect (visibility: 'private' already revokes
+    // shared-link access server-side), so this drives the flow through the
+    // Private radio row instead.
+    await user.click(screen.getByRole('radio', { name: 'Private' }))
 
     expect(onShareChat).toHaveBeenCalledWith('c1', 'private')
   })
