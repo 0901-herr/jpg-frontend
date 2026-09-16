@@ -324,7 +324,7 @@ input.ant-input:focus-visible {
 
 .admin-activity-day-label {
   margin: 0 0 0.75rem;
-  font-size: 0.8125rem;
+  font-size: var(--admin-font-sm);
   font-weight: 600;
   letter-spacing: 0.01em;
   color: #525252;
@@ -335,8 +335,8 @@ input.ant-input:focus-visible {
 }
 
 .admin-activity-time {
-  font-size: 0.75rem;
-  line-height: 1.25rem;
+  font-size: var(--admin-font-2xs);
+  line-height: var(--admin-line-base);
 }
 
 .admin-document-table .admin-category-tag {
@@ -374,7 +374,7 @@ input.ant-input:focus-visible {
 .admin-pipeline-progress-meta {
   display: block;
   padding-inline: 0.125rem;
-  font-size: 0.75rem;
+  font-size: var(--admin-font-2xs);
   line-height: 1.4;
 }
 
@@ -1096,26 +1096,44 @@ button.docu-citation-pill:hover {
   font-family: var(--docu-font-family);
 }
 
+/* Admin dashboard type scale — single source of truth (UI polish pass).
+   Every .admin-* font-size below reads one of these five steps so the
+   dashboard never grows a one-off size again. Tailwind's text-xs (12px)
+   maps to --admin-font-2xs; used directly (not via var()) on a couple of
+   inline utility classes where a CSS var isn't practical. */
+.admin-panel {
+  --admin-font-2xs: 0.75rem; /* 12px — timestamps, tags, micro labels */
+  --admin-line-2xs: 1rem;
+  --admin-font-sm: 0.8125rem; /* 13px — secondary/grouped text */
+  --admin-line-sm: 1.125rem;
+  --admin-font-base: 0.875rem; /* 14px — default body + label text */
+  --admin-line-base: 1.25rem;
+  --admin-font-lg: 1rem; /* 16px — card titles, section headings */
+  --admin-line-lg: 1.5rem;
+  --admin-font-xl: 1.25rem; /* 20px — page title */
+  --admin-line-xl: 1.75rem;
+}
+
 .admin-page-title.ant-typography {
   margin-bottom: 0 !important;
-  font-size: 1.25rem !important;
+  font-size: var(--admin-font-xl) !important;
   font-weight: 600 !important;
-  line-height: 1.75rem !important;
+  line-height: var(--admin-line-xl) !important;
   letter-spacing: -0.01em;
   color: #0d0d0d !important;
 }
 
 .admin-page-subtitle {
   margin: 0.25rem 0 0;
-  font-size: 0.875rem;
-  line-height: 1.25rem;
+  font-size: var(--admin-font-base);
+  line-height: var(--admin-line-base);
   color: #64748b;
 }
 
 .admin-card-head .ant-card-head-title {
-  font-size: 0.9375rem !important;
+  font-size: var(--admin-font-lg) !important;
   font-weight: 600 !important;
-  line-height: 1.4 !important;
+  line-height: var(--admin-line-lg) !important;
   color: #1a2332 !important;
 }
 
@@ -1137,9 +1155,9 @@ button.docu-citation-pill:hover {
 
 .admin-pipeline-progress-title {
   margin: 0 0 0.375rem;
-  font-size: 0.9375rem;
+  font-size: var(--admin-font-lg);
   font-weight: 600;
-  line-height: 1.4;
+  line-height: var(--admin-line-lg);
   color: #1a2332;
 }
 
@@ -1151,39 +1169,39 @@ button.docu-citation-pill:hover {
 
 .admin-pipeline-progress-intro {
   display: block;
-  font-size: 0.875rem;
+  font-size: var(--admin-font-base);
   line-height: 1.5;
 }
 
 .admin-text-label {
-  font-size: 0.875rem;
+  font-size: var(--admin-font-base);
   font-weight: 500;
-  line-height: 1.25rem;
+  line-height: var(--admin-line-base);
   color: #1a2332;
 }
 
 .admin-text-body {
-  font-size: 0.875rem;
-  line-height: 1.25rem;
+  font-size: var(--admin-font-base);
+  line-height: var(--admin-line-base);
   color: #1a2332;
 }
 
 .admin-text-muted {
-  font-size: 0.75rem;
-  line-height: 1.125rem;
+  font-size: var(--admin-font-2xs);
+  line-height: var(--admin-line-2xs);
   color: #64748b;
 }
 
 .admin-text-desc {
-  font-size: 0.75rem;
-  line-height: 1.125rem;
+  font-size: var(--admin-font-2xs);
+  line-height: var(--admin-line-2xs);
   color: #64748b;
 }
 
 .admin-text-mono {
   font-family: var(--docu-font-mono);
-  font-size: 0.75rem;
-  line-height: 1.125rem;
+  font-size: var(--admin-font-2xs);
+  line-height: var(--admin-line-2xs);
   color: #64748b;
 }
 
@@ -1192,9 +1210,9 @@ button.docu-citation-pill:hover {
   background: transparent;
   padding: 0;
   cursor: pointer;
-  font-size: 0.875rem;
+  font-size: var(--admin-font-base);
   font-weight: 500;
-  line-height: 1.25rem;
+  line-height: var(--admin-line-base);
   color: #0084ff;
   text-align: left;
 }
@@ -1208,23 +1226,23 @@ button.docu-citation-pill:hover {
 }
 
 .admin-text-error {
-  font-size: 0.875rem;
-  line-height: 1.25rem;
+  font-size: var(--admin-font-base);
+  line-height: var(--admin-line-base);
   color: #991b1b;
 }
 
 .admin-sidebar-title {
-  font-size: 1.125rem;
+  font-size: var(--admin-font-xl);
   font-weight: 600;
-  line-height: 1.75rem;
+  line-height: var(--admin-line-xl);
   letter-spacing: -0.01em;
   color: #1a2332;
 }
 
 .admin-stat-title .ant-statistic-title {
   margin-bottom: 0.25rem !important;
-  font-size: 0.75rem !important;
-  line-height: 1.125rem !important;
+  font-size: var(--admin-font-2xs) !important;
+  line-height: var(--admin-line-2xs) !important;
   color: #64748b !important;
 }
 
@@ -1268,7 +1286,7 @@ button.docu-citation-pill:hover {
   padding: 1rem 1.25rem !important;
   min-height: 0 !important;
   border-bottom: 1px solid #eef1f5 !important;
-  font-size: 14px !important;
+  font-size: var(--admin-font-base) !important;
   font-weight: 600 !important;
   color: #0d0d0d !important;
 }
@@ -1302,7 +1320,7 @@ button.docu-citation-pill:hover {
   gap: 0.625rem;
   min-width: 0;
   text-align: left;
-  font-size: 0.875rem;
+  font-size: var(--admin-font-base);
   font-weight: 500;
   color: #14532d;
 }
@@ -1310,7 +1328,7 @@ button.docu-citation-pill:hover {
 .admin-status-popover-detail,
 .admin-status-popover-note {
   margin: 0;
-  font-size: 0.75rem;
+  font-size: var(--admin-font-2xs);
   line-height: 1.5;
   color: #3f6212;
 }
@@ -1340,9 +1358,9 @@ button.docu-citation-pill:hover {
   border: none;
   border-radius: 9999px;
   padding: 0.375rem 0.875rem;
-  font-size: 0.75rem;
+  font-size: var(--admin-font-2xs);
   font-weight: 500;
-  line-height: 1.25rem;
+  line-height: var(--admin-line-base);
   cursor: pointer;
   transition: background-color 150ms ease;
 }
@@ -1413,7 +1431,7 @@ button.docu-citation-pill:hover {
   justify-self: end;
   border-radius: 0.375rem;
   padding: 0.25rem 0.625rem;
-  font-size: 0.6875rem;
+  font-size: var(--admin-font-2xs);
   font-weight: 600;
   letter-spacing: 0.025em;
   text-transform: uppercase;
@@ -1488,7 +1506,7 @@ button.docu-citation-pill:hover {
 
 .admin-control-section-title {
   margin: 0 0 0.25rem;
-  font-size: 0.6875rem;
+  font-size: var(--admin-font-2xs);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1501,9 +1519,9 @@ button.docu-citation-pill:hover {
   align-items: center;
   gap: 0.75rem;
   padding: 0.625rem 0.75rem;
-  font-size: 0.875rem;
+  font-size: var(--admin-font-base);
   font-weight: 500;
-  line-height: 1.25rem;
+  line-height: var(--admin-line-base);
   text-decoration: none;
   border-radius: 0.75rem;
   transition: color 150ms ease, background-color 150ms ease;

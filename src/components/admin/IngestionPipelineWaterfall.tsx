@@ -147,7 +147,7 @@ export default function IngestionPipelineWaterfall({
                   </div>
                   {!compact && (
                     <span
-                      className={`mt-2 max-w-[4.75rem] text-center text-[10px] leading-tight ${
+                      className={`mt-2 max-w-[4.75rem] text-center text-xs leading-tight ${
                         state === 'current'
                           ? 'font-semibold text-[#0084ff]'
                           : state === 'failed'
@@ -169,7 +169,7 @@ export default function IngestionPipelineWaterfall({
         {compact && activeStage && (
           <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center">
             <span
-              className={`text-[10px] font-medium leading-none whitespace-nowrap ${
+              className={`text-xs font-medium leading-none whitespace-nowrap ${
                 tone === 'failed'
                   ? 'text-red-600'
                   : tone === 'success'

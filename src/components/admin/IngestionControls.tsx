@@ -3,13 +3,11 @@ import { App, Button, Popconfirm, Select, Switch, Tag, Typography } from 'antd'
 import type { ReactNode } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import {
-  classifyMissingDocuments,
   mintAdminChatSession,
   pauseDiscovery,
   pauseIngestion,
   resumeDiscovery,
   resumeIngestion,
-  retryFailedDocuments,
   triggerAuditPoll,
   triggerReconciliation,
   updateIngestionSyncSettings,
@@ -186,25 +184,6 @@ export default function IngestionControls({ overview }: IngestionControlsProps) 
     onError: (err: Error) => message.error(err.message),
   })
 
-  const retryFailedMutation = useMutation({
-    mutationFn: () => retryFailedDocuments(),
-    onSuccess: (result) => {
-      message.success(`Scheduled ${result.retried} retries`)
-      invalidate()
-    },
-    onError: (err: Error) => message.error(err.message),
-  })
-
-  const classifyMutation = useMutation({
-    mutationFn: () => classifyMissingDocuments(10),
-    onSuccess: (result) => {
-      message.success(
-        result.queued ? `Queued ${result.queued} for classification` : 'No documents need classification',
-      )
-    },
-    onError: (err: Error) => message.error(err.message),
-  })
-
   const chatSessionMutation = useMutation({
     mutationFn: () => mintAdminChatSession(),
     onSuccess: (result) => {
@@ -353,37 +332,6 @@ export default function IngestionControls({ overview }: IngestionControlsProps) 
                 icon={<AdminPlayIcon />}
                 loading={reconcileMutation.isPending}
                 onClick={() => reconcileMutation.mutate()}
-              />
-            }
-          />
-        </ControlGroup>
-      </AdminCard>
-
-      <AdminCard title="Maintenance">
-        <ControlGroup>
-          <ControlRow
-            title="Retry failed"
-            description="Requeues up to 500 failed documents for another ingest attempt."
-            status={<Tag>{overview.counts.failed.toLocaleString()} failed</Tag>}
-            action={
-              <IconControlButton
-                label="Retry failed documents"
-                icon={<AdminPlayIcon />}
-                loading={retryFailedMutation.isPending}
-                disabled={overview.counts.failed === 0}
-                onClick={() => retryFailedMutation.mutate()}
-              />
-            }
-          />
-          <ControlRow
-            title="Classify missing"
-            description="Runs the RAG classifier on READY documents without a category label."
-            action={
-              <IconControlButton
-                label="Classify missing documents"
-                icon={<AdminPlayIcon />}
-                loading={classifyMutation.isPending}
-                onClick={() => classifyMutation.mutate()}
               />
             }
           />

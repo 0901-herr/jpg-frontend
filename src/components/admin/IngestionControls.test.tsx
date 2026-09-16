@@ -38,7 +38,10 @@ describe('IngestionControls', () => {
     expect(screen.getByText('Change detection')).toBeInTheDocument()
     expect(screen.queryByText('Initial corpus')).not.toBeInTheDocument()
     expect(screen.queryByText('Bulk crawl')).not.toBeInTheDocument()
-    expect(screen.getByText('Maintenance')).toBeInTheDocument()
+    // Maintenance card was removed as a duplicate — retrying failed
+    // documents lives on the Failures tab and classification lives on
+    // Documents (dashboard cleanup pass).
+    expect(screen.queryByText('Maintenance')).not.toBeInTheDocument()
     expect(screen.getByText('Operator')).toBeInTheDocument()
     expect(screen.getByText('Audit changelog')).toBeInTheDocument()
     expect(screen.getByText('Reconciliation')).toBeInTheDocument()

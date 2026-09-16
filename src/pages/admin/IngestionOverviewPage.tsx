@@ -198,21 +198,20 @@ export default function IngestionOverviewPage() {
 
           {section === 'errors' && <FailedDocumentsTable onSelect={openDocument} />}
 
-          {section === 'health' && (
-            <div className={`grid grid-cols-1 md:grid-cols-2 ${ADMIN_STACK_GAP} max-w-3xl`}>
-              <SystemHealth
-                health={overview.health}
-                circuitOpen={overview.circuit_open}
-                ragApiBaseUrl={overview.rag_api_base_url}
-              />
-              <ThroughputSummary bulk={overview.bulk_progress} />
-            </div>
-          )}
-
-          {section === 'sync' && (
-            <div className={`grid grid-cols-1 md:grid-cols-2 ${ADMIN_STACK_GAP} max-w-4xl`}>
-              <AuditSyncStatus overview={overview} />
-              <ReconciliationStatus overview={overview} />
+          {section === 'system' && (
+            <div className={ADMIN_STACK_SPACE}>
+              <div className={`grid grid-cols-1 md:grid-cols-2 ${ADMIN_STACK_GAP}`}>
+                <SystemHealth
+                  health={overview.health}
+                  circuitOpen={overview.circuit_open}
+                  ragApiBaseUrl={overview.rag_api_base_url}
+                />
+                <ThroughputSummary bulk={overview.bulk_progress} />
+              </div>
+              <div className={`grid grid-cols-1 md:grid-cols-2 ${ADMIN_STACK_GAP}`}>
+                <AuditSyncStatus overview={overview} />
+                <ReconciliationStatus overview={overview} />
+              </div>
             </div>
           )}
         </div>

@@ -190,8 +190,8 @@ describe('IngestionOverviewPage', () => {
     )
   })
 
-  it('shows service ports on health tab', async () => {
-    renderPage('/admin/ingestion?tab=health')
+  it('shows service ports on the system tab', async () => {
+    renderPage('/admin/ingestion?tab=system')
     expect(await screen.findByText('localhost:8001')).toBeInTheDocument()
     expect(screen.getByText('localhost:8082')).toBeInTheDocument()
     expect(screen.getByText('rag.example:8080')).toBeInTheDocument()
@@ -202,7 +202,7 @@ describe('IngestionOverviewPage', () => {
       ...mockOverviewRunning,
       last_audit_poll_at: new Date(Date.now() - 20 * 60 * 1000).toISOString(),
     })
-    renderPage('/admin/ingestion?tab=sync')
+    renderPage('/admin/ingestion?tab=system')
     expect(await screen.findByText('Stale')).toBeInTheDocument()
   })
 })
