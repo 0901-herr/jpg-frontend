@@ -108,6 +108,18 @@ describe('chatPersistence', () => {
     expect(loaded?.sessions[0].createdAt).toBeUndefined()
   })
 
+  it('keeps a persisted activeChatId that is not among the given sessions (e.g. a shared chat) instead of forcing it to sessions[0]', () => {
+    // `sessions` here mirrors only the viewer's OWN chats — the persisted
+    // "last active chat" can legitimately be a shared one that lives in a
+    // separate list, not one of these, and must round-trip as-is so the
+    // caller (useChatStore's hydration) can check it against both lists.
+    const sessions = [sampleSession('own-1', 'My chat')]
+    persistChatHistory(USER, sessions, 'shared-99')
+    const loaded = loadChatHistory(USER)
+    expect(loaded?.activeChatId).toBe('shared-99')
+    expect(loaded?.sessions.map((s) => s.id)).toEqual(['own-1'])
+  })
+
   it('persists an abstained message so the "No matching content" caption survives a reload', () => {
     persistChatHistory(
       USER,

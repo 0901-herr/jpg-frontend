@@ -25,6 +25,8 @@ const categorizeDocument = vi.fn<
 const fetchDocumentSummary = vi.fn()
 const postChatMessage = vi.fn().mockResolvedValue(undefined)
 const getSharedChatSession = vi.fn().mockRejectedValue(new Error('not found'))
+const listChatSessions = vi.fn().mockResolvedValue({ sessions: [], shared: [] })
+const getChatSession = vi.fn().mockResolvedValue({})
 
 vi.mock('../api/browse', () => ({
   validateQueryScope: (...args: [string[], AbortSignal?]) => validateQueryScope(...args),
@@ -38,13 +40,13 @@ vi.mock('../api/browse', () => ({
 // uses (see useChatStore.ts). Mocked here so those flows never hit real
 // `fetch`, and so tests can assert the assistant content that got persisted.
 vi.mock('../api/chat', () => ({
-  listChatSessions: vi.fn().mockResolvedValue({ sessions: [], shared: [] }),
+  listChatSessions: (...args: []) => listChatSessions(...args),
   listChatProjects: vi.fn().mockResolvedValue([]),
   createChatProject: vi.fn().mockResolvedValue({ id: 'p1', name: 'p1' }),
   renameChatProject: vi.fn().mockResolvedValue({ id: 'p1', name: 'p1' }),
   deleteChatProject: vi.fn().mockResolvedValue(undefined),
   createChatSession: vi.fn().mockResolvedValue({}),
-  getChatSession: vi.fn().mockResolvedValue({}),
+  getChatSession: (...args: [string]) => getChatSession(...args),
   patchChatSession: vi.fn().mockResolvedValue({}),
   deleteChatSession: vi.fn().mockResolvedValue(undefined),
   postChatMessage: (...args: unknown[]) => postChatMessage(...args),
@@ -128,6 +130,7 @@ vi.mock('../hooks/useDocumentSelection', () => ({
 // settles by rejecting once the caller's AbortSignal fires. `reset`
 // synchronously flips `isPending` back to false, exactly like the real hook.
 let currentSignal: AbortSignal | null = null
+let lastSendQueryRequest: SendMessageRequest | null = null
 // Test-controlled: when set, the next mutateAsync call rejects with this
 // immediately instead of only settling on abort — models a query call that
 // fails outright (e.g. a 403 before any streaming starts). Consumed once.
@@ -143,6 +146,7 @@ vi.mock('../hooks/mutations/useSendQuery', () => ({
         new Promise<SendMessageResponse>((_resolve, reject) => {
           setIsPending(true)
           currentSignal = request.signal ?? null
+          lastSendQueryRequest = request
           if (nextSendQueryRejection) {
             const err = nextSendQueryRejection
             nextSendQueryRejection = null
@@ -161,6 +165,7 @@ vi.mock('./Sidebar', () => ({
   default: (props: {
     sessions: { id: string; title: string }[]
     sharedSessions?: { id: string; title: string }[]
+    activeChatId?: string
     onNewChat: () => void
     onSelectChat: (id: string) => void
   }) => (
@@ -168,6 +173,7 @@ vi.mock('./Sidebar', () => ({
       <button type="button" onClick={props.onNewChat}>
         New chat
       </button>
+      <div data-testid="active-chat-id">{props.activeChatId}</div>
       {props.sessions.map((s) => (
         <button key={s.id} type="button" onClick={() => props.onSelectChat(s.id)}>
           select:{s.title || s.id}
@@ -400,6 +406,11 @@ describe('AppLayout — shared link (?share=token)', () => {
     // anything.
     expect(await screen.findByText('Shared answer content')).toBeInTheDocument()
 
+    // Live UI proof regression: no throwaway auto-created own chat ("New
+    // chat"'s dated title) ever appears, and it never wins the selection
+    // out from under the shared one either.
+    expect(screen.queryByRole('button', { name: /^select:Session / })).not.toBeInTheDocument()
+
     // The `?share=` param is stripped from the URL via history.replaceState.
     await waitFor(() => {
       expect(window.location.search).not.toContain('share')
@@ -418,6 +429,98 @@ describe('AppLayout — shared link (?share=token)', () => {
 
     await waitFor(() => {
       expect(window.location.search).not.toContain('share')
+    })
+  })
+
+  it('keeps the last active chat selected on a plain reload (no ?share= param), even when it was a shared one', async () => {
+    // No ?share= this time — a normal reload of /chat.
+    window.history.pushState({}, '', '/chat')
+    localStorage.setItem(
+      'docu_chat_history_user-1',
+      JSON.stringify({
+        version: 1,
+        activeChatId: 'shared-1',
+        sessions: [{ id: 's1', title: 'My own chat', messages: [], createdAt: '2026-09-01T00:00:00.000Z' }],
+        updatedAt: '2026-09-01T00:00:00.000Z',
+      }),
+    )
+    getChatSession.mockImplementation((id: string) => Promise.resolve({ id, title: id, messages: [] }))
+    listChatSessions.mockResolvedValueOnce({
+      sessions: [
+        {
+          id: 's1',
+          title: 'My own chat',
+          project_id: null,
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-01T00:00:00Z',
+          updated_at: '2026-09-01T00:00:00Z',
+          message_count: 0,
+        },
+      ],
+      shared: [
+        {
+          id: 'shared-1',
+          title: 'Shared Chat',
+          owner_username: 'alice',
+          visibility: 'query',
+          opened_at: '2026-09-01T00:00:00Z',
+        },
+      ],
+    })
+
+    render(<AppLayout />)
+
+    expect(await screen.findByRole('button', { name: 'shared:Shared Chat' })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByTestId('active-chat-id').textContent).toBe('shared-1')
+    })
+  })
+
+  it('lets a shared queryable chat be asked without a manual file selection, using the chat scope', async () => {
+    const user = userEvent.setup()
+    initialSelectedIds = new Set()
+    window.history.pushState({}, '', '/chat?share=tok456')
+    getSharedChatSession.mockResolvedValueOnce({
+      id: 'shared-2',
+      title: 'Shared Queryable Chat',
+      project_id: null,
+      visibility: 'query',
+      share_token: null,
+      created_at: '2026-09-01T00:00:00Z',
+      updated_at: '2026-09-01T00:00:00Z',
+      message_count: 0,
+      owner_username: 'alice',
+      is_owner: false,
+      can_query: true,
+      // Files the viewer can't necessarily browse themselves — not in
+      // `initialDocumentMeta`, so their names can't be resolved locally.
+      scope_document_ids: ['doc-9', 'doc-10'],
+      messages: [],
+    })
+
+    render(<AppLayout />)
+
+    const textarea = await screen.findByPlaceholderText('Ask about the shared files')
+    expect(textarea).not.toBeDisabled()
+
+    await user.type(textarea, 'What do these say?')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    expect(await screen.findByText('What do these say?')).toBeInTheDocument()
+    // Filenames couldn't be resolved locally — falls back to a count.
+    expect(await screen.findByText('2 shared files')).toBeInTheDocument()
+    expect(lastSendQueryRequest?.documents).toEqual(['doc-9', 'doc-10'])
+
+    await waitFor(() => {
+      expect(postChatMessage).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          role: 'user',
+          content: 'What do these say?',
+          scope_document_ids: ['doc-9', 'doc-10'],
+        }),
+      )
     })
   })
 })

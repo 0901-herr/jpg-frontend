@@ -105,6 +105,15 @@ function chatPersistenceEnabled(): boolean {
   return !isCitationDemoEnabled() && !isCitationLoadingDemoEnabled()
 }
 
+/** Read directly off `window.location` rather than `react-router`'s
+ * `useSearchParams`, which requires this component to be mounted under a
+ * `<Router>` — AppLayout itself has no such requirement otherwise, and its
+ * test suite renders it standalone. */
+function getShareTokenFromLocation(): string | null {
+  if (typeof window === 'undefined') return null
+  return new URLSearchParams(window.location.search).get('share')
+}
+
 // Below 768px the resizable desktop sidebar is replaced by a slim top bar
 // (hamburger + "ARCHE AI" + current session title) and the sidebar itself
 // moves into an antd Drawer opened from that hamburger — see the Task 5
@@ -118,13 +127,21 @@ export default function AppLayout() {
   const { session: authSession, isLoading: authLoading } = useAuth()
   const initialSessionRef = useRef<ChatSession>(createInitialSession())
   const chatUserId = authSession?.userId ?? (AUTH_BYPASS ? DEV_USER.userId : null)
+  // Shared-link handoff: `/chat?share=<token>` loads that chat into the
+  // Shared group and selects it (see the effect below) — declared here,
+  // before `useChatStore`, so its hydration can skip auto-creating an
+  // empty own chat while this is still pending (never selected, only to
+  // then be silently outranked by the shared one a moment later).
+  const [shareToken, setShareToken] = useState<string | null>(() => getShareTokenFromLocation())
   const chatStore = useChatStore({
     chatUserId,
     authLoading,
     enabled: chatPersistenceEnabled(),
     initialSession: initialSessionRef.current,
+    hasPendingShare: shareToken != null,
   })
-  const { sessions, setSessions, activeChatId, setActiveChatId, sharedSessions } = chatStore
+  const { sessions, setSessions, activeChatId, setActiveChatId, sharedSessions, setSharedSessions } =
+    chatStore
   const chatHydrated = chatStore.hydrated
   // Read (never written to trigger a render) wherever a callback needs the
   // latest `sessions` synchronously right after calling `setSessions` —
@@ -135,6 +152,28 @@ export default function AppLayout() {
   // already current by the time any callback below runs.
   const sessionsRef = useRef(sessions)
   sessionsRef.current = sessions
+  const sharedSessionsRef = useRef(sharedSessions)
+  sharedSessionsRef.current = sharedSessions
+
+  // A chat being asked a question can live in either list — `sessions`
+  // (owned) or `sharedSessions` (a shared chat the viewer doesn't own,
+  // shared as queryable). Every place that appends/replaces a chat's
+  // messages by id (handleSend's own turns, streaming updates, abort)
+  // goes through this so it works for both rather than assuming "owned".
+  const updateChatMessages = useCallback(
+    (chatId: string, updater: (messages: ChatMessage[]) => ChatMessage[]) => {
+      if (sessionsRef.current.some((s) => s.id === chatId)) {
+        setSessions((prev) =>
+          prev.map((s) => (s.id === chatId ? { ...s, messages: updater(s.messages) } : s)),
+        )
+      } else {
+        setSharedSessions((prev) =>
+          prev.map((s) => (s.id === chatId ? { ...s, messages: updater(s.messages) } : s)),
+        )
+      }
+    },
+    [setSessions, setSharedSessions],
+  )
   const [inputBlockedReason, setInputBlockedReason] = useState<string | undefined>()
   const [queryTier, setQueryTier] = useState<QueryTier>(DEFAULT_QUERY_TIER)
   const { width: sidebarWidth, isResizing, startResize, sidebarRef } = useResizableWidth(280)
@@ -199,18 +238,16 @@ export default function AppLayout() {
 
   // Shared-link handoff: `/chat?share=<token>` loads that chat into the
   // Shared group, selects it, and strips the query param — once per link,
-  // after auth has settled. Read directly off `window.location` (via
-  // `history.replaceState` to strip it, per the brief) rather than
-  // `react-router`'s `useSearchParams`, which requires this component to
-  // be mounted under a `<Router>` — AppLayout itself has no such
-  // requirement otherwise, and its test suite renders it standalone.
-  const [shareToken, setShareToken] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null
-    return new URLSearchParams(window.location.search).get('share')
-  })
+  // after auth has settled AND hydration has finished. The hydrated gate
+  // matters: hydration's own `setActiveChatId` (picking the viewer's own
+  // last-active or first chat) runs asynchronously too, and running this
+  // before it finished let it win the race and silently re-select an own
+  // chat out from under the shared one a moment later (live UI proof).
+  // Running strictly after guarantees this call's `setActiveChatId` is the
+  // last word.
   const sharedLinkHandledRef = useRef(false)
   useEffect(() => {
-    if (!shareToken || authLoading || sharedLinkHandledRef.current) return
+    if (!shareToken || authLoading || !chatHydrated || sharedLinkHandledRef.current) return
     sharedLinkHandledRef.current = true
     void (async () => {
       const shared = await chatStore.loadSharedSession(shareToken)
@@ -222,7 +259,7 @@ export default function AppLayout() {
       window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`)
       setShareToken(null)
     })()
-  }, [shareToken, authLoading, chatStore.loadSharedSession])
+  }, [shareToken, authLoading, chatHydrated, chatStore.loadSharedSession])
 
   // Reconcile a persisted selection against the backend once per app load:
   // ids restored from localStorage (a prior browser session) may point at
@@ -301,6 +338,12 @@ export default function AppLayout() {
   // A shared chat the viewer doesn't own: the owner's chosen visibility
   // decides whether the composer accepts new questions.
   const isSharedViewOnly = activeSession?.isOwner === false && activeSession?.canQuery !== true
+  // The other side of that same coin — a shared chat the owner DID allow
+  // questions on. The viewer may not even be able to browse the files it's
+  // scoped to (that's the whole point of sharing), so `handleSend` falls
+  // back to the chat's own `scopeDocumentIds` here instead of requiring a
+  // manual selection.
+  const isSharedQueryable = activeSession?.isOwner === false && activeSession?.canQuery === true
 
   const messagePairs = useMemo(
     () => pairMessages(activeSession?.messages ?? []),
@@ -371,7 +414,9 @@ export default function AppLayout() {
     abortControllerRef.current = null
     sendQuery.reset()
 
-    const session = sessionsRef.current.find((s) => s.id === chatId)
+    const session =
+      sessionsRef.current.find((s) => s.id === chatId) ??
+      sharedSessionsRef.current.find((s) => s.id === chatId)
     const lastMsg = session?.messages[session.messages.length - 1]
     const interrupted: ChatMessage | undefined =
       lastMsg && lastMsg.role === 'assistant' && (lastMsg.status === 'thinking' || lastMsg.status === 'streaming')
@@ -379,17 +424,14 @@ export default function AppLayout() {
         : undefined
 
     if (interrupted) {
-      setSessions((prev) =>
-        prev.map((s) => {
-          if (s.id !== chatId) return s
-          const messages = [...s.messages]
-          messages[messages.length - 1] = interrupted
-          return { ...s, messages }
-        }),
-      )
+      updateChatMessages(chatId, (messages) => {
+        const next = [...messages]
+        next[next.length - 1] = interrupted
+        return next
+      })
       chatStore.recordAssistantMessage(chatId, interrupted)
     }
-  }, [activeChatId, sendQuery, setSessions, chatStore.recordAssistantMessage])
+  }, [activeChatId, sendQuery, updateChatMessages, chatStore.recordAssistantMessage])
 
   const handleNewChat = useCallback(() => {
     abortActiveResponse()
@@ -419,23 +461,22 @@ export default function AppLayout() {
       // a later microtask, e.g. several calls back-to-back in one tick),
       // so a caller reading a value captured *inside* that updater right
       // after calling `setSessions` can't rely on it having run yet.
-      const session = sessionsRef.current.find((s) => s.id === chatId)
+      const session =
+        sessionsRef.current.find((s) => s.id === chatId) ??
+        sharedSessionsRef.current.find((s) => s.id === chatId)
       const lastMsg = session?.messages[session.messages.length - 1]
       if (!lastMsg || lastMsg.role !== 'assistant') return undefined
       const updated = updater(lastMsg)
-      setSessions((prev) =>
-        prev.map((s) => {
-          if (s.id !== chatId) return s
-          const messages = [...s.messages]
-          const lastIdx = messages.length - 1
-          if (lastIdx < 0 || messages[lastIdx].role !== 'assistant') return s
-          messages[lastIdx] = updated
-          return { ...s, messages }
-        }),
-      )
+      updateChatMessages(chatId, (messages) => {
+        const lastIdx = messages.length - 1
+        if (lastIdx < 0 || messages[lastIdx].role !== 'assistant') return messages
+        const next = [...messages]
+        next[lastIdx] = updated
+        return next
+      })
       return updated
     },
-    [setSessions],
+    [updateChatMessages],
   )
 
   // Persists a non-streaming turn (Summarize/Categorize/Extract metadata:
@@ -459,7 +500,17 @@ export default function AppLayout() {
   const handleSend = useCallback(
     async (text: string, options?: { displayText?: string }) => {
       const selectedDocs = [...selection.selectedIds]
-      if (selectedDocs.length === 0) {
+      // A shared queryable chat's own scope stands in for a manual
+      // selection — the viewer may not even be able to browse these files
+      // (that's the point of sharing), so there's nothing to validate
+      // client-side: send straight through, and if the adapter itself
+      // rejects it (403, a LogicalDOC permission problem), the normal
+      // error path below shows that.
+      const sharedScopeIds = activeSession?.scopeDocumentIds ?? []
+      const useSharedScope =
+        selectedDocs.length === 0 && isSharedQueryable && sharedScopeIds.length > 0
+
+      if (selectedDocs.length === 0 && !useSharedScope) {
         message.warning('Select at least one document before asking a question.')
         return
       }
@@ -496,20 +547,15 @@ export default function AppLayout() {
       // goes through the browse tree's folder cache since
       // `BrowseDocumentItem` only carries a `folder_id`, not a name).
       let scopeFolders: string[] = []
+      // Tags shown under the sent question in the transcript — only set
+      // for the shared-scope path (a normal manual selection already has
+      // its own composer chip while typing, with nothing analogous once
+      // sent). Resolved names when available; a plain count when the
+      // viewer can't browse the files well enough to name them.
+      let userFileTags: string[] | undefined
 
-      try {
-        const scope = await validateQueryScope(selectedDocs, controller.signal)
-        if (controller.signal.aborted) return
-
-        const deniedCount = selectedDocs.length - scope.accessible_document_ids.length
-        if (deniedCount > 0) {
-          selection.trimSelection(scope.accessible_document_ids)
-          message.warning(
-            `${deniedCount} selected ${deniedCount === 1 ? 'document was' : 'documents were'} removed because you don't have access.`,
-          )
-        }
-
-        scopeDocuments = scope.accessible_document_ids
+      if (useSharedScope) {
+        scopeDocuments = sharedScopeIds
         const resolvedScope = resolveProgressScope(
           scopeDocuments,
           selection.documentMeta,
@@ -517,51 +563,78 @@ export default function AppLayout() {
         )
         scopeFilenames = resolvedScope.files
         scopeFolders = resolvedScope.folders
+        userFileTags =
+          scopeFilenames.length > 0
+            ? scopeFilenames
+            : [`${scopeDocuments.length} shared file${scopeDocuments.length === 1 ? '' : 's'}`]
+      } else {
+        try {
+          const scope = await validateQueryScope(selectedDocs, controller.signal)
+          if (controller.signal.aborted) return
 
-        if (scopeDocuments.length === 0) {
-          const reason =
-            scope.failed_files > 0
-              ? 'None of the selected documents are ready to answer questions yet.'
-              : 'No accessible documents in your selection.'
-          setInputBlockedReason(reason)
-          message.error(reason)
-          return
-        }
+          const deniedCount = selectedDocs.length - scope.accessible_document_ids.length
+          if (deniedCount > 0) {
+            selection.trimSelection(scope.accessible_document_ids)
+            message.warning(
+              `${deniedCount} selected ${deniedCount === 1 ? 'document was' : 'documents were'} removed because you don't have access.`,
+            )
+          }
 
-        if (scope.ready_files === 0 && scope.indexing_files > 0) {
-          const reason = 'Documents are still being prepared. Please wait until at least one is ready.'
-          setInputBlockedReason(reason)
-          message.warning(reason)
-          return
-        }
-
-        if (scope.ready_files === 0) {
-          const reason = 'No ready documents in your selection.'
-          setInputBlockedReason(reason)
-          message.error(reason)
-          return
-        }
-
-        if (scope.indexing_files > 0) {
-          message.info(
-            `${scope.indexing_files} selected ${scope.indexing_files === 1 ? 'document is' : 'documents are'} still being prepared. Answers may be incomplete.`,
+          scopeDocuments = scope.accessible_document_ids
+          const resolvedScope = resolveProgressScope(
+            scopeDocuments,
+            selection.documentMeta,
+            browse.getFolderNode,
           )
+          scopeFilenames = resolvedScope.files
+          scopeFolders = resolvedScope.folders
+
+          if (scopeDocuments.length === 0) {
+            const reason =
+              scope.failed_files > 0
+                ? 'None of the selected documents are ready to answer questions yet.'
+                : 'No accessible documents in your selection.'
+            setInputBlockedReason(reason)
+            message.error(reason)
+            return
+          }
+
+          if (scope.ready_files === 0 && scope.indexing_files > 0) {
+            const reason = 'Documents are still being prepared. Please wait until at least one is ready.'
+            setInputBlockedReason(reason)
+            message.warning(reason)
+            return
+          }
+
+          if (scope.ready_files === 0) {
+            const reason = 'No ready documents in your selection.'
+            setInputBlockedReason(reason)
+            message.error(reason)
+            return
+          }
+
+          if (scope.indexing_files > 0) {
+            message.info(
+              `${scope.indexing_files} selected ${scope.indexing_files === 1 ? 'document is' : 'documents are'} still being prepared. Answers may be incomplete.`,
+            )
+          }
+        } catch (err) {
+          if (controller.signal.aborted) return
+          const httpStatus = err instanceof ApiError ? err.status : undefined
+          const detail = friendlyQueryError(
+            err instanceof ApiError ? queryErrorRawMessage(err) : 'Validation failed',
+            httpStatus,
+          )
+          message.error(detail)
+          return
         }
-      } catch (err) {
-        if (controller.signal.aborted) return
-        const httpStatus = err instanceof ApiError ? err.status : undefined
-        const detail = friendlyQueryError(
-          err instanceof ApiError ? queryErrorRawMessage(err) : 'Validation failed',
-          httpStatus,
-        )
-        message.error(detail)
-        return
       }
 
       const userMsg: ChatMessage = {
         id: crypto.randomUUID(),
         role: 'user',
         content: options?.displayText ?? text,
+        fileTags: userFileTags,
       }
 
       const assistantId = crypto.randomUUID()
@@ -579,13 +652,7 @@ export default function AppLayout() {
 
       shouldStickToBottomRef.current = true
 
-      setSessions((prev) =>
-        prev.map((s) =>
-          s.id === activeChatId
-            ? { ...s, messages: [...s.messages, userMsg, thinkingMsg] }
-            : s,
-        ),
-      )
+      updateChatMessages(activeChatId, (messages) => [...messages, userMsg, thinkingMsg])
       chatStore.recordUserMessage(activeChatId, userMsg, scopeDocuments)
 
       requestAnimationFrame(() => scrollToBottom('auto'))
@@ -717,19 +784,10 @@ export default function AppLayout() {
           question,
         }
 
-        setSessions((prev) =>
-          prev.map((s) =>
-            s.id === activeChatId
-              ? {
-                  ...s,
-                  // Sidebar titles are dated ("Session 15 Sep 2026 (1)"),
-                  // set once at session creation — no longer overwritten
-                  // with the first question.
-                  messages: [...s.messages.slice(0, -1), assistantMsg],
-                }
-              : s,
-          ),
-        )
+        // Sidebar titles are dated ("Session 15 Sep 2026 (1)"), set once
+        // at session creation — no longer overwritten with the first
+        // question.
+        updateChatMessages(activeChatId, (messages) => [...messages.slice(0, -1), assistantMsg])
         chatStore.recordAssistantMessage(activeChatId, assistantMsg)
       } catch (err) {
         if (controller.signal.aborted) {
@@ -771,6 +829,8 @@ export default function AppLayout() {
     },
     [
       activeChatId,
+      activeSession,
+      isSharedQueryable,
       queryTier,
       selection,
       browse,
@@ -1196,6 +1256,8 @@ export default function AppLayout() {
               onQueryTierChange={setQueryTier}
               viewOnly={isSharedViewOnly}
               viewOnlyPlaceholder="View only — the owner has not allowed questions here"
+              allowEmptySelection={isSharedQueryable}
+              emptySelectionPlaceholder="Ask about the shared files"
             />
           </Content>
         </Layout>

@@ -111,6 +111,7 @@ function mapDetailToSession(dto: ChatSessionDetailDto): ChatSession {
     isOwner: dto.is_owner,
     canQuery: dto.can_query,
     messageCount: dto.messages.length,
+    scopeDocumentIds: dto.scope_document_ids,
   }
 }
 
@@ -159,12 +160,26 @@ export interface UseChatStoreParams {
    * behaves purely as local React state, never touching the network. */
   enabled: boolean
   initialSession: ChatSession
+  /** True while a `?share=<token>` link is still being resolved by the
+   * caller (parsed, not yet handed to `loadSharedSession`) — suppresses
+   * the "never end up with zero own sessions" fallback so a first-time
+   * visitor via a share link doesn't get a throwaway empty chat created
+   * (and selected) out from under the shared one about to load. The
+   * caller clears this once the share attempt resolves, at which point
+   * the normal fallback resumes if still needed (e.g. a dead link). */
+  hasPendingShare?: boolean
 }
 
 export interface UseChatStoreResult {
   sessions: ChatSession[]
   setSessions: Dispatch<SetStateAction<ChatSession[]>>
   sharedSessions: ChatSession[]
+  /** Exposed so a caller can update a shared chat's own messages (e.g.
+   * appending a query turn asked against it) the same way `setSessions`
+   * does for an owned one — `sessions` and `sharedSessions` are separate
+   * lists, so a message-append helper keyed only on chat id needs both
+   * setters to find the right one. */
+  setSharedSessions: Dispatch<SetStateAction<ChatSession[]>>
   projects: ChatProject[]
   activeChatId: string
   setActiveChatId: (id: string) => void
@@ -200,6 +215,7 @@ export function useChatStore({
   authLoading,
   enabled,
   initialSession,
+  hasPendingShare = false,
 }: UseChatStoreParams): UseChatStoreResult {
   const [sessions, setSessions] = useState<ChatSession[]>([initialSession])
   const [sharedSessions, setSharedSessions] = useState<ChatSession[]>([])
@@ -286,15 +302,46 @@ export function useChatStore({
           for (const s of ownSessions) loadedMessagesRef.current.add(s.id)
         }
 
-        if (ownSessions.length === 0) {
+        if (ownSessions.length === 0 && !hasPendingShare) {
           const fresh = createEmptySession()
           loadedMessagesRef.current.add(fresh.id)
           ownSessions = [fresh]
         }
 
         setSessions(ownSessions)
-        setSharedSessions(shared)
-        setActiveChatId(ownSessions[0].id)
+        // Union by id, not a blind replace: `loadSharedSession` (exposed
+        // to any caller, not just AppLayout's own gated `?share=` effect)
+        // can add a shared session concurrently with this hydration pass
+        // — its own load winning is exactly the point, so an entry it
+        // already added is kept as-is rather than overwritten with the
+        // thinner (message-less) summary this listing returns for it.
+        setSharedSessions((prev) => {
+          const merged = new Map(prev.map((s) => [s.id, s]))
+          for (const s of shared) {
+            if (!merged.has(s.id)) merged.set(s.id, s)
+          }
+          return [...merged.values()]
+        })
+
+        // A pending `?share=` link takes priority — the caller runs
+        // `loadSharedSession` once hydration finishes and selects that
+        // chat itself, so leave `activeChatId` alone here entirely
+        // (there may be nothing in `ownSessions` to select anyway).
+        if (ownSessions.length > 0 && !hasPendingShare) {
+          // Resume the chat the viewer was last on (own or shared) rather
+          // than always defaulting to the first own session — mirrors
+          // `persistChatHistory`'s local backup, which stores this
+          // regardless of which list the active chat actually belongs to.
+          // Read from `stored` (captured above, before the import branch
+          // above could have cleared it on success) rather than re-reading
+          // localStorage now — it may already be gone by this point.
+          const persistedActiveId = stored?.activeChatId
+          const stillExists =
+            persistedActiveId != null &&
+            (ownSessions.some((s) => s.id === persistedActiveId) ||
+              shared.some((s) => s.id === persistedActiveId))
+          setActiveChatId(stillExists ? persistedActiveId : ownSessions[0].id)
+        }
 
         try {
           const loadedProjects = await listChatProjects()
@@ -324,14 +371,23 @@ export function useChatStore({
   }, [enabled, authLoading, chatUserId])
 
   // Belt-and-braces: never end up with zero sessions after hydration,
-  // whatever combination of the branches above ran.
+  // whatever combination of the branches above ran — except while a share
+  // link is still pending, which deliberately leaves `sessions` empty for
+  // `loadSharedSession` to populate. Depending on `hasPendingShare`
+  // itself (not just `sessions.length`) means this still kicks in the
+  // moment that share attempt resolves, if it turned out to be a dead
+  // link and `sessions` is still empty.
   useEffect(() => {
-    if (!hydrated || sessions.length > 0) return
+    // Zero OWN sessions is fine on its own once a shared chat loaded
+    // successfully (`loadSharedSession` populates `sharedSessions`, a
+    // separate list) — there's still something to show, so this only
+    // needs to step in when there would otherwise be nothing at all.
+    if (!hydrated || sessions.length > 0 || sharedSessions.length > 0 || hasPendingShare) return
     const fresh = createEmptySession()
     loadedMessagesRef.current.add(fresh.id)
     setSessions([fresh])
     setActiveChatId(fresh.id)
-  }, [hydrated, sessions.length])
+  }, [hydrated, sessions.length, sharedSessions.length, hasPendingShare])
 
   const ensureMessagesLoaded = useCallback(
     (chatId: string) => {
@@ -543,6 +599,7 @@ export function useChatStore({
     sessions,
     setSessions,
     sharedSessions,
+    setSharedSessions,
     projects,
     activeChatId,
     setActiveChatId,

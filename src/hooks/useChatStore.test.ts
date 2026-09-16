@@ -179,6 +179,115 @@ describe('hydration', () => {
     expect(result.current.activeChatId).toBe(result.current.sessions[0].id)
   })
 
+  it('does not auto-create an empty own chat when a share link is still pending', async () => {
+    vi.mocked(chatApi.listChatSessions).mockResolvedValue({ sessions: [], shared: [] })
+
+    const { result } = renderHook(() =>
+      useChatStore(baseParams({ hasPendingShare: true })),
+    )
+
+    await waitFor(() => expect(result.current.hydrated).toBe(true))
+
+    // Left empty for the caller's own loadSharedSession call (run once
+    // hydrate finishes) to populate instead of a throwaway own chat.
+    expect(result.current.sessions).toHaveLength(0)
+  })
+
+  it('never drops a shared session loaded concurrently with hydration — hydrate resolves after the share request', async () => {
+    // Hydrate's own network round-trip is deliberately left pending —
+    // AppLayout only calls `loadSharedSession` once hydration has already
+    // finished, but the hook itself makes no such promise to any other
+    // caller, so it must tolerate this ordering on its own.
+    let resolveList!: (value: { sessions: never[]; shared: never[] }) => void
+    vi.mocked(chatApi.listChatSessions).mockImplementation(
+      () => new Promise((resolve) => { resolveList = resolve }),
+    )
+    vi.mocked(chatApi.getSharedChatSession).mockResolvedValue({
+      id: 'shared-1',
+      title: 'Shared chat',
+      project_id: null,
+      visibility: 'query',
+      share_token: 'tok',
+      created_at: '2026-09-16T00:00:00Z',
+      updated_at: '2026-09-16T00:00:00Z',
+      message_count: 0,
+      owner_username: 'alice',
+      is_owner: false,
+      can_query: true,
+      scope_document_ids: ['doc-1'],
+      messages: [],
+    })
+
+    const { result } = renderHook(() => useChatStore(baseParams({ hasPendingShare: true })))
+
+    // The share request resolves first, while hydrate is still pending.
+    let loaded: ChatSession | null = null
+    await act(async () => {
+      loaded = await result.current.loadSharedSession('tok')
+    })
+    expect(loaded?.id).toBe('shared-1')
+    expect(result.current.sharedSessions.some((s) => s.id === 'shared-1')).toBe(true)
+
+    // Hydrate finishes after — its own (empty) shared list must not wipe
+    // out the shared session already loaded.
+    await act(async () => {
+      resolveList({ sessions: [], shared: [] })
+    })
+    await waitFor(() => expect(result.current.hydrated).toBe(true))
+
+    expect(result.current.sharedSessions.some((s) => s.id === 'shared-1')).toBe(true)
+    expect(result.current.activeChatId).toBe('shared-1')
+  })
+
+  it('restores the last active chat (own or shared) from localStorage instead of always defaulting to the first own session', async () => {
+    vi.mocked(chatApi.listChatSessions).mockResolvedValue({
+      sessions: [
+        {
+          id: 's1',
+          title: 'Session 1',
+          project_id: null,
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-16T00:00:00Z',
+          updated_at: '2026-09-16T00:00:00Z',
+          message_count: 0,
+        },
+        {
+          id: 's2',
+          title: 'Session 2',
+          project_id: null,
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-16T00:00:00Z',
+          updated_at: '2026-09-16T00:00:00Z',
+          message_count: 0,
+        },
+      ],
+      shared: [
+        {
+          id: 'shared-1',
+          title: 'Shared chat',
+          owner_username: 'alice',
+          visibility: 'query',
+          opened_at: '2026-09-16T00:00:00Z',
+        },
+      ],
+    })
+    // The viewer's last active chat, per the local mirror, was the SHARED
+    // one — not `s1` (which listChatSessions returns first).
+    persistChatHistory(
+      chatUserId,
+      [{ id: 's1', title: 'Session 1', messages: [] }],
+      'shared-1',
+    )
+
+    const { result } = renderHook(() => useChatStore(baseParams()))
+
+    await waitFor(() => expect(result.current.hydrated).toBe(true))
+
+    expect(result.current.activeChatId).toBe('shared-1')
+  })
+
   it('never touches the network when disabled (citation-demo mode)', async () => {
     const initialSession = createEmptySession()
     const { result } = renderHook(() => useChatStore(baseParams({ enabled: false, initialSession })))
@@ -285,7 +394,7 @@ describe('chat CRUD', () => {
       owner_username: 'alice',
       is_owner: false,
       can_query: true,
-      scope_document_ids: [],
+      scope_document_ids: ['doc-1', 'doc-2'],
       messages: [],
     })
 
@@ -297,6 +406,12 @@ describe('chat CRUD', () => {
     expect(loaded?.id).toBe('shared-1')
     expect(result.current.sharedSessions.some((s) => s.id === 'shared-1')).toBe(true)
     expect(result.current.activeChatId).toBe('shared-1')
+    // Surfaced from the detail DTO's own scope_document_ids — the query
+    // scope a shared queryable chat falls back to when the viewer hasn't
+    // manually selected any documents.
+    expect(
+      result.current.sharedSessions.find((s) => s.id === 'shared-1')?.scopeDocumentIds,
+    ).toEqual(['doc-1', 'doc-2'])
   })
 
   it('deletes a project and clears its id off any chat that had it', async () => {
