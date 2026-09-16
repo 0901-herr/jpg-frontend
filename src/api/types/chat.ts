@@ -108,5 +108,3 @@ export interface PostMessageRequest {
    * session's own `scope_document_ids`. */
   scope_document_ids?: string[]
 }
-
-export type PatchMessageRequest = Omit<PostMessageRequest, 'role'>

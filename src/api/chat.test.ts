@@ -8,7 +8,6 @@ import {
   getSharedChatSession,
   listChatProjects,
   listChatSessions,
-  patchChatMessage,
   patchChatSession,
   postChatMessage,
   renameChatProject,
@@ -118,13 +117,6 @@ describe('messages', () => {
     })
   })
 
-  it('patches an existing message', async () => {
-    vi.mocked(apiPatch).mockResolvedValue(undefined)
-
-    await patchChatMessage('c1', 'm1', { content: 'edited' })
-
-    expect(apiPatch).toHaveBeenCalledWith('/chat/sessions/c1/messages/m1', { content: 'edited' })
-  })
 })
 
 describe('shared', () => {

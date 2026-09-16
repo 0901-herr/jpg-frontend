@@ -2,11 +2,11 @@ import { apiDelete, apiGet, apiPatch, apiPost } from './http'
 import type {
   ChatProjectDto,
   ChatSessionDetailDto,
+  ChatSessionSummaryDto,
   CreateProjectRequest,
   CreateSessionRequest,
   ListProjectsResponseDto,
   ListSessionsResponseDto,
-  PatchMessageRequest,
   PatchProjectRequest,
   PatchSessionRequest,
   PostMessageRequest,
@@ -35,8 +35,8 @@ export async function listChatSessions(): Promise<ListSessionsResponseDto> {
 
 export async function createChatSession(
   body: CreateSessionRequest,
-): Promise<ChatSessionDetailDto> {
-  return apiPost<ChatSessionDetailDto>('/chat/sessions', body)
+): Promise<ChatSessionSummaryDto> {
+  return apiPost<ChatSessionSummaryDto>('/chat/sessions', body)
 }
 
 export async function getChatSession(id: string): Promise<ChatSessionDetailDto> {
@@ -46,8 +46,8 @@ export async function getChatSession(id: string): Promise<ChatSessionDetailDto> 
 export async function patchChatSession(
   id: string,
   body: PatchSessionRequest,
-): Promise<ChatSessionDetailDto> {
-  return apiPatch<ChatSessionDetailDto>(`/chat/sessions/${id}`, body)
+): Promise<ChatSessionSummaryDto> {
+  return apiPatch<ChatSessionSummaryDto>(`/chat/sessions/${id}`, body)
 }
 
 export async function deleteChatSession(id: string): Promise<void> {
@@ -59,14 +59,6 @@ export async function postChatMessage(
   body: PostMessageRequest,
 ): Promise<void> {
   await apiPost(`/chat/sessions/${sessionId}/messages`, body)
-}
-
-export async function patchChatMessage(
-  sessionId: string,
-  messageId: string,
-  body: PatchMessageRequest,
-): Promise<void> {
-  await apiPatch(`/chat/sessions/${sessionId}/messages/${messageId}`, body)
 }
 
 export async function getSharedChatSession(token: string): Promise<ChatSessionDetailDto> {
