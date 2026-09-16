@@ -7,6 +7,7 @@ import {
   formatActivityTime,
   groupActivityByDay,
   mergeActivityFeed,
+  type ActivityKind,
   type ActivityLevel,
 } from '../../utils/activityLog'
 import { ADMIN_TEXT_BODY, ADMIN_TEXT_LINK, ADMIN_TEXT_MUTED } from '../../config/adminStyles'
@@ -37,6 +38,16 @@ function timelineColor(level: ActivityLevel): string {
   }
 }
 
+const ACTIVITY_KIND_LABELS: Record<ActivityKind, string> = {
+  discovery: 'Discovery',
+  processing: 'Processing',
+  completed: 'Completed',
+  failed: 'Failed',
+  sync: 'Sync',
+  action: 'Action',
+  system: 'System',
+}
+
 export default function IngestionActivityLog({
   overview,
   documents,
@@ -56,6 +67,7 @@ export default function IngestionActivityLog({
           headline: event.headline,
           detail: event.detail,
           category: event.category,
+          action: event.action,
         })),
         overview.bulk_progress,
       ),
@@ -106,24 +118,31 @@ export default function IngestionActivityLog({
                     color: timelineColor(entry.level),
                     children: (
                       <div className="min-w-0 pr-2">
-                        <Text className={`block mb-1 ${ADMIN_TEXT_MUTED} admin-activity-time`}>
-                          {formatActivityTime(entry.at)}
-                        </Text>
-                        {entry.docId && onSelectDocument ? (
-                          <button
-                            type="button"
-                            className={ADMIN_TEXT_LINK}
-                            onClick={() => onSelectDocument(entry.docId!)}
-                          >
-                            {entry.headline}
-                          </button>
-                        ) : (
-                          <Text strong className={ADMIN_TEXT_BODY}>
-                            {entry.headline}
+                        <div className="admin-activity-entry-header">
+                          <Text className={`${ADMIN_TEXT_MUTED} admin-activity-time`}>
+                            {formatActivityTime(entry.at)}
                           </Text>
-                        )}
+                          <Tag
+                            className={`admin-activity-kind admin-activity-kind--${entry.kind}`}
+                          >
+                            {ACTIVITY_KIND_LABELS[entry.kind]}
+                          </Tag>
+                          {entry.docId && onSelectDocument ? (
+                            <button
+                              type="button"
+                              className={ADMIN_TEXT_LINK}
+                              onClick={() => onSelectDocument(entry.docId!)}
+                            >
+                              {entry.headline}
+                            </button>
+                          ) : (
+                            <Text strong className={ADMIN_TEXT_BODY}>
+                              {entry.headline}
+                            </Text>
+                          )}
+                        </div>
                         {entry.detail && (
-                          <Text className={`block mt-0.5 break-words ${ADMIN_TEXT_MUTED}`}>
+                          <Text className={`admin-activity-detail break-words ${ADMIN_TEXT_MUTED}`}>
                             {entry.detail}
                           </Text>
                         )}

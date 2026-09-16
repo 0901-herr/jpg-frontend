@@ -266,6 +266,15 @@ function simTick(): void {
 
   b.total_preparing = s.counts.preparing
   b.total_staged_for_rag = s.counts.staged
+  b.current_inflight = s.counts.indexing
+  b.current_folder_id = 4951
+  b.current_page = Math.floor(s.simRunDiscovered / 5)
+  b.discovery_backpressured =
+    s.counts.preparing >= (b.preparing_capacity ?? Number.POSITIVE_INFINITY)
+  b.preparation_backpressured =
+    s.counts.staged >= (b.staged_capacity ?? Number.POSITIVE_INFINITY)
+  b.submission_backpressured =
+    s.counts.indexing >= (b.target_inflight ?? Number.POSITIVE_INFINITY)
   b.total_known = null
 
   const stillMoving =
@@ -288,6 +297,9 @@ function simTick(): void {
   if (!stillDiscovering && !stillMoving) {
     b.job_state = 'completed'
     b.traversal_status = 'completed'
+    b.discovery_backpressured = false
+    b.preparation_backpressured = false
+    b.submission_backpressured = false
     b.documents_per_second = null
     b.estimated_seconds_remaining = null
     addActivity(
@@ -322,6 +334,12 @@ function startBulkRun(): void {
     total_submitted: 0,
     total_fully_indexed: 0,
     total_failed: 0,
+    current_inflight: 0,
+    current_folder_id: 4951,
+    current_page: 0,
+    discovery_backpressured: false,
+    preparation_backpressured: false,
+    submission_backpressured: false,
     documents_per_second: null,
     estimated_seconds_remaining: null,
     job_error: null,
@@ -518,16 +536,16 @@ export async function mockResumeAllIngestion(): Promise<AdminResumeAllResponse> 
   const parts: string[] = []
   if (discovery_resumed) parts.push('discovery resumed')
   if (ingestion_resumed) parts.push('ingestion resumed')
-  if (bulk_started) parts.push('bulk crawl started')
-  else if (catch_up_scheduled) parts.push('incremental catch-up scheduled')
+  if (bulk_started) parts.push('a full document scan started')
+  else if (catch_up_scheduled) parts.push('new document changes will be checked')
 
   addActivity(
     makeActivityItem(
       'success',
       'operator',
       'start_ingesting',
-      'Start ingesting',
-      parts.length ? parts.join(', ') : 'no changes',
+      'Ingestion started',
+      parts.length ? parts.join(' · ') : 'Everything was already running.',
     ),
   )
 
@@ -567,8 +585,10 @@ export async function mockTriggerAuditPoll(): Promise<IncrementalSyncResult> {
       docs_queued > 0 ? 'success' : 'info',
       'audit',
       'audit_poll',
-      `Audit poll queued ${docs_queued} document(s)`,
-      `events_read=${events_read}, skipped=${docs_skipped}`,
+      'LogicalDOC changes checked',
+      docs_queued > 0
+        ? `${docs_queued} document(s) need updating; ${docs_skipped} did not require an update.`
+        : `No documents need updating. ${docs_skipped} change(s) were already up to date.`,
     ),
   )
   return {
@@ -592,8 +612,10 @@ export async function mockTriggerReconciliation(): Promise<ReconciliationResult>
       missing_in_adapter > 0 ? 'success' : 'info',
       'reconcile',
       'reconcile',
-      `Reconciliation queued ${missing_in_adapter} document(s), ${missing_in_adapter} missing in adapter`,
-      `logicaldoc_ids=${total + missing_in_adapter}, adapter_ids=${total}, orphaned=${orphaned_in_adapter}`,
+      'Document records checked',
+      missing_in_adapter > 0 || orphaned_in_adapter > 0
+        ? `${missing_in_adapter} missing document(s) queued for ingestion; ${orphaned_in_adapter} outdated record(s) found.`
+        : `All ${total} document records are in sync.`,
     ),
   )
   return {

@@ -1,6 +1,6 @@
 import { AdminOpenIcon, AdminPauseIcon, AdminPlayIcon } from '../../icons/admin'
-import { App, Button, Popconfirm, Select, Switch, Tag, Typography } from 'antd'
-import type { ReactNode } from 'react'
+import { App, Button, Select, Switch, Tag, Typography } from 'antd'
+import { useState, type ReactNode } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import {
   mintAdminChatSession,
@@ -23,6 +23,7 @@ import {
 import { formatRelativeTime } from '../../utils/lifecycle'
 import { formatStateLabel } from '../../utils/adminState'
 import AdminCard from './AdminCard'
+import AdminConfirmDialog from './AdminConfirmDialog'
 
 const { Text } = Typography
 
@@ -111,6 +112,7 @@ function reconcileLabel(hours: number): string {
 
 export default function IngestionControls({ overview }: IngestionControlsProps) {
   const { message } = App.useApp()
+  const [confirmation, setConfirmation] = useState<'discovery' | 'ingestion' | null>(null)
   const invalidate = useInvalidateAdminQueries()
   const { sync } = overview
 
@@ -198,6 +200,19 @@ export default function IngestionControls({ overview }: IngestionControlsProps) 
   const ingestionPaused = overview.ingestion_state === 'PAUSED'
   const discoveryPaused = overview.discovery_state === 'PAUSED'
 
+  async function confirmPause() {
+    try {
+      if (confirmation === 'discovery') {
+        await pauseDiscoveryMutation.mutateAsync()
+      } else if (confirmation === 'ingestion') {
+        await pauseIngestionMutation.mutateAsync()
+      }
+      setConfirmation(null)
+    } catch {
+      // Mutation error messaging is handled by each mutation's onError.
+    }
+  }
+
   return (
     <div className={ADMIN_STACK_SPACE}>
       <AdminCard title="Pipeline gates">
@@ -215,17 +230,12 @@ export default function IngestionControls({ overview }: IngestionControlsProps) 
                   onClick={() => resumeDiscoveryMutation.mutate()}
                 />
               ) : (
-                <Popconfirm
-                  title="Pause discovery?"
-                  description="Folder traversal and new document discovery stop."
-                  onConfirm={() => pauseDiscoveryMutation.mutate()}
-                >
-                  <IconControlButton
-                    label="Pause discovery"
-                    icon={<AdminPauseIcon />}
-                    loading={pauseDiscoveryMutation.isPending}
-                  />
-                </Popconfirm>
+                <IconControlButton
+                  label="Pause discovery"
+                  icon={<AdminPauseIcon />}
+                  loading={pauseDiscoveryMutation.isPending}
+                  onClick={() => setConfirmation('discovery')}
+                />
               )
             }
           />
@@ -242,17 +252,12 @@ export default function IngestionControls({ overview }: IngestionControlsProps) 
                   onClick={() => resumeIngestionMutation.mutate()}
                 />
               ) : (
-                <Popconfirm
-                  title="Pause ingestion?"
-                  description="New RAG submissions stop. In flight indexing continues."
-                  onConfirm={() => pauseIngestionMutation.mutate()}
-                >
-                  <IconControlButton
-                    label="Pause ingestion"
-                    icon={<AdminPauseIcon />}
-                    loading={pauseIngestionMutation.isPending}
-                  />
-                </Popconfirm>
+                <IconControlButton
+                  label="Pause ingestion"
+                  icon={<AdminPauseIcon />}
+                  loading={pauseIngestionMutation.isPending}
+                  onClick={() => setConfirmation('ingestion')}
+                />
               )
             }
           />
@@ -354,6 +359,19 @@ export default function IngestionControls({ overview }: IngestionControlsProps) 
           />
         </ControlGroup>
       </AdminCard>
+      <AdminConfirmDialog
+        open={confirmation != null}
+        title={confirmation === 'discovery' ? 'Pause discovery?' : 'Pause ingestion?'}
+        description={
+          confirmation === 'discovery'
+            ? 'Folder traversal and new document discovery will stop.'
+            : 'New RAG submissions will stop. Indexing already in progress will continue.'
+        }
+        confirmText="Pause"
+        loading={pauseDiscoveryMutation.isPending || pauseIngestionMutation.isPending}
+        onCancel={() => setConfirmation(null)}
+        onConfirm={() => void confirmPause()}
+      />
     </div>
   )
 }

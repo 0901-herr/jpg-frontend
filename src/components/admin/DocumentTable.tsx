@@ -3,7 +3,6 @@ import type { ColumnsType, TablePaginationConfig } from 'antd/es/table'
 import type { AdminDocumentSummary } from '../../api/types/admin'
 import { ADMIN_EMPTY, ADMIN_TABLE_SCROLL } from '../../config/adminStyles'
 import { formatDateTime } from '../../utils/lifecycle'
-import CategoryTag from '../CategoryTag'
 import DocumentStatusBadge from './DocumentStatusBadge'
 import IngestionPipelineWaterfall from './IngestionPipelineWaterfall'
 
@@ -32,19 +31,19 @@ export default function DocumentTable({
       dataIndex: 'filename',
       key: 'filename',
       ellipsis: true,
-      width: 200,
+      width: 220,
       render: (value: string | null, row) => value ?? `(doc ${row.source_document_id})`,
     },
     {
       title: 'LogicalDOC ID',
       dataIndex: 'source_document_id',
       key: 'source_document_id',
-      width: 110,
+      width: 140,
     },
     {
       title: 'Pipeline',
       key: 'pipeline',
-      width: 320,
+      width: 340,
       render: (_value, row) => (
         <IngestionPipelineWaterfall status={row.lifecycle_status} doc={row} />
       ),
@@ -53,22 +52,14 @@ export default function DocumentTable({
       title: 'Status',
       dataIndex: 'lifecycle_status',
       key: 'lifecycle_status',
-      width: 100,
+      width: 110,
       render: (status) => <DocumentStatusBadge status={status} />,
-    },
-    {
-      title: 'Category',
-      dataIndex: 'classification_category',
-      key: 'classification_category',
-      width: 132,
-      ellipsis: true,
-      render: (category: string | null) => <CategoryTag category={category} />,
     },
     {
       title: 'Source',
       dataIndex: 'discovery_source',
       key: 'discovery_source',
-      width: 96,
+      width: 120,
       ellipsis: true,
       render: (v: string | null) => v ?? ADMIN_EMPTY,
     },
@@ -76,13 +67,13 @@ export default function DocumentTable({
       title: 'Retry',
       dataIndex: 'retry_count',
       key: 'retry_count',
-      width: 64,
+      width: 80,
     },
     {
       title: 'Updated',
       dataIndex: 'updated_at',
       key: 'updated_at',
-      width: 160,
+      width: 170,
       render: (v: string | null) => formatDateTime(v),
     },
   ]
@@ -99,7 +90,7 @@ export default function DocumentTable({
 
   return (
     <section>
-      <div className="min-w-0 overflow-x-auto">
+      <div className="admin-table-scroll min-w-0 overflow-x-auto">
         <Table
           rowKey="source_document_id"
           className="admin-document-table"

@@ -27,7 +27,7 @@ export default function ThroughputSummary({ bulk, counts }: ThroughputSummaryPro
 
   if (!bulk || bulk.job_state === 'idle') {
     return (
-      <AdminCard title="Throughput">
+      <AdminCard title="Throughput" className="admin-system-card">
         <Text className={ADMIN_TEXT_MUTED}>
           {inFlight > 0
             ? `${inFlight} document(s) still moving through the RAG pipeline.`
@@ -39,7 +39,7 @@ export default function ThroughputSummary({ bulk, counts }: ThroughputSummaryPro
 
   if (bulk.job_state === 'completed' && inFlight > 0 && bulk.documents_per_second == null) {
     return (
-      <AdminCard title="Throughput">
+      <AdminCard title="Throughput" className="admin-system-card">
         <Text className={ADMIN_TEXT_MUTED}>
           Bulk crawl finished. {inFlight} document(s) still preparing or indexing — watch Progress
           counts above.
@@ -50,7 +50,7 @@ export default function ThroughputSummary({ bulk, counts }: ThroughputSummaryPro
 
   if (bulk.job_state === 'failed') {
     return (
-      <AdminCard title="Throughput">
+      <AdminCard title="Throughput" className="admin-system-card">
         <Text className={ADMIN_TEXT_MUTED}>
           Bulk crawl failed{bulk.job_error ? `: ${bulk.job_error}` : '.'}
         </Text>
@@ -61,7 +61,7 @@ export default function ThroughputSummary({ bulk, counts }: ThroughputSummaryPro
   const rate = bulk.documents_per_second
 
   return (
-    <AdminCard title="Throughput">
+    <AdminCard title="Throughput" className="admin-system-card">
       <Row gutter={[20, 20]}>
         <Col span={8}>
           <Statistic

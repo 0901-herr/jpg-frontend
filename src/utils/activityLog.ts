@@ -2,11 +2,20 @@ import type { AdminDocumentSummary, LifecycleStatus } from '../api/types/admin'
 import { isTerminalLifecycle, LIFECYCLE_HINTS, LIFECYCLE_LABELS } from './lifecycle'
 
 export type ActivityLevel = 'info' | 'success' | 'warning' | 'error'
+export type ActivityKind =
+  | 'discovery'
+  | 'processing'
+  | 'completed'
+  | 'failed'
+  | 'sync'
+  | 'action'
+  | 'system'
 
 export interface ActivityEntry {
   id: string
   at: string
   level: ActivityLevel
+  kind: ActivityKind
   headline: string
   detail?: string
   docId?: string
@@ -21,8 +30,22 @@ function levelForStatus(status: LifecycleStatus): ActivityLevel {
 }
 
 function docLabel(doc: AdminDocumentSummary): string {
-  const name = doc.filename ?? `doc ${doc.source_document_id}`
-  return `${name} (${doc.source_document_id})`
+  return doc.filename ?? `Document ${doc.source_document_id}`
+}
+
+function discoverySourceLabel(source: string | null): string {
+  switch (source) {
+    case 'bfs':
+      return 'scheduled document scan'
+    case 'audit':
+      return 'LogicalDOC change detection'
+    case 'manual':
+      return 'manual request'
+    case 'reconciliation':
+      return 'system consistency check'
+    default:
+      return 'document discovery'
+  }
 }
 
 /** Expand one document row into timeline events from known timestamps. */
@@ -34,6 +57,7 @@ export function buildDocumentActivityEvents(doc: AdminDocumentSummary): Activity
     at: string | null | undefined,
     headline: string,
     level: ActivityLevel,
+    kind: ActivityKind,
     detail?: string,
   ) => {
     if (!at) return
@@ -41,6 +65,7 @@ export function buildDocumentActivityEvents(doc: AdminDocumentSummary): Activity
       id: `${doc.source_document_id}-${headline}-${at}`,
       at,
       level,
+      kind,
       headline,
       detail,
       docId: doc.source_document_id,
@@ -48,22 +73,45 @@ export function buildDocumentActivityEvents(doc: AdminDocumentSummary): Activity
     })
   }
 
-  add(doc.discovered_at, `${label} discovered`, 'info', doc.discovery_source ?? undefined)
-  add(doc.submitted_at, `${label} submitted to RAG`, 'info', doc.rag_document_id ?? undefined)
-  add(doc.ready_at, `${label} ready`, 'success', 'Indexed and searchable')
+  add(
+    doc.discovered_at,
+    `${label} was discovered`,
+    'info',
+    'discovery',
+    `LogicalDOC ID ${doc.source_document_id} · Found by ${discoverySourceLabel(doc.discovery_source)}.`,
+  )
+  add(
+    doc.submitted_at,
+    `${label} was sent for indexing`,
+    'info',
+    'processing',
+    'RAG Engine accepted the document and will make it searchable.',
+  )
+  add(
+    doc.ready_at,
+    `${label} is ready to search`,
+    'success',
+    'completed',
+    'Indexing completed successfully.',
+  )
   add(
     doc.failed_at,
-    `${label} failed`,
+    `${label} could not be indexed`,
     'error',
+    'failed',
     doc.last_error ?? doc.last_error_code ?? undefined,
   )
 
   const status = doc.lifecycle_status
-  if (!isTerminalLifecycle(status) && doc.updated_at) {
+  const alreadyRepresented =
+    (status === 'DISCOVERED' && Boolean(doc.discovered_at)) ||
+    (status === 'SUBMITTED' && Boolean(doc.submitted_at))
+  if (!isTerminalLifecycle(status) && !alreadyRepresented && doc.updated_at) {
     add(
       doc.updated_at,
       `${label}: ${LIFECYCLE_LABELS[status]}`,
       levelForStatus(status),
+      status === 'DISCOVERED' || status === 'QUEUED' ? 'discovery' : 'processing',
       LIFECYCLE_HINTS[status],
     )
   }
@@ -78,6 +126,44 @@ export interface SystemActivityEvent {
   headline: string
   detail?: string | null
   category?: string
+  action?: string
+}
+
+function systemActivityKind(event: SystemActivityEvent): ActivityKind {
+  if (event.level === 'error') return 'failed'
+  if (event.category === 'audit' || event.category === 'reconcile') return 'sync'
+  if (event.action === 'bulk_start' || event.action === 'bulk_completed') return 'completed'
+  if (event.category === 'operator') return 'action'
+  if (event.category === 'system') return 'system'
+  if (event.level === 'success') return 'completed'
+  return event.level === 'warning' ? 'processing' : 'system'
+}
+
+function userFriendlySystemHeadline(event: SystemActivityEvent): string {
+  if (event.action === 'mock_mode') return 'Sample data is active'
+  if (event.action === 'audit_poll') return 'LogicalDOC changes checked'
+  if (event.action === 'reconcile') return 'Document records checked'
+  if (event.action === 'ingest_failed') {
+    return event.headline
+      .replace(/failed to ingest/gi, 'could not be indexed')
+      .replace(/failed again/gi, 'could not be indexed')
+  }
+  return event.headline
+    .replace(/bulk crawl/gi, 'document scan')
+    .replace(/audit poll/gi, 'LogicalDOC check')
+}
+
+function userFriendlySystemDetail(event: SystemActivityEvent): string | undefined {
+  const detail = event.detail?.trim()
+  if (!detail) return undefined
+  if (detail.includes('VITE_ADMIN_MOCK')) {
+    return 'This dashboard is using sample data, so no backend services are required.'
+  }
+  const audit = detail.match(/events_read=(\d+),\s*skipped=(\d+)/i)
+  if (audit) {
+    return `Checked ${audit[1]} change(s); ${audit[2]} did not require an update.`
+  }
+  return detail
 }
 
 function bulkOverviewEvent(
@@ -89,6 +175,7 @@ function bulkOverviewEvent(
       id: 'bulk-running',
       at: new Date().toISOString(),
       level: 'warning',
+      action: 'bulk_running',
       headline: 'Bulk crawl running',
       detail: `${bulk.total_discovered ?? 0} document(s) discovered so far`,
       category: 'bulk',
@@ -99,6 +186,7 @@ function bulkOverviewEvent(
       id: 'bulk-failed',
       at: new Date().toISOString(),
       level: 'error',
+      action: 'bulk_failed',
       headline: 'Bulk crawl failed',
       detail: bulk.job_error ?? 'Unknown error',
       category: 'bulk',
@@ -109,6 +197,7 @@ function bulkOverviewEvent(
       id: 'bulk-completed',
       at: new Date().toISOString(),
       level: 'success',
+      action: 'bulk_completed',
       headline: 'Bulk crawl completed',
       detail: `${bulk.total_discovered ?? 0} document(s) discovered`,
       category: 'bulk',
@@ -129,8 +218,9 @@ export function mergeActivityFeed(
     id: event.id,
     at: event.at,
     level: event.level,
-    headline: event.headline,
-    detail: event.detail ?? undefined,
+    kind: systemActivityKind(event),
+    headline: userFriendlySystemHeadline(event),
+    detail: userFriendlySystemDetail(event),
   }))
 
   return [...documents.flatMap(buildDocumentActivityEvents), ...fromSystem]

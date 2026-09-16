@@ -67,15 +67,15 @@ const CATEGORIES = [
 export const ERROR_PRESETS = [
   {
     code: 'LOGICALDOC_TIMEOUT',
-    message: 'Timed out downloading content from LogicalDOC after 30s.',
+    message: 'LogicalDOC did not finish sending the file within 30 seconds. Retry the document.',
   },
   {
     code: 'CHECKSUM_MISMATCH',
-    message: 'SHA-1 digest from LogicalDOC did not match the bytes RAG downloaded.',
+    message: 'The file changed while it was being downloaded. Retry to fetch the latest version.',
   },
   {
     code: 'RAG_REJECTED',
-    message: 'RAG Engine rejected the item: unsupported file type (.tmp).',
+    message: 'The .tmp file type is not supported. Upload a supported document format.',
   },
 ] as const
 
@@ -274,6 +274,17 @@ export function buildInitialBulk(): BulkProgressSnapshot {
     total_submitted: 0,
     total_fully_indexed: 0,
     total_failed: 0,
+    current_inflight: 0,
+    target_inflight: 80,
+    preparing_capacity: 2000,
+    preparing_resume_threshold: 1000,
+    staged_capacity: 1000,
+    staged_resume_threshold: 500,
+    current_folder_id: null,
+    current_page: null,
+    discovery_backpressured: false,
+    preparation_backpressured: false,
+    submission_backpressured: false,
     documents_per_second: null,
     estimated_seconds_remaining: null,
   }
@@ -302,7 +313,13 @@ export function makeActivityItem(
 export function buildInitialActivity(): IngestionActivityItem[] {
   activitySeq = 0
   return [
-    makeActivityItem('info', 'system', 'mock_mode', 'Mock data mode', 'VITE_ADMIN_MOCK=true — no adapter required.'),
+    makeActivityItem(
+      'info',
+      'system',
+      'mock_mode',
+      'Sample data is active',
+      'This dashboard is using sample data, so no backend services are required.',
+    ),
     makeActivityItem(
       'error',
       'pipeline',
@@ -317,7 +334,13 @@ export function buildInitialActivity(): IngestionActivityItem[] {
       'Alumni_Directory_Draft.docx failed to ingest',
       ERROR_PRESETS[1].message,
     ),
-    makeActivityItem('warning', 'audit', 'audit_poll', 'Audit poll queued 0 document(s)', 'events_read=2, skipped=2'),
+    makeActivityItem(
+      'warning',
+      'audit',
+      'audit_poll',
+      'LogicalDOC changes checked',
+      'Checked 2 changes; neither required an update.',
+    ),
     makeActivityItem(
       'success',
       'operator',

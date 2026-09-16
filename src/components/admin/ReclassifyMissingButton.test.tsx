@@ -32,7 +32,7 @@ describe('ReclassifyMissingButton', () => {
     const user = userEvent.setup()
     renderButton()
     await user.click(screen.getByRole('button', { name: /Re-ingest missing classification/i }))
-    await user.click(await screen.findByRole('button', { name: /^ok$/i }))
+    await user.click(await screen.findByRole('button', { name: /^re-ingest$/i }))
     await waitFor(() => expect(adminApi.reingestMissingClassification).toHaveBeenCalled())
   })
 
@@ -40,7 +40,7 @@ describe('ReclassifyMissingButton', () => {
     const user = userEvent.setup()
     renderButton()
     await user.click(screen.getByRole('button', { name: /Re-ingest missing classification/i }))
-    await user.click(await screen.findByRole('button', { name: /^ok$/i }))
+    await user.click(await screen.findByRole('button', { name: /^re-ingest$/i }))
     expect(await screen.findByText(/Re-queued 2 documents for classification/i)).toBeInTheDocument()
   })
 })

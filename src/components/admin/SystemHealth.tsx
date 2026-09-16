@@ -90,7 +90,7 @@ export default function SystemHealth({
   const ragEndpoint = rows.find((row) => row.key === 'rag_engine')?.endpoint
 
   return (
-    <AdminCard title="System health">
+    <AdminCard title="System health" className="admin-system-card">
       {degraded && (
         <Tag color="warning" className="mb-4">
           Degraded

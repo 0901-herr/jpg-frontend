@@ -54,6 +54,20 @@ describe('IngestionControls', () => {
     await waitFor(() => expect(adminApi.resumeIngestion).toHaveBeenCalled())
   })
 
+  it('uses the shared centered confirmation before pausing ingestion', async () => {
+    const user = userEvent.setup()
+    renderControls()
+
+    await user.click(screen.getByRole('button', { name: 'Pause ingestion' }))
+
+    expect(screen.getByRole('dialog')).toHaveClass('admin-confirm-modal')
+    expect(screen.getByText('Pause ingestion?')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Pause' }))
+    await waitFor(() => expect(adminApi.pauseIngestion).toHaveBeenCalledOnce())
+  })
+
   it('names the operator link "ARCHE AI session", not the old "AI chat session" copy', () => {
     renderControls()
     expect(screen.getByText('ARCHE AI session')).toBeInTheDocument()
