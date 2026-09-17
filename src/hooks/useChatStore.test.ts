@@ -476,6 +476,40 @@ describe('chat CRUD', () => {
     await waitFor(() => expect(chatApi.getChatSession).toHaveBeenCalledWith('s3'))
   })
 
+  it('treats a 404 from the cascade DELETE as success and does not resurrect the project (already gone, e.g. deleted from another device)', async () => {
+    const errorSpy = vi.spyOn(message, 'error')
+    vi.mocked(chatApi.listChatProjects).mockResolvedValue([
+      { id: 'proj-1', name: 'Research', created_at: '2026-09-16T00:00:00Z', updated_at: '2026-09-16T00:00:00Z' },
+    ])
+    vi.mocked(chatApi.listChatSessions).mockResolvedValue({
+      sessions: [
+        {
+          id: 's1',
+          title: 'Session 1',
+          project_id: 'proj-1',
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-16T00:00:00Z',
+          updated_at: '2026-09-16T00:00:00Z',
+          message_count: 0,
+        },
+      ],
+      shared: [],
+    })
+    vi.mocked(chatApi.deleteChatProject).mockRejectedValue(new ApiError('Not found', 404))
+
+    const { result } = renderHook(() => useChatStore(baseParams()))
+    await waitFor(() => expect(result.current.hydrated).toBe(true))
+
+    await act(async () => {
+      await result.current.deleteProject('proj-1')
+    })
+
+    expect(result.current.projects).toEqual([])
+    expect(result.current.sessions.some((s) => s.id === 's1')).toBe(false)
+    expect(errorSpy).not.toHaveBeenCalled()
+  })
+
   // Task 11 follow-up: `renameChat`/`deleteChat`/`moveChat` stayed
   // optimistic (the state update below still happens synchronously,
   // before any network round-trip) but now also return the PATCH/DELETE
@@ -546,6 +580,19 @@ describe('chat CRUD', () => {
     })
 
     expect(settled).toBe(true)
+  })
+
+  it('treats a 404 from the delete route as success (the chat is already gone either way, e.g. deleted from another device)', async () => {
+    const errorSpy = vi.spyOn(message, 'error')
+    const result = await hydrated()
+    vi.mocked(chatApi.deleteChatSession).mockRejectedValue(new ApiError('Not found', 404))
+
+    await act(async () => {
+      await result.current.deleteChat('s1')
+    })
+
+    expect(result.current.sessions.some((s) => s.id === 's1')).toBe(false)
+    expect(errorSpy).not.toHaveBeenCalled()
   })
 
   it('returns a promise from moveChat that resolves once the PATCH settles', async () => {

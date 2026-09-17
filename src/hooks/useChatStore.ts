@@ -518,7 +518,10 @@ export function useChatStore({
       if (!enabled) return
       try {
         await deleteChatSession(chatId)
-      } catch {
+      } catch (err) {
+        // Already gone server-side (deleted from another device/tab) —
+        // same outcome as a successful delete, nothing to warn about.
+        if (err instanceof ApiError && err.status === 404) return
         message.error('Could not delete this chat.')
       }
     },
@@ -660,7 +663,10 @@ export function useChatStore({
       // orphaned-but-undeleted server-side.
       try {
         await deleteChatProject(id)
-      } catch {
+      } catch (err) {
+        // Already gone server-side (deleted from another device/tab) — same
+        // outcome as a successful delete, nothing to roll back or warn about.
+        if (err instanceof ApiError && err.status === 404) return
         setSessions((prev) => [...prev, ...chatsInProject])
         if (removedProject) {
           setProjects((prev) =>
