@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { message } from 'antd'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import React, { useState } from 'react'
@@ -2021,6 +2022,64 @@ describe('AppLayout — composer locked while a brand-new chat is still being cr
       ).not.toBeDisabled()
     })
     expect(screen.queryByText('Setting up this chat')).not.toBeInTheDocument()
+  })
+})
+
+describe('AppLayout — chat deleted from another device is checked before querying', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    currentSignal = null
+    initialSelectedIds = new Set(['doc-1'])
+    initialDocumentMeta = defaultDocumentMeta()
+    validateQueryScope.mockResolvedValue({
+      total_files: 1,
+      ready_files: 1,
+      indexing_files: 0,
+      failed_files: 0,
+      missing_files: 0,
+      accessible_document_ids: ['doc-1'],
+    })
+    createChatSession.mockReset()
+    createChatSession.mockResolvedValue({})
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+    createChatSession.mockResolvedValue({})
+    getChatSession.mockResolvedValue({})
+    listChatSessions.mockResolvedValue({ sessions: [], shared: [] })
+  })
+
+  it('blocks the send, warns, and switches to a fresh chat instead of silently losing the query', async () => {
+    const user = userEvent.setup()
+    const warnSpy = vi.spyOn(message, 'warning')
+
+    render(<AppLayout />)
+
+    // Let hydration's own "never end up with zero chats" replacement finish
+    // being created (and persisted) before this test's own scenario starts.
+    await waitFor(() => expect(createChatSession).toHaveBeenCalledTimes(1))
+    const staleChatId = screen.getByTestId('active-chat-id').textContent
+
+    // The chat was deleted from another device/tab since this one last
+    // synced — the GET this test's `handleSend` is about to make now 404s.
+    getChatSession.mockRejectedValue(new ApiError('Not found', 404))
+
+    const textarea = await screen.findByPlaceholderText(/ask a question/i)
+    await user.type(textarea, 'What is in the contract?')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    await waitFor(() => expect(warnSpy).toHaveBeenCalled())
+
+    // No query was ever dispatched for the now-gone chat.
+    expect(currentSignal).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Stop response' })).not.toBeInTheDocument()
+
+    // Switched to a different (freshly created) chat rather than staying on
+    // the stale one.
+    await waitFor(() =>
+      expect(screen.getByTestId('active-chat-id').textContent).not.toBe(staleChatId),
+    )
   })
 })
 

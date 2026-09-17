@@ -548,6 +548,15 @@ export default function AppLayout() {
       // specifically for a shared chat's scope.
       await chatStore.ensureSessionCreated(activeChatId)
 
+      // Catches the case where this chat was deleted from another
+      // device/tab since this one last synced: the query endpoint itself
+      // doesn't require a live session, so without this check the query
+      // would silently "succeed" while never actually persisting (see
+      // `verifyChatBeforeQuery`'s doc comment) — gone without a trace on
+      // the next refresh. Already handled (switched chats, warned the
+      // user) if this resolves false, so just abort the send.
+      if (!(await chatStore.verifyChatBeforeQuery(activeChatId))) return
+
       const selectedDocs = [...selection.selectedIds]
       // A shared queryable chat always uses the host's own scope — the
       // follower can't choose documents at all (owner decision,
@@ -932,6 +941,7 @@ export default function AppLayout() {
       chatStore.recordAssistantMessage,
       chatStore.refreshSharedChat,
       chatStore.ensureSessionCreated,
+      chatStore.verifyChatBeforeQuery,
       setSessions,
     ],
   )

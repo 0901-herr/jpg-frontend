@@ -163,6 +163,21 @@ export interface UseChatStoreResult {
    * but that means no scope gets persisted for a query that races ahead of
    * its own session's creation). */
   ensureSessionCreated: (chatId: string) => Promise<void>
+  /** Guards against a stale tab: the chat could have been deleted from
+   * another device/tab since this one last synced, in which case its row
+   * is gone server-side even though it's still sitting in local `sessions`
+   * (querying it "works" regardless — the query endpoint doesn't require a
+   * live session — but `recordUserMessage`/`recordAssistantMessage` then
+   * 404 and silently drop the turn, so it vanishes on the next refresh).
+   * Resolves `true` if it's safe to proceed with the query as-is. Resolves
+   * `false` if `chatId` turned out to be gone: the caller should abort the
+   * send without querying — this has already dropped it from `sessions`
+   * and switched to another chat (same "never end up with zero chats"
+   * recovery as `deleteChat`), so there's nothing further for the caller
+   * to clean up. A no-op (`true`) for anything not an owned, already-
+   * persisted session — a chat still `spawnEmptySession`'d for, or a
+   * shared/follower chat, has nothing to verify here. */
+  verifyChatBeforeQuery: (chatId: string) => Promise<boolean>
   /** Stays optimistic (the title updates locally before the PATCH below
    * settles), but — unlike before Task 11 — now returns the PATCH's own
    * promise instead of firing it with `void ... .catch()` and discarding
@@ -517,6 +532,40 @@ export function useChatStore({
     return sessionCreationRef.current.get(chatId) ?? Promise.resolve()
   }, [])
 
+  const verifyChatBeforeQuery = useCallback(
+    async (chatId: string): Promise<boolean> => {
+      if (!enabled) return true
+      // Still being `spawnEmptySession`'d for — nothing to verify (a GET
+      // this soon could even race the POST's own transaction), and this
+      // isn't a shared/follower chat at all if it's not in `sessions`.
+      if (sessionCreationRef.current.has(chatId)) return true
+      if (!sessionsRef.current.some((s) => s.id === chatId)) return true
+      try {
+        await getChatSession(chatId)
+        return true
+      } catch (err) {
+        if (!(err instanceof ApiError) || err.status !== 404) return true
+        // Gone server-side since this tab last synced (deleted elsewhere)
+        // — same recovery `deleteChat` uses: never leave zero sessions or
+        // `activeChatId` pointing at one that's no longer in `sessions`.
+        const next = sessionsRef.current.filter((s) => s.id !== chatId)
+        if (next.length === 0) {
+          const fresh = spawnEmptySession(next)
+          setActiveChatId(fresh.id)
+          setSessions([fresh])
+        } else {
+          if (chatId === activeChatIdRef.current) {
+            setActiveChatId(next[0].id)
+          }
+          setSessions(next)
+        }
+        message.warning('This chat was deleted from another device. Starting a new one.')
+        return false
+      }
+    },
+    [enabled, spawnEmptySession],
+  )
+
   const renameChat = useCallback(
     async (chatId: string, title: string) => {
       setSessions((prev) => prev.map((s) => (s.id === chatId ? { ...s, title } : s)))
@@ -804,6 +853,7 @@ export function useChatStore({
     hydrated,
     createChat,
     ensureSessionCreated,
+    verifyChatBeforeQuery,
     renameChat,
     deleteChat,
     moveChat,

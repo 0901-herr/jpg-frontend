@@ -702,6 +702,121 @@ describe('chat CRUD', () => {
   })
 })
 
+describe('verifyChatBeforeQuery', () => {
+  async function hydrated() {
+    vi.mocked(chatApi.listChatSessions).mockResolvedValue({
+      sessions: [
+        {
+          id: 's1',
+          title: 'Session 1',
+          project_id: null,
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-16T00:00:00Z',
+          updated_at: '2026-09-16T00:00:00Z',
+          message_count: 0,
+        },
+      ],
+      shared: [],
+    })
+    vi.mocked(chatApi.getChatSession).mockResolvedValue({
+      id: 's1',
+      title: 'Session 1',
+      project_id: null,
+      visibility: 'private',
+      share_token: null,
+      created_at: '2026-09-16T00:00:00Z',
+      updated_at: '2026-09-16T00:00:00Z',
+      message_count: 0,
+      owner_username: 'tester',
+      is_owner: true,
+      can_query: true,
+      scope_document_ids: [],
+      messages: [],
+    })
+    const { result } = renderHook(() => useChatStore(baseParams()))
+    await waitFor(() => expect(result.current.hydrated).toBe(true))
+    return result
+  }
+
+  it('resolves true and leaves sessions alone when the chat still exists server-side', async () => {
+    const result = await hydrated()
+
+    let ok: boolean | undefined
+    await act(async () => {
+      ok = await result.current.verifyChatBeforeQuery('s1')
+    })
+
+    expect(ok).toBe(true)
+    expect(result.current.sessions.map((s) => s.id)).toEqual(['s1'])
+  })
+
+  it('resolves false, drops the chat, and switches to another one when it was deleted from another device', async () => {
+    const result = await hydrated()
+    act(() => result.current.createChat())
+    const otherId = result.current.sessions.find((s) => s.id !== 's1')!.id
+    await waitFor(() => expect(result.current.sessionsCreating.size).toBe(0))
+
+    const warnSpy = vi.spyOn(message, 'warning')
+    vi.mocked(chatApi.getChatSession).mockRejectedValue(new ApiError('Not found', 404))
+
+    let ok: boolean | undefined
+    await act(async () => {
+      ok = await result.current.verifyChatBeforeQuery('s1')
+    })
+
+    expect(ok).toBe(false)
+    expect(result.current.sessions.some((s) => s.id === 's1')).toBe(false)
+    expect(result.current.sessions.some((s) => s.id === otherId)).toBe(true)
+    expect(warnSpy).toHaveBeenCalled()
+  })
+
+  it('resolves false and spawns a fresh replacement (persisted server-side) when the deleted chat was the only one', async () => {
+    const result = await hydrated()
+    vi.mocked(chatApi.getChatSession).mockRejectedValue(new ApiError('Not found', 404))
+
+    let ok: boolean | undefined
+    await act(async () => {
+      ok = await result.current.verifyChatBeforeQuery('s1')
+    })
+
+    expect(ok).toBe(false)
+    expect(result.current.sessions).toHaveLength(1)
+    const replacementId = result.current.sessions[0].id
+    expect(replacementId).not.toBe('s1')
+    expect(result.current.activeChatId).toBe(replacementId)
+    expect(chatApi.createChatSession).toHaveBeenCalledWith(
+      expect.objectContaining({ id: replacementId }),
+    )
+    await waitFor(() => expect(result.current.sessionsCreating.size).toBe(0))
+  })
+
+  it('resolves true without calling getChatSession for a chat still being created', async () => {
+    const result = await hydrated()
+    let resolveCreate: () => void
+    vi.mocked(chatApi.createChatSession).mockReturnValue(
+      new Promise((resolve) => {
+        resolveCreate = () => resolve({} as never)
+      }),
+    )
+
+    act(() => result.current.createChat())
+    const newId = result.current.sessions[0].id
+    vi.mocked(chatApi.getChatSession).mockClear()
+
+    let ok: boolean | undefined
+    await act(async () => {
+      ok = await result.current.verifyChatBeforeQuery(newId)
+    })
+
+    expect(ok).toBe(true)
+    expect(chatApi.getChatSession).not.toHaveBeenCalledWith(newId)
+
+    resolveCreate!()
+    await waitFor(() => expect(result.current.sessionsCreating.size).toBe(0))
+  })
+})
+
 describe('shared chat scope + refresh', () => {
   async function hydratedWithShared() {
     vi.mocked(chatApi.listChatSessions).mockResolvedValue({
