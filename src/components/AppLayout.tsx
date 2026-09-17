@@ -77,9 +77,9 @@ const CATEGORIZE_ERROR_FALLBACKS: Record<string, string> = {
  * switching chats, so a document still selected from the viewer's OWN chat
  * must not be usable to run Summarize/Categorize/Extract metadata against
  * the shared conversation (it would post that content into it via
- * `persistTurn`/`chatStore.recordUserMessage`, regardless of what's shown
- * locally). Takes priority over every other disabled reason for these
- * three actions. */
+ * `chatStore.recordUserMessage`, regardless of what's shown locally).
+ * Takes priority over every other disabled reason for these three
+ * actions. */
 const SHARED_CHAT_ACTION_DISABLED_REASON = 'Not available in a shared chat'
 
 /** Never a fatal screen: every categorize failure — a mapped adapter error,
@@ -530,24 +530,6 @@ export default function AppLayout() {
       return updated
     },
     [updateChatMessages],
-  )
-
-  // Persists a non-streaming turn (Summarize/Categorize/Extract metadata:
-  // one user request, one already-complete answer, appended to local state
-  // in one shot) through the same chatStore.recordUserMessage/
-  // recordAssistantMessage calls handleSend uses for its own turns — one
-  // persistence path, so a chat's history round-trips the same way however
-  // the turn was produced. `scopeDocumentIds` defaults to empty: these
-  // flows act on one already-selected document, not a query's document
-  // scope, and the adapter only reads this field to update the session's
-  // own scope_document_ids — fine to leave alone for a turn that isn't a
-  // query.
-  const persistTurn = useCallback(
-    (userMsg: ChatMessage, assistantMsg: ChatMessage, scopeDocumentIds: string[] = []) => {
-      chatStore.recordUserMessage(activeChatId, userMsg, scopeDocumentIds)
-      chatStore.recordAssistantMessage(activeChatId, assistantMsg)
-    },
-    [activeChatId, chatStore.recordUserMessage, chatStore.recordAssistantMessage],
   )
 
   const handleSend = useCallback(
@@ -1053,6 +1035,34 @@ export default function AppLayout() {
     summarizingRef.current = true
     setIsSummarizing(true)
 
+    const userMsg: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      content: 'Summarize this document',
+    }
+    const assistantId = crypto.randomUUID()
+    const thinkingMsg: ChatMessage = {
+      id: assistantId,
+      role: 'assistant',
+      content: '',
+      status: 'thinking',
+      startedAt: Date.now(),
+      progressLabel: 'Summarizing this document. This can take up to a minute.',
+    }
+
+    shouldStickToBottomRef.current = true
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === activeChatId ? { ...s, messages: [...s.messages, userMsg, thinkingMsg] } : s,
+      ),
+    )
+    // Posted immediately, same as handleExtractMetadata's user turn — the
+    // "thinking" assistant placeholder is deliberately NOT posted here: on
+    // an empty/failed summary it's removed from local state entirely (see
+    // below), so there'd be nothing left to reconcile it with.
+    chatStore.recordUserMessage(activeChatId, userMsg, [documentId])
+    requestAnimationFrame(() => scrollToBottom('auto'))
+
     void (async () => {
       try {
         const response = await fetchDocumentSummary(documentId)
@@ -1060,20 +1070,36 @@ export default function AppLayout() {
 
         if (!summary) {
           message.warning('Summary is not available for this document')
+          setSessions((prev) =>
+            prev.map((s) =>
+              s.id === activeChatId
+                ? { ...s, messages: s.messages.filter((m) => m.id !== assistantId) }
+                : s,
+            ),
+          )
           return
         }
 
-        const { userMessage, assistantMessage } = buildSummaryMessages(summary)
+        const { assistantMessage } = buildSummaryMessages(summary)
+        const finalAssistantMsg: ChatMessage = {
+          ...thinkingMsg,
+          content: assistantMessage.content,
+          status: 'complete',
+          progressLabel: undefined,
+        }
 
         shouldStickToBottomRef.current = true
         setSessions((prev) =>
-          prev.map((s) =>
-            s.id === activeChatId
-              ? { ...s, messages: [...s.messages, userMessage, assistantMessage] }
-              : s,
-          ),
+          prev.map((s) => {
+            if (s.id !== activeChatId) return s
+            const messages = [...s.messages]
+            const idx = messages.findIndex((m) => m.id === assistantId)
+            if (idx === -1) return s
+            messages[idx] = finalAssistantMsg
+            return { ...s, messages }
+          }),
         )
-        persistTurn(userMessage, assistantMessage, [documentId])
+        chatStore.recordAssistantMessage(activeChatId, finalAssistantMsg)
         requestAnimationFrame(() => scrollToBottom('auto'))
       } catch (err) {
         const httpStatus = err instanceof ApiError ? err.status : undefined
@@ -1084,12 +1110,31 @@ export default function AppLayout() {
               ? err.message
               : undefined
         message.error(toUserFacingQueryError(raw, { httpStatus }))
+
+        // Remove the thinking placeholder — the failed request appended no
+        // answer, so nothing should linger where it was shown. The user's
+        // "Summarize this document" message stays.
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.id === activeChatId
+              ? { ...s, messages: s.messages.filter((m) => m.id !== assistantId) }
+              : s,
+          ),
+        )
       } finally {
         summarizingRef.current = false
         setIsSummarizing(false)
       }
     })()
-  }, [activeChatId, isSharedChat, persistTurn, scrollToBottom, selectedDocument, summarizeDisabledReason])
+  }, [
+    activeChatId,
+    chatStore.recordUserMessage,
+    chatStore.recordAssistantMessage,
+    isSharedChat,
+    scrollToBottom,
+    selectedDocument,
+    summarizeDisabledReason,
+  ])
 
   const handleExtractMetadata = useCallback(() => {
     if (isSharedChat) return
@@ -1215,40 +1260,66 @@ export default function AppLayout() {
     categorizingRef.current = true
     setIsCategorizing(true)
 
+    const userMsg: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      content: `Categorize "${filename}"`,
+    }
+    const assistantId = crypto.randomUUID()
+    const thinkingMsg: ChatMessage = {
+      id: assistantId,
+      role: 'assistant',
+      content: '',
+      status: 'thinking',
+      startedAt: Date.now(),
+      progressLabel: 'Categorizing this file. This can take up to a minute.',
+    }
+
+    shouldStickToBottomRef.current = true
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === activeChatId ? { ...s, messages: [...s.messages, userMsg, thinkingMsg] } : s,
+      ),
+    )
+    chatStore.recordUserMessage(activeChatId, userMsg, [documentId])
+    requestAnimationFrame(() => scrollToBottom('auto'))
+
     void (async () => {
-      let userMsg: ChatMessage
-      let assistantMsg: ChatMessage
+      let finalAssistantMsg: ChatMessage
 
       try {
         const response = await categorizeDocument(documentId)
-        ;({ userMessage: userMsg, assistantMessage: assistantMsg } = buildCategorizeMessages(
-          filename,
-          response,
-        ))
+        const { assistantMessage } = buildCategorizeMessages(filename, response)
+        finalAssistantMsg = {
+          ...thinkingMsg,
+          content: assistantMessage.content,
+          status: 'complete',
+          progressLabel: undefined,
+        }
       } catch (err) {
         // Never a fatal screen: every failure — a mapped adapter error or
-        // anything unexpected — still appends a chat message instead of
-        // throwing or leaving the composer stuck.
-        userMsg = {
-          id: crypto.randomUUID(),
-          role: 'user',
-          content: `Categorize "${filename}"`,
-        }
-        assistantMsg = {
-          id: crypto.randomUUID(),
-          role: 'assistant',
+        // anything unexpected — still turns the placeholder into a chat
+        // message instead of throwing or leaving the composer stuck.
+        finalAssistantMsg = {
+          ...thinkingMsg,
           content: categorizeErrorMessage(err),
           status: 'complete',
+          progressLabel: undefined,
         }
       }
 
       shouldStickToBottomRef.current = true
       setSessions((prev) =>
-        prev.map((s) =>
-          s.id === activeChatId ? { ...s, messages: [...s.messages, userMsg, assistantMsg] } : s,
-        ),
+        prev.map((s) => {
+          if (s.id !== activeChatId) return s
+          const messages = [...s.messages]
+          const idx = messages.findIndex((m) => m.id === assistantId)
+          if (idx === -1) return s
+          messages[idx] = finalAssistantMsg
+          return { ...s, messages }
+        }),
       )
-      persistTurn(userMsg, assistantMsg, [documentId])
+      chatStore.recordAssistantMessage(activeChatId, finalAssistantMsg)
       requestAnimationFrame(() => scrollToBottom('auto'))
 
       categorizingRef.current = false
@@ -1257,8 +1328,9 @@ export default function AppLayout() {
   }, [
     activeChatId,
     categorizeDisabledReason,
+    chatStore.recordUserMessage,
+    chatStore.recordAssistantMessage,
     isSharedChat,
-    persistTurn,
     scrollToBottom,
     selectedDocument,
   ])

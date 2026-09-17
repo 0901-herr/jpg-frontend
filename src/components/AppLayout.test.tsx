@@ -990,6 +990,67 @@ describe('AppLayout — Summarize', () => {
       )
     })
   })
+
+  it('shows a thinking placeholder while the summary request is in flight, then renders the answer', async () => {
+    const user = userEvent.setup()
+    let resolveSummary: ((value: { summary: string }) => void) | undefined
+    fetchDocumentSummary.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSummary = resolve
+        }),
+    )
+
+    render(<AppLayout />)
+
+    await user.click(screen.getByRole('button', { name: 'Summarize selected document' }))
+
+    expect(screen.getByText('Summarize this document')).toBeInTheDocument()
+    expect(
+      screen.getByText('Summarizing this document. This can take up to a minute.'),
+    ).toBeInTheDocument()
+
+    await act(async () => {
+      resolveSummary?.({ summary: 'This document covers Q3 minutes.' })
+      await Promise.resolve()
+    })
+
+    expect(await screen.findByText('This document covers Q3 minutes.')).toBeInTheDocument()
+    expect(
+      screen.queryByText('Summarizing this document. This can take up to a minute.'),
+    ).not.toBeInTheDocument()
+  })
+
+  it('removes the thinking placeholder on a fetch error, keeping the user request', async () => {
+    const user = userEvent.setup()
+    let rejectSummary: ((err: unknown) => void) | undefined
+    fetchDocumentSummary.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectSummary = reject
+        }),
+    )
+
+    render(<AppLayout />)
+
+    await user.click(screen.getByRole('button', { name: 'Summarize selected document' }))
+    expect(
+      await screen.findByText('Summarizing this document. This can take up to a minute.'),
+    ).toBeInTheDocument()
+
+    await act(async () => {
+      rejectSummary?.(new ApiError('Something went wrong.', 500, 'Something went wrong.'))
+      await Promise.resolve()
+    })
+
+    expect(
+      screen.queryByText('Summarizing this document. This can take up to a minute.'),
+    ).not.toBeInTheDocument()
+    expect(screen.getByText('Summarize this document')).toBeInTheDocument()
+    expect(
+      await screen.findByRole('button', { name: 'Summarize selected document' }),
+    ).toBeEnabled()
+  })
 })
 
 describe('AppLayout — Extract metadata', () => {
@@ -1235,6 +1296,38 @@ describe('AppLayout — Categorize', () => {
     ).toBeInTheDocument()
     expect(screen.getByText('Confidence: 90%')).toBeInTheDocument()
     expect(categorizeDocument).toHaveBeenCalledWith('doc-1')
+  })
+
+  it('shows a thinking placeholder while the categorize request is in flight, then renders the answer', async () => {
+    const user = userEvent.setup()
+    let resolveCategorize: ((value: DocumentCategorizeResponse) => void) | undefined
+    categorizeDocument.mockImplementation(
+      () =>
+        new Promise<DocumentCategorizeResponse>((resolve) => {
+          resolveCategorize = resolve
+        }),
+    )
+
+    render(<AppLayout />)
+
+    await user.click(screen.getByRole('button', { name: 'Categorize selected document' }))
+
+    expect(screen.getByText('Categorize "doc-1.pdf"')).toBeInTheDocument()
+    expect(
+      screen.getByText('Categorizing this file. This can take up to a minute.'),
+    ).toBeInTheDocument()
+
+    await act(async () => {
+      resolveCategorize?.(matchedResponse())
+      await Promise.resolve()
+    })
+
+    expect(
+      await screen.findByText((_, element) => element?.textContent === 'Suggested folder: Approved'),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText('Categorizing this file. This can take up to a minute.'),
+    ).not.toBeInTheDocument()
   })
 
   it('appends a single assistant message with the server text on a 409 leaf-folder error, never a fatal screen', async () => {
