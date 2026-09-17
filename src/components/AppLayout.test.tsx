@@ -479,149 +479,6 @@ describe('AppLayout — shared link (?share=token)', () => {
     })
   })
 
-  it('keeps the last active chat selected on a plain reload (no ?share= param), even when it was a shared one', async () => {
-    // No ?share= this time — a normal reload of /chat.
-    window.history.pushState({}, '', '/chat')
-    localStorage.setItem(
-      'docu_chat_history_user-1',
-      JSON.stringify({
-        version: 1,
-        activeChatId: 'shared-1',
-        sessions: [{ id: 's1', title: 'My own chat', messages: [], createdAt: '2026-09-01T00:00:00.000Z' }],
-        updatedAt: '2026-09-01T00:00:00.000Z',
-      }),
-    )
-    getChatSession.mockImplementation((id: string) => Promise.resolve({ id, title: id, messages: [] }))
-    listChatSessions.mockResolvedValueOnce({
-      sessions: [
-        {
-          id: 's1',
-          title: 'My own chat',
-          project_id: null,
-          visibility: 'private',
-          share_token: null,
-          created_at: '2026-09-01T00:00:00Z',
-          updated_at: '2026-09-01T00:00:00Z',
-          message_count: 0,
-        },
-      ],
-      shared: [
-        {
-          id: 'shared-1',
-          title: 'Shared Chat',
-          owner_username: 'alice',
-          visibility: 'query',
-          opened_at: '2026-09-01T00:00:00Z',
-        },
-      ],
-    })
-
-    render(<AppLayout />)
-
-    expect(await screen.findByRole('button', { name: 'shared:Shared Chat' })).toBeInTheDocument()
-    await waitFor(() => {
-      expect(screen.getByTestId('active-chat-id').textContent).toBe('shared-1')
-    })
-  })
-
-  it('fetches a restored shared chat’s detail on reload — messages render and sending uses the stored scope', async () => {
-    const user = userEvent.setup()
-    initialSelectedIds = new Set()
-    // No ?share= — a plain reload of /chat with a shared chat as the last
-    // active one, same as the previous test, but this one also proves the
-    // reload path loads that chat's messages/scope rather than leaving it
-    // an empty summary (live UI proof: chat pane showed the empty state
-    // and sending silently did nothing).
-    window.history.pushState({}, '', '/chat')
-    localStorage.setItem(
-      'docu_chat_history_user-1',
-      JSON.stringify({
-        version: 1,
-        activeChatId: 'shared-1',
-        sessions: [{ id: 's1', title: 'My own chat', messages: [], createdAt: '2026-09-01T00:00:00.000Z' }],
-        updatedAt: '2026-09-01T00:00:00.000Z',
-      }),
-    )
-    listChatSessions.mockResolvedValueOnce({
-      sessions: [
-        {
-          id: 's1',
-          title: 'My own chat',
-          project_id: null,
-          visibility: 'private',
-          share_token: null,
-          created_at: '2026-09-01T00:00:00Z',
-          updated_at: '2026-09-01T00:00:00Z',
-          message_count: 0,
-        },
-      ],
-      shared: [
-        {
-          id: 'shared-1',
-          title: 'Shared Chat',
-          owner_username: 'alice',
-          visibility: 'query',
-          opened_at: '2026-09-01T00:00:00Z',
-        },
-      ],
-    })
-    getChatSession.mockImplementation((id: string) =>
-      id === 'shared-1'
-        ? Promise.resolve({
-            id: 'shared-1',
-            title: 'Shared Chat',
-            project_id: null,
-            visibility: 'query',
-            share_token: null,
-            created_at: '2026-09-01T00:00:00Z',
-            updated_at: '2026-09-01T00:00:00Z',
-            message_count: 1,
-            owner_username: 'alice',
-            is_owner: false,
-            can_query: true,
-            scope_document_ids: ['doc-9', 'doc-10'],
-            messages: [
-              {
-                id: 'm1',
-                seq: 1,
-                role: 'user',
-                content: 'Earlier shared question',
-                author_username: 'alice',
-                created_at: '2026-09-01T00:00:00Z',
-              },
-              {
-                id: 'm2',
-                seq: 2,
-                role: 'assistant',
-                content: 'Earlier shared answer',
-                author_username: 'alice',
-                created_at: '2026-09-01T00:00:00Z',
-              },
-            ],
-          })
-        : Promise.resolve({ id, title: id, messages: [] }),
-    )
-
-    render(<AppLayout />)
-
-    await waitFor(() => {
-      expect(screen.getByTestId('active-chat-id').textContent).toBe('shared-1')
-    })
-
-    // The chat pane loads this chat's messages instead of showing the
-    // empty state.
-    expect(await screen.findByText('Earlier shared answer')).toBeInTheDocument()
-
-    // Composer is enabled with no manual selection, using the fetched
-    // scope, and a question actually reaches the adapter.
-    const textarea = await screen.findByPlaceholderText('Ask about the shared files')
-    await user.type(textarea, 'What do these say?')
-    await user.click(screen.getByRole('button', { name: 'Send message' }))
-
-    expect(await screen.findByText('What do these say?')).toBeInTheDocument()
-    await waitFor(() => expect(lastSendQueryRequest?.documents).toEqual(['doc-9', 'doc-10']))
-  })
-
   it('lets a shared queryable chat be asked without a manual file selection, using the chat scope', async () => {
     const user = userEvent.setup()
     initialSelectedIds = new Set()
@@ -1994,25 +1851,8 @@ describe('AppLayout — message pane skeleton while a chat is loading messages',
     // must stay put and the composer must stay enabled for that background
     // re-fetch — only a genuinely empty, first-ever load should skeleton.
     //
-    // Restore-on-reload (localStorage + listChatSessions), not the
-    // `?share=` link flow, mirroring the already-stable "fetches a
-    // restored shared chat's detail on reload" test above — it exercises
-    // the identical ungated shared-branch `ensureMessagesLoaded` fetch
-    // with one fewer moving part (no shareToken/loadSharedSession/
-    // replaceState hop).
     const user = userEvent.setup()
     window.history.pushState({}, '', '/chat')
-    window.localStorage.setItem(
-      'docu_chat_history_user-1',
-      JSON.stringify({
-        version: 1,
-        activeChatId: 'shared-9',
-        sessions: [
-          { id: 's1', title: 'My own chat', messages: [], createdAt: '2026-09-01T00:00:00.000Z' },
-        ],
-        updatedAt: '2026-09-01T00:00:00.000Z',
-      }),
-    )
     listChatSessions.mockResolvedValueOnce({
       sessions: [
         {
@@ -2077,12 +1917,13 @@ describe('AppLayout — message pane skeleton while a chat is loading messages',
 
     render(<AppLayout />)
 
+    // First activation — click the shared chat to open it; a genuine
+    // first-ever load, expected to show the skeleton briefly and then
+    // reveal the message (setup, not the assertion under test).
+    await user.click(await screen.findByRole('button', { name: 'shared:Reselect Chat' }))
     await waitFor(() => {
       expect(screen.getByTestId('active-chat-id').textContent).toBe('shared-9')
     })
-    // First activation — a genuine first-ever load, expected to show the
-    // skeleton briefly and then reveal the message (setup, not the
-    // assertion under test).
     expect(await screen.findByText('Already loaded answer')).toBeInTheDocument()
     await waitFor(() => {
       expect(screen.queryByTestId('messages-skeleton')).not.toBeInTheDocument()

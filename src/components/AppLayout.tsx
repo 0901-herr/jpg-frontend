@@ -23,7 +23,6 @@ import { type, typeColor } from '../styles/typography'
 import { citationsToSources, mergeCitations } from '../utils/citations'
 import { appendStreamDelta } from '../utils/appendStreamDelta'
 import { formatProgressStage, formatRouteLabel, resolveProgressScope } from '../utils/queryProgress'
-import { persistChatHistory } from '../utils/chatPersistence'
 import { getSummarizeDisabledReason, isSummaryReady } from '../utils/summaryGate'
 import {
   getExtractMetadataDisabledReason,
@@ -114,7 +113,10 @@ function createInitialSession(): ChatSession {
   return createEmptySession()
 }
 
-function chatPersistenceEnabled(): boolean {
+/** Whether the chat store should talk to the adapter at all — false only
+ * for the citation-demo flows (`config/demo.ts`), which run purely as
+ * local React state instead (see `useChatStore`'s `enabled` param). */
+function chatStoreEnabled(): boolean {
   return !isCitationDemoEnabled() && !isCitationLoadingDemoEnabled()
 }
 
@@ -149,7 +151,7 @@ export default function AppLayout() {
   const chatStore = useChatStore({
     chatUserId,
     authLoading,
-    enabled: chatPersistenceEnabled(),
+    enabled: chatStoreEnabled(),
     initialSession: initialSessionRef.current,
     hasPendingShare: shareToken != null,
   })
@@ -243,15 +245,6 @@ export default function AppLayout() {
   useEffect(() => {
     if (!isNarrowLayout) setDrawerOpen(false)
   }, [isNarrowLayout])
-
-  // Best-effort local mirror of the server-backed sessions — never the
-  // source of truth once hydrated (that's `useChatStore`'s GET /chat/
-  // sessions + lazy per-chat fetch), just a browser-local backup so a
-  // reload before a chat's first successful sync still shows something.
-  useEffect(() => {
-    if (!chatHydrated || !chatUserId || !chatPersistenceEnabled()) return
-    persistChatHistory(chatUserId, sessions, activeChatId)
-  }, [chatHydrated, chatUserId, sessions, activeChatId])
 
   // Shared-link handoff: `/chat?share=<token>` loads that chat into the
   // Shared group, selects it, and strips the query param — once per link,

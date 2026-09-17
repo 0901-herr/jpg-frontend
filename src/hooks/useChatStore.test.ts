@@ -4,7 +4,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createEmptySession, useChatStore } from './useChatStore'
 import * as chatApi from '../api/chat'
 import { ApiError } from '../api/http'
-import { persistChatHistory } from '../utils/chatPersistence'
 import type { ChatSession } from '../types'
 
 vi.mock('../api/chat')
@@ -23,7 +22,6 @@ function baseParams(overrides: Partial<Parameters<typeof useChatStore>[0]> = {})
 
 beforeEach(() => {
   vi.clearAllMocks()
-  localStorage.clear()
   vi.mocked(chatApi.listChatProjects).mockResolvedValue([])
 })
 
@@ -62,191 +60,6 @@ describe('hydration', () => {
       expect.objectContaining({ id: 's2', ownerUsername: 'alice', isOwner: false, canQuery: false }),
     ])
     expect(result.current.activeChatId).toBe('s1')
-  })
-
-  it('imports local history once when the server has no own sessions', async () => {
-    vi.mocked(chatApi.listChatSessions).mockResolvedValue({ sessions: [], shared: [] })
-    vi.mocked(chatApi.createChatSession).mockResolvedValue({} as never)
-    vi.mocked(chatApi.postChatMessage).mockResolvedValue(undefined)
-
-    const localSession: ChatSession = {
-      id: 'local-1',
-      title: 'Old chat',
-      messages: [
-        { id: 'm1', role: 'user', content: 'Hello' },
-        { id: 'm2', role: 'assistant', content: 'Hi there', status: 'complete' },
-      ],
-      createdAt: '2026-09-01T00:00:00Z',
-    }
-    persistChatHistory(chatUserId, [localSession], localSession.id)
-
-    const { result } = renderHook(() => useChatStore(baseParams()))
-
-    await waitFor(() => expect(result.current.hydrated).toBe(true))
-
-    expect(chatApi.createChatSession).toHaveBeenCalledWith({ id: 'local-1', title: 'Old chat' })
-    expect(chatApi.postChatMessage).toHaveBeenCalledTimes(2)
-    expect(result.current.sessions).toHaveLength(1)
-    expect(result.current.sessions[0].id).toBe('local-1')
-    expect(result.current.sessions[0].isOwner).toBe(true)
-  })
-
-  it('keeps the local copy when the import fails, without clearing localStorage', async () => {
-    vi.mocked(chatApi.listChatSessions).mockResolvedValue({ sessions: [], shared: [] })
-    vi.mocked(chatApi.createChatSession).mockRejectedValue(new Error('offline'))
-
-    const localSession: ChatSession = {
-      id: 'local-1',
-      title: 'Old chat',
-      messages: [],
-      createdAt: '2026-09-01T00:00:00Z',
-    }
-    persistChatHistory(chatUserId, [localSession], localSession.id)
-
-    const { result } = renderHook(() => useChatStore(baseParams()))
-
-    await waitFor(() => expect(result.current.hydrated).toBe(true))
-
-    expect(result.current.sessions[0].id).toBe('local-1')
-    expect(localStorage.getItem(`docu_chat_history_${chatUserId}`)).not.toBeNull()
-  })
-
-  it('resumes a partially failed import on the next load (gated on localStorage, not on server session count) and stops once cleared', async () => {
-    // Models the state right after a previous load's import partially
-    // failed: session-1 made it to the server (so listChatSessions no
-    // longer returns zero sessions), but localStorage was never cleared
-    // because the whole import still threw on session-2. The old gate
-    // ("server has zero sessions") would skip retrying here entirely,
-    // stranding session-2 forever.
-    vi.mocked(chatApi.listChatSessions).mockResolvedValue({
-      sessions: [
-        {
-          id: 'local-1',
-          title: 'Old chat 1',
-          project_id: null,
-          visibility: 'private',
-          share_token: null,
-          created_at: '2026-09-01T00:00:00Z',
-          updated_at: '2026-09-01T00:00:00Z',
-          message_count: 1,
-        },
-      ],
-      shared: [],
-    })
-    vi.mocked(chatApi.createChatSession).mockResolvedValue({} as never)
-    vi.mocked(chatApi.postChatMessage).mockResolvedValue(undefined)
-
-    const localSessions: ChatSession[] = [
-      {
-        id: 'local-1',
-        title: 'Old chat 1',
-        messages: [{ id: 'm1', role: 'user', content: 'Hello' }],
-        createdAt: '2026-09-01T00:00:00Z',
-      },
-      {
-        id: 'local-2',
-        title: 'Old chat 2',
-        messages: [{ id: 'm2', role: 'user', content: 'Hi again' }],
-        createdAt: '2026-09-01T00:00:00Z',
-      },
-    ]
-    persistChatHistory(chatUserId, localSessions, localSessions[0].id)
-
-    const { result } = renderHook(() => useChatStore(baseParams()))
-
-    await waitFor(() => expect(result.current.hydrated).toBe(true))
-
-    // The server-backed session is already authoritative and is not
-    // replayed from the browser mirror; only the still-missing session is
-    // retried.
-    expect(chatApi.createChatSession).not.toHaveBeenCalledWith({
-      id: 'local-1',
-      title: 'Old chat 1',
-    })
-    expect(chatApi.createChatSession).toHaveBeenCalledWith({ id: 'local-2', title: 'Old chat 2' })
-
-    // Both sessions present, no duplicates.
-    expect(result.current.sessions.map((s) => s.id).sort()).toEqual(['local-1', 'local-2'])
-
-    // The import finished this time — localStorage is cleared, so a third
-    // load would not retry again.
-    expect(localStorage.getItem(`docu_chat_history_${chatUserId}`)).toBeNull()
-  })
-
-  it('keeps a server-backed project move when a stale local mirror exists after refresh', async () => {
-    vi.mocked(chatApi.listChatSessions).mockResolvedValue({
-      sessions: [
-        {
-          id: 's1',
-          title: 'Session 1',
-          project_id: 'project-1',
-          visibility: 'private',
-          share_token: null,
-          created_at: '2026-09-16T00:00:00Z',
-          updated_at: '2026-09-17T00:00:00Z',
-          message_count: 1,
-        },
-      ],
-      shared: [],
-    })
-    // Browser backups intentionally omit projectId. This is the payload
-    // produced before a page refresh immediately after a successful move.
-    persistChatHistory(
-      chatUserId,
-      [
-        {
-          id: 's1',
-          title: 'Session 1',
-          messages: [{ id: 'm1', role: 'user', content: 'Hello' }],
-        },
-      ],
-      's1',
-    )
-    vi.mocked(chatApi.getChatSession).mockResolvedValueOnce({
-      id: 's1',
-      title: 'Session 1',
-      project_id: 'project-1',
-      visibility: 'private',
-      share_token: null,
-      created_at: '2026-09-16T00:00:00Z',
-      updated_at: '2026-09-17T00:00:00Z',
-      message_count: 1,
-      owner_username: 'alice',
-      is_owner: true,
-      can_query: true,
-      scope_document_ids: [],
-      messages: [
-        {
-          id: 'm1',
-          seq: 1,
-          role: 'user',
-          content: 'Hello',
-          author_username: 'alice',
-          created_at: '2026-09-16T00:00:00Z',
-        },
-      ],
-    })
-
-    const { result } = renderHook(() => useChatStore(baseParams()))
-
-    await waitFor(() => expect(result.current.hydrated).toBe(true))
-
-    // Its stale local mirror was discarded, so the selected server summary
-    // must still fetch its detail instead of being treated as loaded.
-    await waitFor(() => expect(chatApi.getChatSession).toHaveBeenCalledWith('s1'))
-
-    await waitFor(() => {
-      expect(result.current.sessions).toEqual([
-        expect.objectContaining({
-          id: 's1',
-          projectId: 'project-1',
-          messages: [expect.objectContaining({ id: 'm1', content: 'Hello' })],
-        }),
-      ])
-    })
-    expect(chatApi.createChatSession).not.toHaveBeenCalled()
-    expect(chatApi.postChatMessage).not.toHaveBeenCalled()
-    expect(localStorage.getItem(`docu_chat_history_${chatUserId}`)).toBeNull()
   })
 
   it('falls back to a fresh empty session when there is nothing to hydrate', async () => {
@@ -318,124 +131,6 @@ describe('hydration', () => {
 
     expect(result.current.sharedSessions.some((s) => s.id === 'shared-1')).toBe(true)
     expect(result.current.activeChatId).toBe('shared-1')
-  })
-
-  it('restores the last active chat (own or shared) from localStorage instead of always defaulting to the first own session', async () => {
-    vi.mocked(chatApi.listChatSessions).mockResolvedValue({
-      sessions: [
-        {
-          id: 's1',
-          title: 'Session 1',
-          project_id: null,
-          visibility: 'private',
-          share_token: null,
-          created_at: '2026-09-16T00:00:00Z',
-          updated_at: '2026-09-16T00:00:00Z',
-          message_count: 0,
-        },
-        {
-          id: 's2',
-          title: 'Session 2',
-          project_id: null,
-          visibility: 'private',
-          share_token: null,
-          created_at: '2026-09-16T00:00:00Z',
-          updated_at: '2026-09-16T00:00:00Z',
-          message_count: 0,
-        },
-      ],
-      shared: [
-        {
-          id: 'shared-1',
-          title: 'Shared chat',
-          owner_username: 'alice',
-          visibility: 'query',
-          opened_at: '2026-09-16T00:00:00Z',
-        },
-      ],
-    })
-    // The viewer's last active chat, per the local mirror, was the SHARED
-    // one — not `s1` (which listChatSessions returns first).
-    persistChatHistory(
-      chatUserId,
-      [{ id: 's1', title: 'Session 1', messages: [] }],
-      'shared-1',
-    )
-
-    const { result } = renderHook(() => useChatStore(baseParams()))
-
-    await waitFor(() => expect(result.current.hydrated).toBe(true))
-
-    expect(result.current.activeChatId).toBe('shared-1')
-  })
-
-  it('fetches a restored shared chat’s detail (messages + scope) instead of leaving it as a message-less summary', async () => {
-    vi.mocked(chatApi.listChatSessions).mockResolvedValue({
-      sessions: [
-        {
-          id: 's1',
-          title: 'Session 1',
-          project_id: null,
-          visibility: 'private',
-          share_token: null,
-          created_at: '2026-09-16T00:00:00Z',
-          updated_at: '2026-09-16T00:00:00Z',
-          message_count: 0,
-        },
-      ],
-      shared: [
-        {
-          id: 'shared-1',
-          title: 'Shared chat',
-          owner_username: 'alice',
-          visibility: 'query',
-          opened_at: '2026-09-16T00:00:00Z',
-        },
-      ],
-    })
-    // Last active chat, per the local mirror, was the shared one — its
-    // list entry above is a message-less/scope-less summary, same as what
-    // `GET /chat/sessions` always returns for `shared`.
-    persistChatHistory(chatUserId, [{ id: 's1', title: 'Session 1', messages: [] }], 'shared-1')
-    vi.mocked(chatApi.getChatSession).mockResolvedValue({
-      id: 'shared-1',
-      title: 'Shared chat',
-      project_id: null,
-      visibility: 'query',
-      share_token: null,
-      created_at: '2026-09-16T00:00:00Z',
-      updated_at: '2026-09-16T00:00:00Z',
-      message_count: 1,
-      owner_username: 'alice',
-      is_owner: false,
-      can_query: true,
-      scope_document_ids: ['doc-9'],
-      messages: [
-        {
-          id: 'm1',
-          seq: 1,
-          role: 'user',
-          content: 'Hi',
-          author_username: 'bob',
-          created_at: '2026-09-16T00:00:00Z',
-        },
-      ],
-    })
-
-    const { result } = renderHook(() => useChatStore(baseParams()))
-
-    await waitFor(() => expect(result.current.hydrated).toBe(true))
-    expect(result.current.activeChatId).toBe('shared-1')
-
-    await waitFor(() => expect(chatApi.getChatSession).toHaveBeenCalledWith('shared-1'))
-    await waitFor(() => {
-      const shared = result.current.sharedSessions.find((s) => s.id === 'shared-1')
-      expect(shared?.messages).toHaveLength(1)
-      expect(shared?.scopeDocumentIds).toEqual(['doc-9'])
-    })
-    // Never touched the OWN sessions list — the fetched detail belongs in
-    // `sharedSessions`.
-    expect(result.current.sessions.find((s) => s.id === 'shared-1')).toBeUndefined()
   })
 
   it('never touches the network when disabled (citation-demo mode)', async () => {
@@ -603,7 +298,7 @@ describe('chat CRUD', () => {
     expect(errorSpy).toHaveBeenCalledWith('Could not move this chat. It has been moved back.')
   })
 
-  it('deletes a project by cascading: deletes every chat in it via the existing single-chat-delete call, then deletes the project itself', async () => {
+  it('deletes a project by cascading: the backend deletes every chat in it, one DELETE /chat/projects/{id} call is enough', async () => {
     vi.mocked(chatApi.listChatSessions).mockResolvedValue({
       sessions: [
         {
@@ -639,7 +334,6 @@ describe('chat CRUD', () => {
       ],
       shared: [],
     })
-    vi.mocked(chatApi.deleteChatSession).mockResolvedValue(undefined)
     vi.mocked(chatApi.deleteChatProject).mockResolvedValue(undefined)
     // The active chat (s1, then s3 once the cascade reselects it, mirroring
     // `deleteChat`'s own reselection) each trigger `ensureMessagesLoaded` ->
@@ -672,9 +366,11 @@ describe('chat CRUD', () => {
     await act(async () => {
       await result.current.deleteProject('proj-1')
     })
-    expect(chatApi.deleteChatSession).toHaveBeenCalledTimes(2)
-    expect(chatApi.deleteChatSession).toHaveBeenCalledWith('s1')
-    expect(chatApi.deleteChatSession).toHaveBeenCalledWith('s2')
+    // No per-chat delete loop any more — the backend's own cascade (see
+    // jpg-adapter's ChatRepository.delete_project) tombstones s1/s2 as part
+    // of this single call.
+    expect(chatApi.deleteChatSession).not.toHaveBeenCalled()
+    expect(chatApi.deleteChatProject).toHaveBeenCalledTimes(1)
     expect(chatApi.deleteChatProject).toHaveBeenCalledWith('proj-1')
     // The chats that were in the deleted project are gone from the visible
     // list entirely (cascade), not merely orphaned to projectId: null.
@@ -685,9 +381,15 @@ describe('chat CRUD', () => {
     // activeChatId pointing at a chat that's gone, same reselection
     // `deleteChat` already does for a single delete.
     expect(result.current.activeChatId).toBe('s3')
+    // Reselecting 's3' fires ensureMessagesLoaded's background
+    // getChatSession fetch — without this call now resolving fast (no
+    // per-chat delete loop ahead of it any more), that fetch settles after
+    // this test's own `act` returns; wait for it here so its `setSessions`
+    // lands on the still-mounted hook instead of leaking into a later test.
+    await waitFor(() => expect(chatApi.getChatSession).toHaveBeenCalledWith('s3'))
   })
 
-  it('rolls back only the chats that failed to delete when a cascade delete partially fails, and does not delete the project', async () => {
+  it('rolls back the project and every one of its chats if the cascade DELETE fails', async () => {
     const errorSpy = vi.spyOn(message, 'error')
     vi.mocked(chatApi.listChatProjects).mockResolvedValue([
       { id: 'proj-1', name: 'Research', created_at: '2026-09-16T00:00:00Z', updated_at: '2026-09-16T00:00:00Z' },
@@ -727,10 +429,7 @@ describe('chat CRUD', () => {
       ],
       shared: [],
     })
-    // s1 deletes fine; s2 fails (e.g. a transient network error).
-    vi.mocked(chatApi.deleteChatSession).mockImplementation((chatId: string) =>
-      chatId === 's2' ? Promise.reject(new Error('network error')) : Promise.resolve(undefined),
-    )
+    vi.mocked(chatApi.deleteChatProject).mockRejectedValue(new Error('network error'))
     vi.mocked(chatApi.getChatSession).mockImplementation((requestedId: string) =>
       Promise.resolve({
         id: requestedId,
@@ -757,21 +456,24 @@ describe('chat CRUD', () => {
       await result.current.deleteProject('proj-1')
     })
 
-    // The project still has a chat server-side (s2's delete failed), so
-    // the project itself must never be deleted, and comes back into view.
-    expect(chatApi.deleteChatProject).not.toHaveBeenCalled()
+    // Nothing actually happened server-side — bring the project and both
+    // of its chats back into view (no partial-failure case any more: the
+    // backend's cascade is one transaction, so it's all-or-nothing).
     await waitFor(() => {
       expect(result.current.projects).toEqual([{ id: 'proj-1', name: 'Research' }])
     })
-
-    // s1 (succeeded) stays gone; s2 (failed) reappears.
     await waitFor(() => {
-      expect(result.current.sessions.some((s) => s.id === 's2')).toBe(true)
+      expect(result.current.sessions.some((s) => s.id === 's1')).toBe(true)
     })
-    expect(result.current.sessions.some((s) => s.id === 's1')).toBe(false)
+    expect(result.current.sessions.some((s) => s.id === 's2')).toBe(true)
     expect(result.current.sessions.some((s) => s.id === 's3')).toBe(true)
 
-    expect(errorSpy).toHaveBeenCalledWith('1 of 2 chats could not be deleted. Please try again.')
+    expect(errorSpy).toHaveBeenCalledWith('Could not delete this project. Please try again.')
+    // Same reason as the sibling success-path test above: the optimistic
+    // reselect to 's3' (reverted here, but only after firing) still queues
+    // a background getChatSession('s3') fetch — wait for it so it doesn't
+    // resolve after this test has already torn down.
+    await waitFor(() => expect(chatApi.getChatSession).toHaveBeenCalledWith('s3'))
   })
 
   // Task 11 follow-up: `renameChat`/`deleteChat`/`moveChat` stayed

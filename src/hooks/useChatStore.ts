@@ -17,7 +17,6 @@ import {
 } from '../api/chat'
 import type { ChatMessageDto, ChatSessionDetailDto, ChatSessionSummaryDto } from '../api/types/chat'
 import { ApiError } from '../api/http'
-import { clearChatHistory, loadChatHistory } from '../utils/chatPersistence'
 import type { ChatMessage, ChatProject, ChatSession, ChatVisibility, CoverageInfo, Source } from '../types'
 
 const SESSION_TITLE_MONTHS = [
@@ -118,44 +117,6 @@ function mapDetailToSession(dto: ChatSessionDetailDto): ChatSession {
       filename: d.filename,
     })),
   }
-}
-
-const IMPORT_FAILURE_MESSAGE =
-  'Could not save your existing chats online yet — they are still available here for now.'
-
-/** One-time migration of a browser's local chat history into the server:
- * creates each stored session (keeping its id) and replays its messages in
- * order. Throws on the first failure so the caller can fall back to
- * keeping the local copy untouched rather than leaving a half-imported
- * mix behind. */
-async function importLocalHistory(stored: ChatSession[]): Promise<ChatSession[]> {
-  const imported: ChatSession[] = []
-  for (const session of stored) {
-    await createChatSession({ id: session.id, title: session.title })
-    for (const msg of session.messages) {
-      await postChatMessage(session.id, {
-        id: msg.id,
-        role: msg.role,
-        content: msg.content,
-        question: msg.question,
-        file_tags: msg.fileTags,
-        sources: msg.sources,
-        coverage: msg.coverage as Record<string, unknown> | undefined,
-        status: msg.status,
-        abstained: msg.abstained,
-        interrupted: msg.interrupted,
-      })
-    }
-    imported.push({
-      ...session,
-      isOwner: true,
-      visibility: 'private',
-      projectId: null,
-      canQuery: true,
-      messageCount: session.messages.length,
-    })
-  }
-  return imported
 }
 
 export interface UseChatStoreParams {
@@ -329,55 +290,6 @@ export function useChatStore({
           ownerUsername: s.owner_username,
         }))
 
-        // The local mirror is a recovery copy, not the source of truth for
-        // a session that the server already knows about. In particular it
-        // deliberately omits projectId, so replaying an existing mirror
-        // would turn a successful "Move to" PATCH back into `null` on the
-        // next refresh. Only import ids that are still absent server-side.
-        // This still resumes a partial import: sessions that made it to the
-        // server are left alone while the remaining local-only sessions are
-        // retried.
-        const stored = loadChatHistory(chatUserId)
-        if (stored?.sessions.length) {
-          const serverSessionIds = new Set(ownSessions.map((session) => session.id))
-          const localOnlySessions = stored.sessions.filter(
-            (session) => !serverSessionIds.has(session.id),
-          )
-          if (localOnlySessions.length) {
-            try {
-              const imported = await importLocalHistory(localOnlySessions)
-              const importedIds = new Set(imported.map((s) => s.id))
-              ownSessions = [...imported, ...ownSessions.filter((s) => !importedIds.has(s.id))]
-              // Imported sessions carry the local messages we just replayed,
-              // so their detail is already available in memory. Server
-              // summaries remain deliberately unmarked and will load on
-              // first activation below.
-              for (const session of imported) loadedMessagesRef.current.add(session.id)
-              clearChatHistory(chatUserId)
-            } catch {
-              // Still partially (or entirely) stuck locally — keep showing
-              // whatever's already confirmed server-side, plus whichever
-              // local sessions haven't made it there yet, so nothing
-              // disappears. localStorage is deliberately left alone so the
-              // next load retries.
-              const localOnly = localOnlySessions.map((s) => ({
-                ...s,
-                isOwner: true,
-                visibility: 'private' as const,
-                projectId: null,
-                canQuery: true,
-              }))
-              ownSessions = [...ownSessions, ...localOnly]
-              for (const session of localOnly) loadedMessagesRef.current.add(session.id)
-              message.warning(IMPORT_FAILURE_MESSAGE)
-            }
-          } else {
-            // All ids are already server-backed. Drop this stale recovery
-            // copy so it cannot be replayed on a later refresh either.
-            clearChatHistory(chatUserId)
-          }
-        }
-
         if (ownSessions.length === 0 && !hasPendingShare) {
           const fresh = createEmptySession()
           loadedMessagesRef.current.add(fresh.id)
@@ -404,19 +316,7 @@ export function useChatStore({
         // chat itself, so leave `activeChatId` alone here entirely
         // (there may be nothing in `ownSessions` to select anyway).
         if (ownSessions.length > 0 && !hasPendingShare) {
-          // Resume the chat the viewer was last on (own or shared) rather
-          // than always defaulting to the first own session — mirrors
-          // `persistChatHistory`'s local backup, which stores this
-          // regardless of which list the active chat actually belongs to.
-          // Read from `stored` (captured above, before the import branch
-          // above could have cleared it on success) rather than re-reading
-          // localStorage now — it may already be gone by this point.
-          const persistedActiveId = stored?.activeChatId
-          const stillExists =
-            persistedActiveId != null &&
-            (ownSessions.some((s) => s.id === persistedActiveId) ||
-              shared.some((s) => s.id === persistedActiveId))
-          setActiveChatId(stillExists ? persistedActiveId : ownSessions[0].id)
+          setActiveChatId(ownSessions[0].id)
         }
 
         try {
@@ -428,18 +328,16 @@ export function useChatStore({
           // but at least the new one is appended locally).
         }
       } catch {
-        // The whole server round-trip failed (offline, adapter down) —
-        // never a blank/broken chat screen: fall back to whatever was in
-        // localStorage before this feature existed, same as before.
-        const stored = loadChatHistory(chatUserId)
-        const fallback = stored?.sessions.length ? stored.sessions : [createEmptySession()]
-        for (const s of fallback) loadedMessagesRef.current.add(s.id)
-        setSessions(fallback)
-        setActiveChatId(
-          stored?.activeChatId && fallback.some((s) => s.id === stored.activeChatId)
-            ? stored.activeChatId
-            : fallback[0].id,
-        )
+        // The whole server round-trip failed (offline, adapter down) — chat
+        // history lives only on the server now, so there is nothing local
+        // to fall back to. Show a fresh empty session rather than a blank
+        // screen, and say so, rather than silently look like an empty
+        // history.
+        const fresh = createEmptySession()
+        loadedMessagesRef.current.add(fresh.id)
+        setSessions([fresh])
+        setActiveChatId(fresh.id)
+        message.error('Could not load your chats. Please refresh and try again.')
       } finally {
         setHydrated(true)
       }
@@ -755,52 +653,21 @@ export function useChatStore({
 
       if (!enabled) return
 
-      // The backend has no cascade-delete endpoint: deleting the project
-      // alone would only orphan these chats (project_id -> null), not
-      // remove them. Delete each chat first via the same single-chat
-      // delete call `deleteChat` already uses, then the now-empty project —
-      // but `allSettled`, not `all`: a fail-fast `Promise.all` would bail
-      // out of the whole cascade on the first rejection, silently leaving
-      // the rest of the chats (and the project itself) undeleted
-      // server-side while the optimistic update had already made all of
-      // them disappear from view. Distinguishing successes from failures
-      // here lets the UI stay honest about what actually happened.
-      const results = await Promise.allSettled(
-        chatsInProject.map((chat) => deleteChatSession(chat.id)),
-      )
-      const failedChats = chatsInProject.filter((_, i) => results[i].status === 'rejected')
-
-      if (failedChats.length > 0) {
-        // Some chats are still on the project server-side — don't delete
-        // the project itself, bring it and the chats that didn't actually
-        // get deleted back into view, and say so honestly (not "could not
-        // delete the project": most of it may well have worked).
-        setSessions((prev) => [...prev, ...failedChats])
-        if (removedProject) {
-          setProjects((prev) =>
-            [...prev, removedProject].sort((a, b) => a.name.localeCompare(b.name)),
-          )
-        }
-        message.error(
-          `${failedChats.length} of ${chatsInProject.length} chats could not be deleted. Please try again.`,
-        )
-        return
-      }
-
+      // The backend cascades: DELETE /chat/projects/{id} tombstones every
+      // chat still inside it server-side (see jpg-adapter's
+      // ChatRepository.delete_project), so one call is enough — no more
+      // per-chat delete loop that could partially fail and leave chats
+      // orphaned-but-undeleted server-side.
       try {
         await deleteChatProject(id)
       } catch {
-        // Every chat is genuinely gone server-side at this point (no
-        // rollback for those), but the project row itself is still there —
-        // bring it back so the user can retry deleting it.
+        setSessions((prev) => [...prev, ...chatsInProject])
         if (removedProject) {
           setProjects((prev) =>
             [...prev, removedProject].sort((a, b) => a.name.localeCompare(b.name)),
           )
         }
-        message.error(
-          'Chats were deleted, but the project itself could not be removed. Please try again.',
-        )
+        message.error('Could not delete this project. Please try again.')
       }
     },
     [enabled],
