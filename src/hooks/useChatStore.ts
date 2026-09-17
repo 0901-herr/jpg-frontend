@@ -262,6 +262,36 @@ export function useChatStore({
   // (success or failure) so the map never grows across a session's life.
   const sessionCreationRef = useRef<Map<string, Promise<void>>>(new Map())
 
+  // Every "there must always be at least one chat" fallback below creates
+  // its replacement purely client-side (a fresh id, no messages) — same as
+  // `createChat`'s own new-chat button, it must also fire the
+  // `POST /chat/sessions` that gives it a real row server-side. Skipping
+  // that left the replacement an orphan: querying inside it still appeared
+  // to work (querying doesn't require a persisted session, and
+  // `recordUserMessage`/`recordAssistantMessage` swallow their own persist
+  // failures), but renaming, moving to a project, or deleting it 404'd
+  // forever — the id it was trying to update/delete had simply never been
+  // created, not deleted.
+  const spawnEmptySession = useCallback(
+    (existingSessions: ChatSession[] = []): ChatSession => {
+      const fresh = createEmptySession(existingSessions)
+      loadedMessagesRef.current.add(fresh.id)
+      if (enabled) {
+        const creation = createChatSession({ id: fresh.id, title: fresh.title })
+          .then(() => {})
+          .catch(() => {})
+        sessionCreationRef.current.set(fresh.id, creation)
+        void creation.finally(() => {
+          if (sessionCreationRef.current.get(fresh.id) === creation) {
+            sessionCreationRef.current.delete(fresh.id)
+          }
+        })
+      }
+      return fresh
+    },
+    [enabled],
+  )
+
   useEffect(() => {
     if (!enabled) {
       setHydrated(true)
@@ -291,9 +321,7 @@ export function useChatStore({
         }))
 
         if (ownSessions.length === 0 && !hasPendingShare) {
-          const fresh = createEmptySession()
-          loadedMessagesRef.current.add(fresh.id)
-          ownSessions = [fresh]
+          ownSessions = [spawnEmptySession()]
         }
 
         setSessions(ownSessions)
@@ -333,8 +361,7 @@ export function useChatStore({
         // to fall back to. Show a fresh empty session rather than a blank
         // screen, and say so, rather than silently look like an empty
         // history.
-        const fresh = createEmptySession()
-        loadedMessagesRef.current.add(fresh.id)
+        const fresh = spawnEmptySession()
         setSessions([fresh])
         setActiveChatId(fresh.id)
         message.error('Could not load your chats. Please refresh and try again.')
@@ -357,8 +384,7 @@ export function useChatStore({
     // separate list) — there's still something to show, so this only
     // needs to step in when there would otherwise be nothing at all.
     if (!hydrated || sessions.length > 0 || sharedSessions.length > 0 || hasPendingShare) return
-    const fresh = createEmptySession()
-    loadedMessagesRef.current.add(fresh.id)
+    const fresh = spawnEmptySession()
     setSessions([fresh])
     setActiveChatId(fresh.id)
   }, [hydrated, sessions.length, sharedSessions.length, hasPendingShare])
@@ -502,19 +528,22 @@ export function useChatStore({
 
   const deleteChat = useCallback(
     async (chatId: string) => {
-      setSessions((prev) => {
-        const next = prev.filter((s) => s.id !== chatId)
-        if (next.length === 0) {
-          const fresh = createEmptySession(next)
-          loadedMessagesRef.current.add(fresh.id)
-          setActiveChatId(fresh.id)
-          return [fresh]
-        }
+      // Computed from the ref rather than inside the `setSessions` updater
+      // below (same idiom `createChat`/`moveChat`/`deleteProject` already
+      // use) — a React state updater must stay pure, and `spawnEmptySession`
+      // fires a `POST /chat/sessions` as a side effect, which could run
+      // twice (e.g. under Strict Mode's double-invoke) if it lived inside one.
+      const next = sessionsRef.current.filter((s) => s.id !== chatId)
+      if (next.length === 0) {
+        const fresh = spawnEmptySession(next)
+        setActiveChatId(fresh.id)
+        setSessions([fresh])
+      } else {
         if (chatId === activeChatIdRef.current) {
           setActiveChatId(next[0].id)
         }
-        return next
-      })
+        setSessions(next)
+      }
       if (!enabled) return
       try {
         await deleteChatSession(chatId)
@@ -525,7 +554,7 @@ export function useChatStore({
         message.error('Could not delete this chat.')
       }
     },
-    [enabled],
+    [enabled, spawnEmptySession],
   )
 
   const moveChat = useCallback(
@@ -643,8 +672,7 @@ export function useChatStore({
       // also reaches out and calls `setActiveChatId` as a side effect.
       const next = sessionsRef.current.filter((s) => s.projectId !== id)
       if (next.length === 0) {
-        const fresh = createEmptySession(next)
-        loadedMessagesRef.current.add(fresh.id)
+        const fresh = spawnEmptySession(next)
         setActiveChatId(fresh.id)
         setSessions([fresh])
       } else {
@@ -676,7 +704,7 @@ export function useChatStore({
         message.error('Could not delete this project. Please try again.')
       }
     },
-    [enabled],
+    [enabled, spawnEmptySession],
   )
 
   const recordUserMessage = useCallback(

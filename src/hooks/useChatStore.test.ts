@@ -23,6 +23,12 @@ function baseParams(overrides: Partial<Parameters<typeof useChatStore>[0]> = {})
 beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(chatApi.listChatProjects).mockResolvedValue([])
+  // Every "there must always be at least one chat" fallback now persists
+  // its replacement via `createChatSession` (see useChatStore's
+  // `spawnEmptySession`) — give it a default resolved value so a test that
+  // doesn't care about that call doesn't hit an unhandled rejection from
+  // the auto-mock's default `undefined` return.
+  vi.mocked(chatApi.createChatSession).mockResolvedValue({} as never)
 })
 
 describe('hydration', () => {
@@ -62,7 +68,7 @@ describe('hydration', () => {
     expect(result.current.activeChatId).toBe('s1')
   })
 
-  it('falls back to a fresh empty session when there is nothing to hydrate', async () => {
+  it('falls back to a fresh empty session when there is nothing to hydrate, and persists it server-side', async () => {
     vi.mocked(chatApi.listChatSessions).mockResolvedValue({ sessions: [], shared: [] })
 
     const { result } = renderHook(() => useChatStore(baseParams()))
@@ -71,6 +77,12 @@ describe('hydration', () => {
 
     expect(result.current.sessions).toHaveLength(1)
     expect(result.current.activeChatId).toBe(result.current.sessions[0].id)
+    // Without this, the fallback session is a client-side-only orphan: it
+    // never gets a row server-side, so renaming/moving/deleting it 404s
+    // forever even though querying inside it still appears to work.
+    expect(chatApi.createChatSession).toHaveBeenCalledWith(
+      expect.objectContaining({ id: result.current.sessions[0].id }),
+    )
   })
 
   it('does not auto-create an empty own chat when a share link is still pending', async () => {
@@ -510,6 +522,42 @@ describe('chat CRUD', () => {
     expect(errorSpy).not.toHaveBeenCalled()
   })
 
+  it('persists the auto-created replacement chat server-side when a cascade delete empties the whole chat list', async () => {
+    vi.mocked(chatApi.listChatProjects).mockResolvedValue([
+      { id: 'proj-1', name: 'Research', created_at: '2026-09-16T00:00:00Z', updated_at: '2026-09-16T00:00:00Z' },
+    ])
+    vi.mocked(chatApi.listChatSessions).mockResolvedValue({
+      sessions: [
+        {
+          id: 's1',
+          title: 'Session 1',
+          project_id: 'proj-1',
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-16T00:00:00Z',
+          updated_at: '2026-09-16T00:00:00Z',
+          message_count: 0,
+        },
+      ],
+      shared: [],
+    })
+    vi.mocked(chatApi.deleteChatProject).mockResolvedValue(undefined)
+
+    const { result } = renderHook(() => useChatStore(baseParams()))
+    await waitFor(() => expect(result.current.hydrated).toBe(true))
+
+    await act(async () => {
+      await result.current.deleteProject('proj-1')
+    })
+
+    expect(result.current.sessions).toHaveLength(1)
+    const replacementId = result.current.sessions[0].id
+    expect(replacementId).not.toBe('s1')
+    expect(chatApi.createChatSession).toHaveBeenCalledWith(
+      expect.objectContaining({ id: replacementId }),
+    )
+  })
+
   // Task 11 follow-up: `renameChat`/`deleteChat`/`moveChat` stayed
   // optimistic (the state update below still happens synchronously,
   // before any network round-trip) but now also return the PATCH/DELETE
@@ -593,6 +641,27 @@ describe('chat CRUD', () => {
 
     expect(result.current.sessions.some((s) => s.id === 's1')).toBe(false)
     expect(errorSpy).not.toHaveBeenCalled()
+  })
+
+  it('persists the auto-created replacement chat server-side when deleting the last one, so it can be moved or deleted itself', async () => {
+    const result = await hydrated()
+    vi.mocked(chatApi.deleteChatSession).mockResolvedValue(undefined)
+
+    await act(async () => {
+      await result.current.deleteChat('s1')
+    })
+
+    expect(result.current.sessions).toHaveLength(1)
+    const replacementId = result.current.sessions[0].id
+    expect(replacementId).not.toBe('s1')
+    // The regression this guards: a replacement session created only in
+    // local state (never POSTed) can still be queried against — querying
+    // doesn't require a persisted session, and message persistence
+    // swallows its own failures — but renaming/moving/deleting it 404s
+    // forever, since the id was never created server-side to begin with.
+    expect(chatApi.createChatSession).toHaveBeenCalledWith(
+      expect.objectContaining({ id: replacementId }),
+    )
   })
 
   it('returns a promise from moveChat that resolves once the PATCH settles', async () => {
