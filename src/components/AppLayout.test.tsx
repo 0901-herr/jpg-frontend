@@ -27,6 +27,7 @@ const postChatMessage = vi.fn().mockResolvedValue(undefined)
 const getSharedChatSession = vi.fn().mockRejectedValue(new Error('not found'))
 const listChatSessions = vi.fn().mockResolvedValue({ sessions: [], shared: [] })
 const getChatSession = vi.fn().mockResolvedValue({})
+const createChatSession = vi.fn().mockResolvedValue({})
 
 vi.mock('../api/browse', () => ({
   validateQueryScope: (...args: [string[], AbortSignal?]) => validateQueryScope(...args),
@@ -45,7 +46,7 @@ vi.mock('../api/chat', () => ({
   createChatProject: vi.fn().mockResolvedValue({ id: 'p1', name: 'p1' }),
   renameChatProject: vi.fn().mockResolvedValue({ id: 'p1', name: 'p1' }),
   deleteChatProject: vi.fn().mockResolvedValue(undefined),
-  createChatSession: vi.fn().mockResolvedValue({}),
+  createChatSession: (...args: [{ id: string; title: string }]) => createChatSession(...args),
   getChatSession: (...args: [string]) => getChatSession(...args),
   patchChatSession: vi.fn().mockResolvedValue({}),
   deleteChatSession: vi.fn().mockResolvedValue(undefined),
@@ -1963,6 +1964,63 @@ describe('AppLayout — message pane skeleton while a chat is loading messages',
     // Still fine once the background re-fetch actually settles.
     expect(screen.getByText('Already loaded answer')).toBeInTheDocument()
     expect(screen.queryByTestId('messages-skeleton')).not.toBeInTheDocument()
+  })
+})
+
+describe('AppLayout — composer locked while a brand-new chat is still being created', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    currentSignal = null
+    initialSelectedIds = new Set(['doc-1'])
+    initialDocumentMeta = defaultDocumentMeta()
+    createChatSession.mockReset()
+    createChatSession.mockResolvedValue({})
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+    createChatSession.mockResolvedValue({})
+    listChatSessions.mockResolvedValue({ sessions: [], shared: [] })
+  })
+
+  it('disables the composer while POST /chat/sessions for a fresh chat is still in flight, and re-enables it once it settles', async () => {
+    const user = userEvent.setup()
+
+    render(<AppLayout />)
+
+    // Hydration itself creates an empty session (this file's default
+    // `listChatSessions` mock resolves with none) and persists it through
+    // the same `createChatSession` this test controls — let that first
+    // call settle on the default resolved mock before arming the
+    // controlled promise below, so it's specifically the New Chat click,
+    // not hydration, whose POST this test observes.
+    await waitFor(() => expect(createChatSession).toHaveBeenCalledTimes(1))
+
+    let resolveCreate: ((value: unknown) => void) | undefined
+    createChatSession.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveCreate = resolve
+        }),
+    )
+
+    await user.click(await screen.findByRole('button', { name: 'New chat' }))
+
+    expect(
+      screen.getByPlaceholderText('Ask a question about the selected documents'),
+    ).toBeDisabled()
+    expect(screen.getByText('Setting up this chat')).toBeInTheDocument()
+
+    await act(async () => {
+      resolveCreate?.({})
+    })
+
+    await waitFor(() => {
+      expect(
+        screen.getByPlaceholderText('Ask a question about the selected documents'),
+      ).not.toBeDisabled()
+    })
+    expect(screen.queryByText('Setting up this chat')).not.toBeInTheDocument()
   })
 })
 

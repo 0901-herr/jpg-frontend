@@ -206,6 +206,16 @@ export interface UseChatStoreResult {
    * settles (success or failure), so a caller can render a loading skeleton
    * for whichever chat the viewer just clicked into. */
   messagesLoading: Set<string>
+  /** Chat ids whose `POST /chat/sessions` (fired by `createChat` or any of
+   * the "never end up with zero chats" fallbacks — see
+   * `spawnEmptySession`) is still in flight. A caller should lock/disable
+   * the composer for the active chat while its id is in here: querying
+   * before this settles would race the session's own creation — the
+   * adapter's `add_message` 404s against a session id it hasn't seen yet.
+   * `ensureSessionCreated` already guards the query call itself either
+   * way; this is what lets the UI show that wait instead of silently
+   * blocking on send. */
+  sessionsCreating: Set<string>
   /** Forces an immediate re-fetch of a shared chat's own detail (scope +
    * messages) — used after a follower's answer completes, so a host scope
    * change made mid-conversation is picked up without waiting for the
@@ -240,6 +250,9 @@ export function useChatStore({
   // Chat ids with an in-flight `ensureMessagesLoaded` fetch — see
   // `UseChatStoreResult.messagesLoading`.
   const [messagesLoading, setMessagesLoading] = useState<Set<string>>(new Set())
+  // Chat ids with an in-flight `POST /chat/sessions` — see
+  // `UseChatStoreResult.sessionsCreating`.
+  const [sessionsCreating, setSessionsCreating] = useState<Set<string>>(new Set())
 
   const activeChatIdRef = useRef(activeChatId)
   activeChatIdRef.current = activeChatId
@@ -277,6 +290,7 @@ export function useChatStore({
       const fresh = createEmptySession(existingSessions)
       loadedMessagesRef.current.add(fresh.id)
       if (enabled) {
+        setSessionsCreating((prev) => new Set(prev).add(fresh.id))
         const creation = createChatSession({ id: fresh.id, title: fresh.title })
           .then(() => {})
           .catch(() => {})
@@ -285,6 +299,11 @@ export function useChatStore({
           if (sessionCreationRef.current.get(fresh.id) === creation) {
             sessionCreationRef.current.delete(fresh.id)
           }
+          setSessionsCreating((prev) => {
+            const next = new Set(prev)
+            next.delete(fresh.id)
+            return next
+          })
         })
       }
       return fresh
@@ -489,25 +508,10 @@ export function useChatStore({
     // updater's execution (e.g. this function called directly, outside any
     // DOM event) — a plain synchronous read here is correct regardless of
     // when React actually applies the state update.
-    const newChat = createEmptySession(sessionsRef.current)
-    loadedMessagesRef.current.add(newChat.id)
+    const newChat = spawnEmptySession(sessionsRef.current)
     setSessions((prev) => [newChat, ...prev])
     setActiveChatId(newChat.id)
-    if (enabled) {
-      const creation = createChatSession({ id: newChat.id, title: newChat.title })
-        .then(() => {})
-        .catch(() => {})
-      sessionCreationRef.current.set(newChat.id, creation)
-      void creation.finally(() => {
-        // Only clear this id's own entry — a later `createChat` for a
-        // DIFFERENT id must not have its in-flight promise deleted by an
-        // earlier one settling.
-        if (sessionCreationRef.current.get(newChat.id) === creation) {
-          sessionCreationRef.current.delete(newChat.id)
-        }
-      })
-    }
-  }, [enabled])
+  }, [spawnEmptySession])
 
   const ensureSessionCreated = useCallback((chatId: string): Promise<void> => {
     return sessionCreationRef.current.get(chatId) ?? Promise.resolve()
@@ -811,6 +815,7 @@ export function useChatStore({
     recordAssistantMessage,
     loadSharedSession,
     messagesLoading,
+    sessionsCreating,
     refreshSharedChat,
     removeSharedChat,
   }

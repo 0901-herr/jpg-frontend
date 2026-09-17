@@ -163,6 +163,7 @@ export default function AppLayout() {
     sharedSessions,
     setSharedSessions,
     messagesLoading,
+    sessionsCreating,
   } = chatStore
   const chatHydrated = chatStore.hydrated
   // Read (never written to trigger a render) wherever a callback needs the
@@ -395,6 +396,16 @@ export default function AppLayout() {
   const isActiveChatMessagesLoading =
     !chatHydrated ||
     Boolean(activeChatId && messagesLoading.has(activeChatId) && messagePairs.length === 0)
+
+  // A brand-new chat (the "+ New Chat" button, or any of useChatStore's
+  // "never end up with zero chats" fallbacks — see its `spawnEmptySession`)
+  // has its `POST /chat/sessions` still in flight the instant it becomes
+  // active. `handleSend` already awaits `ensureSessionCreated` before
+  // querying, so a query sent during this window is never lost — but
+  // without this, nothing stops the user from sending it in the first
+  // place, which on a slow connection can sit silently queued behind a
+  // request the composer gives no sign of waiting on.
+  const isActiveChatBeingCreated = Boolean(activeChatId && sessionsCreating.has(activeChatId))
 
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -1458,8 +1469,13 @@ export default function AppLayout() {
               onStop={handleStop}
               onComposerFocus={handleComposerFocus}
               isResponding={sendQuery.isPending}
-              disabled={browse.sessionExpired || isActiveChatMessagesLoading}
-              disabledReason={inputBlockedReason}
+              disabled={
+                browse.sessionExpired || isActiveChatMessagesLoading || isActiveChatBeingCreated
+              }
+              disabledReason={
+                inputBlockedReason ??
+                (isActiveChatBeingCreated ? 'Setting up this chat' : undefined)
+              }
               summarizeDisabledReason={summarizeDisabledReason}
               categorizeDisabledReason={categorizeDisabledReason}
               extractMetadataDisabledReason={extractMetadataDisabledReason}

@@ -204,6 +204,13 @@ describe('chat CRUD', () => {
     expect(chatApi.createChatSession).toHaveBeenCalledWith(
       expect.objectContaining({ id: result.current.sessions[0].id }),
     )
+    expect(result.current.sessionsCreating.has(result.current.sessions[0].id)).toBe(true)
+    // Wait for the POST to settle so its `sessionsCreating` cleanup doesn't
+    // fire after this test has already torn down (same reasoning as the
+    // background-fetch waits elsewhere in this file).
+    await waitFor(() =>
+      expect(result.current.sessionsCreating.has(result.current.sessions[0].id)).toBe(false),
+    )
   })
 
   it('moves a chat between projects', async () => {
