@@ -1,6 +1,6 @@
-import { message } from 'antd'
-import { ChatChevronIcon, ChatDescriptionIcon, ChatExpandIcon, ChatRedirectIcon } from '../icons/chat'
-import { Fragment, useCallback, useId, useMemo, useState } from 'react'
+import { message, Tooltip } from 'antd'
+import { ChatChevronIcon, ChatDescriptionIcon, ChatRedirectIcon } from '../icons/chat'
+import { Fragment, useCallback, useId, useMemo, useState, type ReactNode } from 'react'
 import { fetchDocumentViewUrl, withPageHint } from '../api/browse'
 import { type, typeColor } from '../styles/typography'
 import { listRow } from '../styles/theme'
@@ -47,8 +47,8 @@ interface CitationLinkProps {
  * text ("1", "2", …, numbered-pill style), replacing the earlier filename
  * chip: the client asked for something that reads as a citation marker,
  * not a second copy of the filename crowding the answer text; the full
- * "<filename> · p. <page>" reference is still one hover away, in `title`
- * (`citationTooltipText` below), and the same number is repeated next to
+ * `<filename> · p. <page>` reference is still one hover away, in the
+ * citation preview tooltip, and the same number is repeated next to
  * the matching page chip in "Related documents" (`CitationList` below) so
  * a reader can map a pill straight to its document.
  *
@@ -69,24 +69,41 @@ interface CitationLinkProps {
  *
  * The remaining utilities below are layout/position only, untouched by the
  * reset: `inline-flex items-center justify-center` centers the digit in
- * the circle, and `relative top-[0.2em]` (rather than the `sub` keyword,
- * whose exact drop varies by browser/font) nudges it below the baseline by
- * a small, fixed amount so a cited line never grows taller than an uncited
- * one. Callers passing `className` must not add their own margin/padding
- * utilities (Tailwind class precedence is not append-order-safe, and those
- * properties are owned by `.docu-citation-pill` regardless). */
+ * the circle, and `align-middle` vertically centers the pill with the
+ * surrounding text row. Callers passing `className` must not add their own
+ * margin/padding utilities (Tailwind class precedence is not
+ * append-order-safe, and those properties are owned by `.docu-citation-pill`
+ * regardless). */
 const CITATION_PILL_CLASS =
-  'docu-citation-pill relative top-[0.2em] inline-flex items-center justify-center align-baseline'
+  'docu-citation-pill inline-flex items-center justify-center align-middle'
 
-/** Full "<filename> · p. <page>" reference shown as the pill's tooltip —
- * the pill itself only shows the citation's number, so this native `title`
- * is where a sighted reader actually learns which document and page it
- * points to (a screen reader gets the same information from `label`,
- * `citationDisplayLabel`'s "(File.pdf, Page N)" form, as the accessible
- * name). Unlike the old pill text, this is never truncated — a tooltip has
- * room for the full filename. */
-function citationTooltipText(source: Source): string {
-  return source.page != null ? `${source.filename} · p. ${source.page}` : source.filename
+/** Hover preview for a citation pill — filename, optional page, and any
+ * snippet excerpt so the reader can see where the link will open. */
+function CitationHoverPreview({ source }: { source: Source }) {
+  return (
+    <div className="docu-citation-preview">
+      <p className="docu-citation-preview-filename m-0">{source.filename}</p>
+      {source.page != null && (
+        <p className="docu-citation-preview-meta m-0">Page {source.page}</p>
+      )}
+      {source.snippet && (
+        <p className="docu-citation-preview-snippet m-0">{source.snippet}</p>
+      )}
+    </div>
+  )
+}
+
+function withCitationTooltip(source: Source, child: ReactNode) {
+  return (
+    <Tooltip
+      title={<CitationHoverPreview source={source} />}
+      placement="top"
+      mouseEnterDelay={0.15}
+      classNames={{ root: 'docu-citation-preview-tooltip' }}
+    >
+      {child}
+    </Tooltip>
+  )
 }
 
 export function CitationLink({ source, label, number, className }: CitationLinkProps) {
@@ -102,31 +119,30 @@ export function CitationLink({ source, label, number, className }: CitationLinkP
   }, [source])
 
   const canOpen = Boolean(source.url || source.documentId)
-  const tooltip = citationTooltipText(source)
 
   if (!canOpen) {
-    return (
+    return withCitationTooltip(
+      source,
       <span
         className={`${CITATION_PILL_CLASS} ${className ?? ''}`}
-        title={tooltip}
         aria-label={label}
       >
         {number}
-      </span>
+      </span>,
     )
   }
 
-  return (
+  return withCitationTooltip(
+    source,
     <button
       type="button"
       onClick={() => void handleClick()}
       disabled={opening}
       className={`${CITATION_PILL_CLASS} disabled:opacity-60 ${className ?? ''}`}
-      title={tooltip}
       aria-label={label}
     >
       {number}
-    </button>
+    </button>,
   )
 }
 
@@ -381,73 +397,85 @@ export default function CitationList({ sources, content, question }: CitationLis
         aria-controls={panelId}
         className="w-full flex items-center gap-2 py-1 text-left hover:opacity-80 transition-opacity"
       >
-        {expanded ? (
-          <ChatExpandIcon className="text-[#8e8e8e] shrink-0" aria-hidden />
-        ) : (
-          <ChatChevronIcon className="text-[#8e8e8e] shrink-0" aria-hidden />
-        )}
+        <ChatChevronIcon
+          className={`docu-tree-chevron${expanded ? ' expanded' : ''}`}
+          aria-hidden
+        />
         <span className={`${type.body} ${typeColor.body} leading-relaxed font-semibold`}>
           Related documents
         </span>
         <span className={`${type.caption} ${typeColor.muted}`}>({headerCount})</span>
       </button>
 
-      {expanded && (
-        <div id={panelId} className="pt-2">
-          {citedGroups.length > 0 && (
-            <ul className="list-none m-0 p-0 space-y-2">
-              {citedGroups.map((ordered) => (
-                <DocumentRow
-                  key={ordered.group.key}
-                  group={ordered.group}
-                  numbers={numbers}
-                  citedFor={citedForOf(ordered)}
-                  question={question ?? ''}
-                  openingKey={openingKey}
-                  onOpen={(source, key) => void handleOpen(source, key)}
-                />
-              ))}
-            </ul>
-          )}
+      <div
+        id={panelId}
+        className={`docu-collapse-panel${expanded ? ' is-open' : ''}`}
+        aria-hidden={!expanded}
+        inert={!expanded || undefined}
+      >
+        <div className="docu-collapse-panel-inner">
+          <div className="pt-2">
+            {citedGroups.length > 0 && (
+              <ul className="list-none m-0 p-0 space-y-2">
+                {citedGroups.map((ordered) => (
+                  <DocumentRow
+                    key={ordered.group.key}
+                    group={ordered.group}
+                    numbers={numbers}
+                    citedFor={citedForOf(ordered)}
+                    question={question ?? ''}
+                    openingKey={openingKey}
+                    onOpen={(source, key) => void handleOpen(source, key)}
+                  />
+                ))}
+              </ul>
+            )}
 
-          {uncitedGroups.length > 0 && (
-            <div className={citedGroups.length > 0 ? 'pt-2 mt-2 border-t border-[#f0f0f0]' : ''}>
-              <button
-                type="button"
-                onClick={() => setShowAlsoSearched((open) => !open)}
-                aria-expanded={showAlsoSearched}
-                aria-controls={alsoSearchedId}
-                className="w-full flex items-center gap-1.5 py-1 text-left hover:opacity-80 transition-opacity"
-              >
-                {showAlsoSearched ? (
-                  <ChatExpandIcon className="text-[#8e8e8e] shrink-0" aria-hidden />
-                ) : (
-                  <ChatChevronIcon className="text-[#8e8e8e] shrink-0" aria-hidden />
-                )}
-                <span className={`${type.caption} ${typeColor.muted} font-medium`}>
-                  Also searched ({uncitedGroups.length})
-                </span>
-              </button>
+            {uncitedGroups.length > 0 && (
+              <div className={citedGroups.length > 0 ? 'pt-2 mt-2 border-t border-[#f0f0f0]' : ''}>
+                <button
+                  type="button"
+                  onClick={() => setShowAlsoSearched((open) => !open)}
+                  aria-expanded={showAlsoSearched}
+                  aria-controls={alsoSearchedId}
+                  className="w-full flex items-center gap-1.5 py-1 text-left hover:opacity-80 transition-opacity"
+                >
+                  <ChatChevronIcon
+                    className={`docu-tree-chevron${showAlsoSearched ? ' expanded' : ''}`}
+                    aria-hidden
+                  />
+                  <span className={`${type.caption} ${typeColor.muted} font-medium`}>
+                    Also searched ({uncitedGroups.length})
+                  </span>
+                </button>
 
-              {showAlsoSearched && (
-                <ul id={alsoSearchedId} className="list-none m-0 p-0 pt-2 space-y-2">
-                  {uncitedGroups.map(({ group }) => (
-                    <DocumentRow
-                      key={group.key}
-                      group={group}
-                      numbers={numbers}
-                      citedFor={undefined}
-                      question={question ?? ''}
-                      openingKey={openingKey}
-                      onOpen={(source, key) => void handleOpen(source, key)}
-                    />
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
+                <div
+                  id={alsoSearchedId}
+                  className={`docu-collapse-panel${showAlsoSearched ? ' is-open' : ''}`}
+                  aria-hidden={!showAlsoSearched}
+                  inert={!showAlsoSearched || undefined}
+                >
+                  <div className="docu-collapse-panel-inner">
+                    <ul className="list-none m-0 p-0 pt-2 space-y-2">
+                      {uncitedGroups.map(({ group }) => (
+                        <DocumentRow
+                          key={group.key}
+                          group={group}
+                          numbers={numbers}
+                          citedFor={undefined}
+                          question={question ?? ''}
+                          openingKey={openingKey}
+                          onOpen={(source, key) => void handleOpen(source, key)}
+                        />
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }

@@ -1,8 +1,11 @@
 import { apiGet, apiPost } from './http'
+import { isComposerDemoEnabled } from '../config/demo'
 import type {
   BrowseCategoriesRequest,
   BrowseCategoriesResponse,
+  BrowseDocumentItem,
   BrowseFolderContentsResponse,
+  BrowseFolderNode,
   BrowseRootResponse,
   BrowseStatusRequest,
   BrowseStatusResponse,
@@ -17,7 +20,58 @@ import type {
 /** LogicalDOC document ids per /browse/status call — enforced by the adapter. */
 const BROWSE_STATUS_MAX_IDS = 500
 
+const COMPOSER_DEMO_FOLDERS: Record<number, BrowseFolderNode> = {
+  1: { folder_id: 1, name: 'Company documents', parent_id: null, has_children: true },
+  2: { folder_id: 2, name: 'Policies', parent_id: 1, has_children: true },
+  3: { folder_id: 3, name: 'Finance', parent_id: 1, has_children: true },
+  4: { folder_id: 4, name: 'People', parent_id: 1, has_children: true },
+  5: { folder_id: 5, name: 'Projects', parent_id: 1, has_children: true },
+}
+
+function demoDocument(
+  document_id: string,
+  filename: string,
+  folder_id: number,
+  classification_category: string,
+): BrowseDocumentItem {
+  return {
+    document_id,
+    filename,
+    file_type: filename.split('.').pop() ?? 'pdf',
+    updated_at: '2026-09-10T10:28:00Z',
+    folder_id,
+    indexing_status: 'READY',
+    rag_document_id: `demo-rag-${document_id}`,
+    classification_category,
+    summary_status: 'READY',
+    status_reason: null,
+    queryable: true,
+  }
+}
+
+const COMPOSER_DEMO_DOCUMENTS: Record<number, BrowseDocumentItem[]> = {
+  1: [demoDocument('demo-handbook', 'Company_Handbook_2026.pdf', 1, 'General')],
+  2: [
+    demoDocument('demo-workplace-policy', 'Workplace_Policy_2026.pdf', 2, 'Policies'),
+    demoDocument('demo-security-policy', 'Information_Security_Policy.pdf', 2, 'Policies'),
+    demoDocument('demo-leave-policy', 'Leave_and_Benefits_Guide.pdf', 2, 'Policies'),
+  ],
+  3: [
+    demoDocument('demo-q3-report', 'Q3_Financial_Report.pdf', 3, 'Finance'),
+    demoDocument('demo-budget', 'FY2027_Budget.xlsx', 3, 'Finance'),
+  ],
+  4: [
+    demoDocument('demo-onboarding', 'New_Starter_Onboarding.docx', 4, 'People'),
+    demoDocument('demo-org-chart', 'Organisation_Chart.pdf', 4, 'People'),
+  ],
+  5: [
+    demoDocument('demo-project-atlas', 'Project_Atlas_Brief.pdf', 5, 'Projects'),
+    demoDocument('demo-project-nova', 'Project_Nova_Status.docx', 5, 'Projects'),
+  ],
+}
+
 export async function fetchBrowseRoot(): Promise<BrowseRootResponse> {
+  if (isComposerDemoEnabled()) return { root_folder_id: 1, username: 'Demo user' }
   return apiGet<BrowseRootResponse>('/browse/root')
 }
 
@@ -25,6 +79,19 @@ export async function fetchFolderContents(
   folderId: number,
   page = 0,
 ): Promise<BrowseFolderContentsResponse> {
+  if (isComposerDemoEnabled()) {
+    const folder = COMPOSER_DEMO_FOLDERS[folderId] ?? COMPOSER_DEMO_FOLDERS[1]
+    return {
+      folder,
+      folders:
+        folderId === 1
+          ? [2, 3, 4, 5].map((id) => COMPOSER_DEMO_FOLDERS[id])
+          : [],
+      documents: page === 0 ? (COMPOSER_DEMO_DOCUMENTS[folderId] ?? []) : [],
+      page,
+      has_more_documents: false,
+    }
+  }
   const query = page > 0 ? `?page=${page}` : ''
   return apiGet<BrowseFolderContentsResponse>(`/browse/folders/${folderId}${query}`)
 }
@@ -38,6 +105,19 @@ export async function fetchFolderContents(
 export async function fetchSubtreeDocuments(
   folderId: number,
 ): Promise<BrowseSubtreeDocumentsResponse> {
+  if (isComposerDemoEnabled()) {
+    const contents = await fetchFolderContents(folderId)
+    const documents =
+      folderId === 1
+        ? Object.values(COMPOSER_DEMO_DOCUMENTS).flat()
+        : contents.documents
+    return {
+      folder: contents.folder,
+      documents,
+      folder_count: contents.folders.length + 1,
+      truncated: false,
+    }
+  }
   return apiGet<BrowseSubtreeDocumentsResponse>(`/browse/folders/${folderId}/subtree-documents`)
 }
 
@@ -45,6 +125,13 @@ export async function fetchBrowseCategories(
   documents: string[],
   signal?: AbortSignal,
 ): Promise<BrowseCategoriesResponse> {
+  if (isComposerDemoEnabled()) {
+    return {
+      categories: [{ name: 'Policies', count: documents.length }],
+      uncategorized_count: 0,
+      accessible_document_ids: documents,
+    }
+  }
   return apiPost<BrowseCategoriesResponse>(
     '/browse/categories',
     { documents } satisfies BrowseCategoriesRequest,
@@ -64,6 +151,19 @@ export async function fetchBrowseStatus(
   signal?: AbortSignal,
 ): Promise<BrowseStatusResponse> {
   if (documentIds.length === 0) return { documents: [] }
+  if (isComposerDemoEnabled()) {
+    return {
+      documents: documentIds.map((document_id) => ({
+        document_id,
+        indexing_status: 'READY',
+        status_reason: null,
+        queryable: true,
+        summary_status: 'READY',
+        classification_category: 'Policies',
+        rag_document_id: `demo-rag-${document_id}`,
+      })),
+    }
+  }
 
   const chunks: string[][] = []
   for (let i = 0; i < documentIds.length; i += BROWSE_STATUS_MAX_IDS) {
@@ -99,6 +199,16 @@ export async function validateQueryScope(
   documents: string[],
   signal?: AbortSignal,
 ): Promise<QueryScopeResponse> {
+  if (isComposerDemoEnabled()) {
+    return {
+      total_files: documents.length,
+      ready_files: documents.length,
+      indexing_files: 0,
+      failed_files: 0,
+      missing_files: 0,
+      accessible_document_ids: documents,
+    }
+  }
   return apiPost<QueryScopeResponse>(
     '/browse/query-scope',
     { documents } satisfies QueryScopeRequest,
@@ -108,6 +218,14 @@ export async function validateQueryScope(
 }
 
 export async function fetchDocumentViewUrl(documentId: string, page?: number): Promise<string> {
+  if (isComposerDemoEnabled()) {
+    const base = (import.meta.env.VITE_LOGICALDOC_BASE_URL ?? 'http://localhost:8082').replace(
+      /\/$/,
+      '',
+    )
+    const url = `${base}/frontend.jsp?docId=${encodeURIComponent(documentId)}`
+    return page != null && page >= 1 ? `${url}&page=${page}` : url
+  }
   const query = page != null && page >= 1 ? `?page=${page}` : ''
   const response = await apiGet<{ url: string }>(
     `/browse/documents/${documentId}/view-url${query}`,

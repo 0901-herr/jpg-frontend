@@ -5,18 +5,20 @@ import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined'
 import AutorenewOutlinedIcon from '@mui/icons-material/AutorenewOutlined'
 import AppsIcon from '@mui/icons-material/Apps'
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward'
+import BoltOutlinedIcon from '@mui/icons-material/BoltOutlined'
 import CallMadeIcon from '@mui/icons-material/CallMade'
 import CategoryOutlinedIcon from '@mui/icons-material/CategoryOutlined'
 import ChatIcon from '@mui/icons-material/Chat'
 import CheckCircleOutlinedIcon from '@mui/icons-material/CheckCircleOutlined'
+import CheckOutlinedIcon from '@mui/icons-material/CheckOutlined'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import CloseIcon from '@mui/icons-material/Close'
 import CreateNewFolderOutlinedIcon from '@mui/icons-material/CreateNewFolderOutlined'
 import DeleteOutlinedIcon from '@mui/icons-material/DeleteOutlined'
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined'
-import DriveFileMoveOutlinedIcon from '@mui/icons-material/DriveFileMoveOutlined'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
+import FolderOutlinedIcon from '@mui/icons-material/FolderOutlined'
 import FolderOpenOutlinedIcon from '@mui/icons-material/FolderOpenOutlined'
 import HighlightOffOutlinedIcon from '@mui/icons-material/HighlightOffOutlined'
 import IncompleteCircleOutlinedIcon from '@mui/icons-material/IncompleteCircleOutlined'
@@ -57,8 +59,8 @@ export const ChatInfoIcon = appIcon(InfoOutlinedIcon, 16)
 export const ChatMenuIcon = appIcon(MenuIcon, 20)
 export const ChatCloseIcon = appIcon(CloseIcon, 12)
 export const ChatSendIcon = appIcon(ArrowUpwardIcon, 16)
-export const ChatExpandIcon = appIcon(ExpandMoreIcon, 12)
-export const ChatChevronIcon = appIcon(ChevronRightIcon, 12)
+export const ChatExpandIcon = appIcon(ExpandMoreIcon, 14)
+export const ChatChevronIcon = appIcon(ChevronRightIcon, 14)
 export const ChatDescriptionIcon = appIcon(DescriptionOutlinedIcon, 14)
 export const ChatOpenIcon = appIcon(OpenInNewIcon, 12)
 export const ChatRedirectIcon = appIcon(CallMadeIcon, 20)
@@ -66,16 +68,21 @@ export const ChatEditIcon = appIcon(EditOutlinedIcon)
 export const ChatDeleteIcon = appIcon(DeleteOutlinedIcon)
 export const ChatMoreIcon = appIcon(MoreHorizIcon, 14)
 export const ChatShareIcon = appIcon(ShareOutlinedIcon, 14)
-export const ChatMoveIcon = appIcon(DriveFileMoveOutlinedIcon, 14)
+export const ChatMoveIcon = appIcon(FolderOutlinedIcon, 14)
 export const ChatLockIcon = appIcon(LockOutlinedIcon, 20)
 export const ChatFolderIcon = appIcon(FolderOpenOutlinedIcon, 14)
 export const ChatAppsIcon = appIcon(AppsIcon, 14)
-// Distinct from ChatAddIcon (used by "New chat") so the sidebar's "New
-// project" trigger reads as creating a folder, not another chat.
 export const ChatNewFolderIcon = appIcon(CreateNewFolderOutlinedIcon, 14)
 export const ChatFolderSuffixIcon = appIcon(FolderOpenOutlinedIcon, 'inherit')
 export const ChatAppsSuffixIcon = appIcon(AppsIcon, 'inherit')
 export const ChatRefreshIcon = appIcon(RefreshOutlinedIcon, 14)
+
+/** Query-tier menu (Fast / Normal / Accurate). Fast keeps the bolt; the
+ * other two stay as simple stroke icons (clock + check) rather than the
+ * heavier scales / verified-seal glyphs. */
+export const QueryTierFastIcon = appIcon(BoltOutlinedIcon, 18)
+export const QueryTierNormalIcon = appIcon(ScheduleOutlinedIcon, 18)
+export const QueryTierAccurateIcon = appIcon(CheckOutlinedIcon, 18)
 
 export const StatusReadyIcon = appIcon(CheckCircleOutlinedIcon, 12)
 export const StatusIndexingIcon = appIcon(ScheduleOutlinedIcon, 12)

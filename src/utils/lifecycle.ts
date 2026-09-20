@@ -152,25 +152,17 @@ export function computeProgressLabel(
   ready: number,
   totalKnown: number | null,
   discoveredSoFar: number,
-  traversalComplete: boolean,
+  _traversalComplete: boolean,
 ): { percent: number | null; label: string } {
-  if (traversalComplete && totalKnown != null && totalKnown > 0) {
-    const percent = Math.min(100, Math.round((ready / totalKnown) * 100))
-    return {
-      percent,
-      label: `${ready.toLocaleString()} READY out of ${totalKnown.toLocaleString()} total`,
-    }
-  }
-  const denominator = Math.max(discoveredSoFar, ready)
+  // Prefer the live discovered corpus so the completed count climbs as READY
+  // grows. Fall back to totalKnown once discovery has reported a final size.
+  const denominator = Math.max(discoveredSoFar, totalKnown ?? 0, ready)
   if (denominator <= 0) {
     return { percent: null, label: '' }
-  }
-  if (ready <= 0) {
-    return { percent: 0, label: '' }
   }
   const percent = Math.min(100, Math.round((ready / denominator) * 100))
   return {
     percent,
-    label: `${ready.toLocaleString()} READY out of ${denominator.toLocaleString()} currently discovered (traversal in progress)`,
+    label: `${ready.toLocaleString()} indexed of ${denominator.toLocaleString()} discovered`,
   }
 }

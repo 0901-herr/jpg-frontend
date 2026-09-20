@@ -89,7 +89,7 @@ describe('Sidebar branding', () => {
 })
 
 describe('Sidebar — chat ordering', () => {
-  it('sorts dated chats newest first while keeping legacy undated chats at the end', () => {
+  it('sorts dated chats newest first while keeping legacy undated chats at the end', async () => {
     const newest = { id: 'newest', title: 'Newest', messages: [], createdAt: '2026-09-17T08:00:00Z' }
     const oldest = { id: 'oldest', title: 'Oldest', messages: [], createdAt: '2026-09-15T08:00:00Z' }
     const legacy = { id: 'legacy', title: 'Legacy', messages: [] }
@@ -101,7 +101,7 @@ describe('Sidebar — chat ordering', () => {
     ])
   })
 
-  it('keeps creation order for chats with identical timestamps', () => {
+  it('keeps creation order for chats with identical timestamps', async () => {
     const first = { id: 'first', title: 'First', messages: [], createdAt: '2026-09-17T08:00:00Z' }
     const second = { id: 'second', title: 'Second', messages: [], createdAt: '2026-09-17T08:00:00Z' }
 
@@ -110,7 +110,8 @@ describe('Sidebar — chat ordering', () => {
 })
 
 describe('Sidebar — chat list loading', () => {
-  it('shows a compact loading state instead of temporary chat rows while sessions hydrate', () => {
+  it('shows a compact loading state instead of temporary chat rows while sessions hydrate', async () => {
+    const user = userEvent.setup()
     render(
       <MemoryRouter>
         <Sidebar
@@ -137,8 +138,8 @@ describe('Sidebar — chat list loading', () => {
 })
 
 describe('Sidebar — onNavigate (mobile Drawer close)', () => {
-  function renderSidebar(onNavigate?: () => void) {
-    return render(
+  async function renderSidebar(onNavigate?: () => void) {
+    const view = render(
       <MemoryRouter>
         <Sidebar
           width="100%"
@@ -154,12 +155,13 @@ describe('Sidebar — onNavigate (mobile Drawer close)', () => {
         />
       </MemoryRouter>,
     )
+    return view
   }
 
   it('calls onNavigate after selecting a chat', async () => {
     const user = userEvent.setup()
     const onNavigate = vi.fn()
-    renderSidebar(onNavigate)
+    await renderSidebar(onNavigate)
 
     await user.click(screen.getByText('Session 15 Sep 2026 (1)'))
 
@@ -169,7 +171,7 @@ describe('Sidebar — onNavigate (mobile Drawer close)', () => {
   it('calls onNavigate after New chat', async () => {
     const user = userEvent.setup()
     const onNavigate = vi.fn()
-    renderSidebar(onNavigate)
+    await renderSidebar(onNavigate)
 
     await user.click(screen.getByRole('button', { name: 'New chat' }))
 
@@ -201,8 +203,8 @@ describe('Sidebar — onNavigate (mobile Drawer close)', () => {
 })
 
 describe('Sidebar — project grouping', () => {
-  function renderSidebar(overrides: Partial<React.ComponentProps<typeof Sidebar>> = {}) {
-    return render(
+  async function renderSidebar(overrides: Partial<React.ComponentProps<typeof Sidebar>> = {}) {
+    const view = render(
       <MemoryRouter>
         <Sidebar
           width={280}
@@ -224,11 +226,14 @@ describe('Sidebar — project grouping', () => {
         />
       </MemoryRouter>,
     )
+    return view
   }
 
-  it('groups a chat under its project, with a count, and leaves an unassigned chat outside it', () => {
-    renderSidebar()
+  it('groups a chat under its project, with a count, and leaves an unassigned chat outside it', async () => {
+    await renderSidebar()
 
+    expect(screen.getByText('Projects')).toBeInTheDocument()
+    expect(screen.getByText('Chats')).toBeInTheDocument()
     expect(screen.getByText('Research')).toBeInTheDocument()
     expect(screen.getByText('1')).toBeInTheDocument()
     expect(screen.getByText('Chat A')).toBeInTheDocument()
@@ -237,7 +242,7 @@ describe('Sidebar — project grouping', () => {
 
   it('collapses and re-expands a project group', async () => {
     const user = userEvent.setup()
-    renderSidebar()
+    await renderSidebar()
 
     await user.click(screen.getByRole('button', { name: 'Collapse project' }))
     expect(screen.queryByText('Chat A')).not.toBeInTheDocument()
@@ -249,7 +254,7 @@ describe('Sidebar — project grouping', () => {
   it('creates a project through the "New project" affordance', async () => {
     const user = userEvent.setup()
     const onCreateProject = vi.fn()
-    renderSidebar({ onCreateProject })
+    await renderSidebar({ onCreateProject })
 
     await user.click(screen.getByRole('button', { name: 'New project' }))
     expect(screen.getByRole('dialog', { name: 'New project' })).toBeInTheDocument()
@@ -261,7 +266,7 @@ describe('Sidebar — project grouping', () => {
   it('moves a chat to a project via its options menu', async () => {
     const user = userEvent.setup()
     const onMoveChat = vi.fn()
-    renderSidebar({ onMoveChat })
+    await renderSidebar({ onMoveChat })
 
     const optionButtons = screen.getAllByRole('button', { name: 'Chat options' })
     await user.click(optionButtons[1]) // Chat B, the ungrouped one
@@ -271,8 +276,8 @@ describe('Sidebar — project grouping', () => {
     expect(onMoveChat).toHaveBeenCalledWith('c2', 'p1')
   })
 
-  it('shows the Shared group with a "by <owner>" subtitle, and hides the options menu for it', () => {
-    renderSidebar({
+  it('shows the Shared group with a "by <owner>" subtitle, and hides the options menu for it', async () => {
+    await renderSidebar({
       sharedSessions: [
         {
           id: 's1',
@@ -292,14 +297,14 @@ describe('Sidebar — project grouping', () => {
     expect(screen.getAllByRole('button', { name: 'Chat options' })).toHaveLength(2)
   })
 
-  it('does not show the Shared group when there are no shared chats', () => {
-    renderSidebar({ sharedSessions: [] })
+  it('does not show the Shared group when there are no shared chats', async () => {
+    await renderSidebar({ sharedSessions: [] })
     expect(screen.queryByText('Shared')).not.toBeInTheDocument()
   })
 
   it('shows the "New project" button with a tooltip clarifying its purpose', async () => {
     const user = userEvent.setup()
-    renderSidebar()
+    await renderSidebar()
 
     await user.hover(screen.getByRole('button', { name: 'New project' }))
 
@@ -309,7 +314,7 @@ describe('Sidebar — project grouping', () => {
   it('warns the real chat count will be permanently deleted when deleting a project with chats', async () => {
     const user = userEvent.setup()
     const onDeleteProject = vi.fn()
-    renderSidebar({ onDeleteProject })
+    await renderSidebar({ onDeleteProject })
 
     await user.click(screen.getByRole('button', { name: 'Project options' }))
     await user.click(screen.getByRole('menuitem', { name: 'Delete' }))
@@ -325,7 +330,7 @@ describe('Sidebar — project grouping', () => {
 
   it('shows an empty-project message (no false chat-count claim) when the project has no chats', async () => {
     const user = userEvent.setup()
-    renderSidebar({
+    await renderSidebar({
       sessions: [{ id: 'c2', title: 'Chat B', messages: [], projectId: null }],
     })
 
@@ -346,7 +351,7 @@ describe('Sidebar — project grouping', () => {
           resolveCreate = () => resolve()
         }),
     )
-    renderSidebar({ onCreateProject })
+    await renderSidebar({ onCreateProject })
 
     await user.click(screen.getByRole('button', { name: 'New project' }))
     await user.type(screen.getByPlaceholderText('Project name'), 'Legal{Enter}')
@@ -361,7 +366,7 @@ describe('Sidebar — project grouping', () => {
     expect(screen.getByRole('button', { name: 'New project' })).not.toBeDisabled()
   })
 
-  it('shows a "Deleting project" spinner near the Chats header while the cascade is in flight', async () => {
+  it('shows a "Deleting project" spinner near the Projects header while the cascade is in flight', async () => {
     const user = userEvent.setup()
     let resolveDelete: () => void
     const onDeleteProject = vi.fn(
@@ -370,7 +375,7 @@ describe('Sidebar — project grouping', () => {
           resolveDelete = () => resolve()
         }),
     )
-    renderSidebar({ onDeleteProject })
+    await renderSidebar({ onDeleteProject })
 
     await user.click(screen.getByRole('button', { name: 'Project options' }))
     await user.click(screen.getByRole('menuitem', { name: 'Delete' }))
@@ -403,7 +408,7 @@ describe('Sidebar — project grouping', () => {
           resolveDelete = () => resolve()
         }),
     )
-    renderSidebar({ onDeleteChat })
+    await renderSidebar({ onDeleteChat })
 
     const optionButtons = screen.getAllByRole('button', { name: 'Chat options' })
     await user.click(optionButtons[0]) // Chat A
@@ -433,7 +438,7 @@ describe('Sidebar — project grouping', () => {
           resolveMove = () => resolve()
         }),
     )
-    renderSidebar({ onMoveChat })
+    await renderSidebar({ onMoveChat })
 
     const optionButtons = screen.getAllByRole('button', { name: 'Chat options' })
     await user.click(optionButtons[1]) // Chat B, the ungrouped one
@@ -461,7 +466,7 @@ describe('Sidebar — project grouping', () => {
           resolveRename = () => resolve()
         }),
     )
-    renderSidebar({ onRenameProject })
+    await renderSidebar({ onRenameProject })
 
     await user.click(screen.getByRole('button', { name: 'Project options' }))
     await user.click(screen.getByRole('menuitem', { name: 'Rename' }))
@@ -480,8 +485,8 @@ describe('Sidebar — project grouping', () => {
 })
 
 describe('Sidebar — share modal', () => {
-  function renderSidebar(onShareChat = vi.fn().mockResolvedValue(undefined)) {
-    return render(
+  async function renderSidebar(onShareChat = vi.fn().mockResolvedValue(undefined)) {
+    const view = render(
       <MemoryRouter>
         <Sidebar
           width={280}
@@ -497,12 +502,13 @@ describe('Sidebar — share modal', () => {
         />
       </MemoryRouter>,
     )
+    return view
   }
 
   it('opens the share modal from the options menu and changes visibility', async () => {
     const user = userEvent.setup()
     const onShareChat = vi.fn().mockResolvedValue(undefined)
-    renderSidebar(onShareChat)
+    await renderSidebar(onShareChat)
 
     await user.click(screen.getByRole('button', { name: 'Chat options' }))
     await user.click(screen.getByText('Share'))
@@ -521,7 +527,7 @@ describe('Sidebar — Files pane disabled for a shared chat', () => {
   // Summarize/Categorize/Extract metadata) — Sidebar must not re-derive
   // its own answer from `sharedSessions`/`activeChatId`, which could
   // disagree with AppLayout's own gating.
-  function renderSidebar(activeChatId: string, isSharedChat: boolean) {
+  async function renderSidebar(activeChatId: string, isSharedChat: boolean) {
     return render(
       <MemoryRouter>
         <Sidebar
@@ -543,25 +549,25 @@ describe('Sidebar — Files pane disabled for a shared chat', () => {
     )
   }
 
-  it('disables FolderSidebar when isSharedChat is true', () => {
-    renderSidebar('s1', true)
+  it('disables FolderSidebar when isSharedChat is true', async () => {
+    await renderSidebar('s1', true)
     expect(screen.getByTestId('folder-sidebar-stub')).toHaveAttribute('data-disabled', 'true')
   })
 
-  it('leaves FolderSidebar enabled when isSharedChat is false', () => {
-    renderSidebar('c1', false)
+  it('leaves FolderSidebar enabled when isSharedChat is false', async () => {
+    await renderSidebar('c1', false)
     expect(screen.getByTestId('folder-sidebar-stub')).toHaveAttribute('data-disabled', 'false')
   })
 
-  it('trusts the isSharedChat prop over its own activeChatId/sharedSessions match', () => {
+  it('trusts the isSharedChat prop over its own activeChatId/sharedSessions match', async () => {
     // activeChatId matches a shared session's id, but the caller says
     // isSharedChat is false — the prop wins.
-    renderSidebar('s1', false)
+    await renderSidebar('s1', false)
     expect(screen.getByTestId('folder-sidebar-stub')).toHaveAttribute('data-disabled', 'false')
 
     // The reverse: activeChatId matches the viewer's own chat, but the
     // caller says isSharedChat is true — the prop still wins.
-    renderSidebar('c1', true)
+    await renderSidebar('c1', true)
     expect(screen.getAllByTestId('folder-sidebar-stub')[1]).toHaveAttribute(
       'data-disabled',
       'true',
@@ -570,8 +576,8 @@ describe('Sidebar — Files pane disabled for a shared chat', () => {
 })
 
 describe('Sidebar — host revocation (Share modal Private row)', () => {
-  function renderSidebar(onShareChat = vi.fn().mockResolvedValue(undefined)) {
-    return render(
+  async function renderSidebar(onShareChat = vi.fn().mockResolvedValue(undefined)) {
+    const view = render(
       <MemoryRouter>
         <Sidebar
           width={280}
@@ -587,6 +593,7 @@ describe('Sidebar — host revocation (Share modal Private row)', () => {
         />
       </MemoryRouter>,
     )
+    return view
   }
 
   // The chat-row menu's own "Stop sharing" item was removed (client
@@ -596,7 +603,7 @@ describe('Sidebar — host revocation (Share modal Private row)', () => {
   it('revokes sharing from inside the share modal by selecting the Private row', async () => {
     const user = userEvent.setup()
     const onShareChat = vi.fn().mockResolvedValue(undefined)
-    renderSidebar(onShareChat)
+    await renderSidebar(onShareChat)
 
     await user.click(screen.getByRole('button', { name: 'Chat options' }))
     await user.click(screen.getByText('Share'))
@@ -613,8 +620,8 @@ describe('Sidebar — host revocation (Share modal Private row)', () => {
 })
 
 describe('Sidebar — recipient removal ("Remove from my chats")', () => {
-  function renderSidebar(onRemoveSharedChat = vi.fn()) {
-    return render(
+  async function renderSidebar(onRemoveSharedChat = vi.fn()) {
+    const view = render(
       <MemoryRouter>
         <Sidebar
           width={280}
@@ -633,12 +640,13 @@ describe('Sidebar — recipient removal ("Remove from my chats")', () => {
         />
       </MemoryRouter>,
     )
+    return view
   }
 
   it('shows a menu with a single "Remove from my chats" item on a shared row', async () => {
     const user = userEvent.setup()
     const onRemoveSharedChat = vi.fn()
-    renderSidebar(onRemoveSharedChat)
+    await renderSidebar(onRemoveSharedChat)
 
     await user.click(screen.getByRole('button', { name: 'Chat options' }))
     await user.click(screen.getByText('Remove from my chats'))
@@ -646,7 +654,7 @@ describe('Sidebar — recipient removal ("Remove from my chats")', () => {
     expect(onRemoveSharedChat).toHaveBeenCalledWith('s1')
   })
 
-  it('hides the shared row menu entirely when onRemoveSharedChat is not provided', () => {
+  it('hides the shared row menu entirely when onRemoveSharedChat is not provided', async () => {
     render(
       <MemoryRouter>
         <Sidebar
@@ -666,6 +674,7 @@ describe('Sidebar — recipient removal ("Remove from my chats")', () => {
       </MemoryRouter>,
     )
 
+    expect(screen.getByText('Shared chat')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Chat options' })).not.toBeInTheDocument()
   })
 })

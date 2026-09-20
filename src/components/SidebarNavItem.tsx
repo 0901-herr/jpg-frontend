@@ -36,14 +36,14 @@ export default function SidebarNavItem({
       onClick={onClick}
       title={title}
       disabled={disabled}
-      className={`w-full flex items-center gap-2.5 px-2 py-1.5 text-left ${sidebarNav.row} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0084ff]/35 ${
+      className={`w-full flex items-center gap-2.5 px-2 text-left ${sidebarNav.row} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0084ff]/35 ${
         isPrimary
-          ? 'bg-[#0084ff] text-white hover:bg-[#0077e6] font-medium'
+          ? 'bg-[#0084ff] text-white hover:bg-[#0077e6] font-medium py-2.5'
           : isSecondary
-            ? `border ${border.default} hover:bg-[var(--docu-bg-hover)] font-medium`
+            ? `border ${border.default} hover:bg-[var(--docu-bg-hover)] font-medium py-1.5`
             : active
-              ? sidebarNav.active
-              : sidebarNav.idle
+              ? `${sidebarNav.active} py-1.5`
+              : `${sidebarNav.idle} py-1.5`
       } ${sidebar.body} ${
         isPrimary
           ? '!text-white'

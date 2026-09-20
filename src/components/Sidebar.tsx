@@ -6,15 +6,13 @@ import {
   ChatDeleteIcon,
   ChatEditIcon,
   ChatLogoutIcon,
-  ChatMessageIcon,
   ChatMoreIcon,
-  ChatNewFolderIcon,
 } from '../icons/chat'
 import type { InputRef, MenuProps } from 'antd'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { sectionLabel, spacing, surface } from '../styles/theme'
-import { sidebar, type, typeColor } from '../styles/typography'
+import { sectionLabel, surface } from '../styles/theme'
+import { sidebar, typeColor } from '../styles/typography'
 import type { BrowseTreeState } from '../hooks/useBrowseTree'
 import type { DocumentSelection } from '../hooks/useDocumentSelection'
 import type { ChatProject, ChatSession, ChatVisibility } from '../types'
@@ -126,9 +124,12 @@ function ProjectGroupHeader({
         type="button"
         onClick={onToggleExpand}
         aria-label={expanded ? 'Collapse project' : 'Expand project'}
-        className="shrink-0 p-1.5 rounded-lg hover:bg-[#ececec]"
+        className="docu-project-chevron-btn shrink-0 inline-flex items-center justify-center w-5 h-6 p-0 rounded-lg !text-[#8e8e8e] hover:!text-black transition-colors"
       >
-        <ChatChevronIcon className={`docu-tree-chevron${expanded ? ' expanded' : ''}`} />
+        <ChatChevronIcon
+          className={`docu-tree-chevron${expanded ? ' expanded' : ''}`}
+          aria-hidden
+        />
       </button>
 
       {isEditing ? (
@@ -155,7 +156,7 @@ function ProjectGroupHeader({
           onClick={onToggleExpand}
           className="flex-1 min-w-0 flex items-center gap-1.5 text-left py-1.5"
         >
-          <span className={`truncate ${sidebar.body} font-medium ${typeColor.secondary}`}>
+          <span className={`docu-project-name truncate ${sidebar.body} font-medium`}>
             {project.name}
           </span>
           <span className={`shrink-0 ${sidebar.caption} ${typeColor.muted}`}>{count}</span>
@@ -175,9 +176,9 @@ function ProjectGroupHeader({
             aria-label="Project options"
             onClick={(e) => e.stopPropagation()}
             disabled={renaming}
-            className={`shrink-0 px-2 py-1.5 rounded-lg ${typeColor.muted} hover:text-[#404040] ${surface.hover} opacity-0 group-hover:opacity-100 focus-visible:opacity-100 disabled:opacity-50 disabled:cursor-not-allowed`}
+            className="shrink-0 px-2 py-1.5 rounded-lg !text-[#8e8e8e] hover:!text-black transition-colors opacity-0 group-hover:opacity-100 focus-visible:opacity-100 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <ChatMoreIcon className={sidebar.caption} />
+            <ChatMoreIcon sx={{ fontSize: 18, color: 'currentColor' }} />
           </button>
         </Dropdown>
       )}
@@ -446,173 +447,140 @@ export default function Sidebar({
     />
   )
 
+  const projectsList =
+    !isLoading &&
+    projects.map((project) => {
+      const projectChats = sortedChats.filter((s) => s.projectId === project.id)
+      const expanded = !collapsedProjectIds.has(project.id)
+      return (
+        <div key={project.id} className="mb-2">
+          <ProjectGroupHeader
+            project={project}
+            count={projectChats.length}
+            expanded={expanded}
+            onToggleExpand={() => toggleProjectExpanded(project.id)}
+            onRename={(name) =>
+              onRenameProject ? onRenameProject(project.id, name) : Promise.resolve()
+            }
+            onDelete={() => handleDeleteProject(project.id)}
+          />
+          {expanded && (
+            <div className="pl-4 space-y-0.5">{projectChats.map(renderChatItem)}</div>
+          )}
+        </div>
+      )
+    })
+
+  const chatsList = isLoading ? (
+    <div
+      role="status"
+      aria-label="Loading chats"
+      data-testid="chats-loading"
+      className="space-y-2 px-2 py-1"
+    >
+      <Skeleton.Input active size="small" block />
+      <Skeleton.Input active size="small" block />
+      <Skeleton.Input active size="small" block />
+    </div>
+  ) : (
+    <>
+      <div className="space-y-0.5">{ungroupedChats.map(renderChatItem)}</div>
+
+      {sharedSessions.length > 0 && (
+        <div className="mt-2">
+          <span className={sectionLabel}>Shared</span>
+          <div className="space-y-0.5">
+            {sortedSharedChats.map((chat) => (
+              <ChatListItem
+                key={chat.id}
+                chat={chat}
+                isActive={activeChatId === chat.id}
+                onSelect={() => {
+                  onSelectChat(chat.id)
+                  onNavigate?.()
+                }}
+                onRename={onRenameChat}
+                onDelete={onDeleteChat}
+                readOnly
+                subtitle={chat.ownerUsername ? `by ${chat.ownerUsername}` : undefined}
+                onRemove={onRemoveSharedChat}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  )
+
   return (
     <Sider
       width={width}
       className={`docu-sidebar ${inDrawer ? 'docu-sidebar--drawer' : ''} ${surface.sidebar} h-full !overflow-hidden`}
       theme="light"
     >
-      <div className={`flex flex-col h-full min-h-0 ${spacing.panelLg}`}>
-        {/* Compact wordmark row. The primary "New chat" action lives in the
-            bottom action area beside the account control, so the top of the
-            sidebar stays focused on browsing files and existing chats.
-            Skipped when `inDrawer`: the
-            Drawer (AppLayout.tsx) renders "Arche AI" itself, in its own
-            header, on the same row as the close button (fix round 1) —
-            rendering it again here would duplicate it right below that
-            header instead of sharing its row. */}
+      <div className="flex flex-col h-full min-h-0 py-2.5">
         {!inDrawer && (
-          <div className="shrink-0 mb-3 text-left">
+          <div className="shrink-0 mb-3 px-2.5 text-left">
             <span className={`text-lg font-semibold ${typeColor.primary}`}>Arche AI</span>
           </div>
         )}
 
-        <div className={`flex flex-col flex-1 min-h-0 ${spacing.section} overflow-hidden`}>
-          {/* Fix round 1: Files and Chats each scroll independently within
-              their own `min-h-0 overflow-y-auto` section — the Files
-              section (`flex-[3]`, the flexible share) also scrolls at
-              this outer level now, not only inside FolderSidebar's own
-              tree, so a long tree can never push "Chats"/"New chat" off
-              the bottom of a short viewport: this section clips and
-              scrolls its own overflow instead of growing past it. */}
-          <div className="flex flex-col min-h-0 flex-[3] overflow-y-auto overflow-x-hidden pt-1">
+        {/* Files + Projects + Chats share one scroll area so expanding the
+            tree pushes sections down. Horizontal padding lives on the
+            inner content so the scrollbar sits flush on the right edge. */}
+        <div className="docu-sidebar-scroll flex flex-col flex-1 min-h-0 overflow-y-auto overflow-x-hidden pt-1">
+          <div className="px-2.5">
             <FolderSidebar browse={browse} selection={selection} disabled={isSharedChat} />
-          </div>
 
-          {/* min-h-[270px] (~5 two-line ChatListItem rows, client feedback:
-              the list used to collapse to nothing once Files grew) is a
-              floor, not a fixed height — the Files section above still
-              takes the rest via flex-[3], and this section still grows
-              past its floor and scrolls its own overflow (both here, at
-              the section level, and via the overflow-y-auto list below)
-              rather than pushing Files — or itself — off-screen. */}
-          <div
-            className={`flex flex-col flex-1 min-h-[270px] overflow-y-auto overflow-x-hidden`}
-          >
-            <div className="flex items-center justify-between">
-              <span className={sectionLabel}>
-                <ChatMessageIcon />
-                Chats
-              </span>
-              {onCreateProject && (
-                <Tooltip title="New project">
-                  <button
-                    type="button"
-                    onClick={() => setCreatingProject(true)}
-                    aria-label="New project"
-                    disabled={isLoading || creatingProjectPending}
-                    className={`shrink-0 p-1 mb-1.5 rounded-lg ${typeColor.muted} hover:text-[#404040] ${surface.hover} disabled:opacity-50 disabled:cursor-not-allowed`}
-                  >
-                    {creatingProjectPending ? (
-                      <Spin size="small" data-testid="create-project-spinner" />
-                    ) : (
-                      <ChatNewFolderIcon />
-                    )}
-                  </button>
-                </Tooltip>
+            <div className="mt-4 pt-1">
+              <div className="flex items-center justify-between">
+                <span className={sectionLabel}>Projects</span>
+                {onCreateProject && (
+                  <Tooltip title="New project">
+                    <button
+                      type="button"
+                      onClick={() => setCreatingProject(true)}
+                      aria-label="New project"
+                      disabled={isLoading || creatingProjectPending}
+                      className="shrink-0 p-1 mb-1.5 rounded-lg !text-[#8e8e8e] hover:!text-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {creatingProjectPending ? (
+                        <Spin size="small" data-testid="create-project-spinner" />
+                      ) : (
+                        <ChatAddIcon sx={{ fontSize: 18, color: 'currentColor' }} />
+                      )}
+                    </button>
+                  </Tooltip>
+                )}
+              </div>
+
+              {deletingProjectIds.size > 0 && (
+                <span
+                  className={`flex items-center gap-1.5 mb-1.5 ${sidebar.caption} ${typeColor.muted}`}
+                >
+                  <Spin size="small" data-testid="delete-project-spinner" />
+                  Deleting project
+                </span>
               )}
+
+              <div className="pb-1">{projectsList}</div>
             </div>
 
-            {deletingProjectIds.size > 0 && (
-              <span
-                className={`flex items-center gap-1.5 mb-1.5 ${sidebar.caption} ${typeColor.muted}`}
-              >
-                <Spin size="small" data-testid="delete-project-spinner" />
-                Deleting project
-              </span>
-            )}
+            <div className="mt-3 pt-1">
+              <div className="flex items-center justify-between">
+                <span className={sectionLabel}>Chats</span>
+              </div>
 
-            {deletingChatIds.size > 0 && (
-              <span
-                className={`flex items-center gap-1.5 mb-1.5 ${sidebar.caption} ${typeColor.muted}`}
-              >
-                <Spin size="small" data-testid="delete-chat-spinner" />
-                Deleting chat
-              </span>
-            )}
-
-            <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0">
-              {isLoading ? (
-                <div
-                  role="status"
-                  aria-label="Loading chats"
-                  data-testid="chats-loading"
-                  className="space-y-2 px-2 py-1"
+              {deletingChatIds.size > 0 && (
+                <span
+                  className={`flex items-center gap-1.5 mb-1.5 ${sidebar.caption} ${typeColor.muted}`}
                 >
-                  <Skeleton.Input active size="small" block />
-                  <Skeleton.Input active size="small" block />
-                  <Skeleton.Input active size="small" block />
-                </div>
-              ) : (
-                <>
-                  {projects.map((project) => {
-                    const projectChats = sortedChats.filter((s) => s.projectId === project.id)
-                    const expanded = !collapsedProjectIds.has(project.id)
-                    return (
-                      <div key={project.id} className="mb-2">
-                        <ProjectGroupHeader
-                          project={project}
-                          count={projectChats.length}
-                          expanded={expanded}
-                          onToggleExpand={() => toggleProjectExpanded(project.id)}
-                          onRename={(name) =>
-                            onRenameProject ? onRenameProject(project.id, name) : Promise.resolve()
-                          }
-                          onDelete={() => handleDeleteProject(project.id)}
-                        />
-                        {expanded && (
-                          <div className="pl-4 space-y-0.5">
-                            {projectChats.map(renderChatItem)}
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-
-                  {/* Ungrouped chats sit outside any project — a plain list with
-                  no header of their own (unlike "Shared" below, which gets
-                  one). A thin divider (same `#ececec` rule used elsewhere in
-                  this sidebar, e.g. above the profile row) marks where the
-                  last project group ends and this unlabeled list begins;
-                  without it the two read as one continuous list at the same
-                  row rhythm, as if the top chat still belonged to the
-                  project above it (client feedback: UI polish pass). Only
-                  shown when there's a project to separate from — an
-                  all-ungrouped sidebar has nothing to distinguish this list
-                  from. */}
-                  <div
-                    className={`space-y-0.5 ${
-                      projects.length > 0 ? 'mt-2 pt-2 border-t border-[#ececec]' : ''
-                    }`}
-                  >
-                    {ungroupedChats.map(renderChatItem)}
-                  </div>
-
-                  {sharedSessions.length > 0 && (
-                    <div className="mt-2">
-                      <span className={sectionLabel}>Shared</span>
-                      <div className="space-y-0.5">
-                        {sortedSharedChats.map((chat) => (
-                          <ChatListItem
-                            key={chat.id}
-                            chat={chat}
-                            isActive={activeChatId === chat.id}
-                            onSelect={() => {
-                              onSelectChat(chat.id)
-                              onNavigate?.()
-                            }}
-                            onRename={onRenameChat}
-                            onDelete={onDeleteChat}
-                            readOnly
-                            subtitle={chat.ownerUsername ? `by ${chat.ownerUsername}` : undefined}
-                            onRemove={onRemoveSharedChat}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </>
+                  <Spin size="small" data-testid="delete-chat-spinner" />
+                  Deleting chat
+                </span>
               )}
+
+              <div className="pb-2">{chatsList}</div>
             </div>
           </div>
         </div>
@@ -620,20 +588,17 @@ export default function Sidebar({
         <Modal
           open={creatingProject}
           title="New project"
+          footer={null}
           centered
           width={400}
-          okText="Create project"
-          cancelText="Cancel"
-          confirmLoading={creatingProjectPending}
-          okButtonProps={{ disabled: !newProjectName.trim() }}
-          onOk={commitNewProject}
+          className="chat-delete-modal"
           onCancel={() => {
             if (creatingProjectPending) return
             setNewProjectName('')
             setCreatingProject(false)
           }}
         >
-          <p className={`mb-3 ${type.body} ${typeColor.secondary}`}>
+          <p className="chat-delete-modal-body !mb-3">
             Group related chats together.
           </p>
           <Input
@@ -651,10 +616,33 @@ export default function Sidebar({
             }}
             className={`${sidebar.body} !rounded-lg`}
             maxLength={200}
+            disabled={creatingProjectPending}
           />
+          <div className="chat-delete-modal-actions">
+            <button
+              type="button"
+              className="chat-delete-modal-btn chat-delete-modal-btn--cancel"
+              disabled={creatingProjectPending}
+              onClick={() => {
+                if (creatingProjectPending) return
+                setNewProjectName('')
+                setCreatingProject(false)
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="chat-delete-modal-btn chat-delete-modal-btn--primary"
+              disabled={!newProjectName.trim() || creatingProjectPending}
+              onClick={commitNewProject}
+            >
+              {creatingProjectPending ? <Spin size="small" /> : 'Create'}
+            </button>
+          </div>
         </Modal>
 
-        <div className="shrink-0">
+        <div className="shrink-0 px-2.5">
           <div className="py-3">
             <SidebarNavItem
               icon={<ChatAddIcon />}
@@ -663,7 +651,7 @@ export default function Sidebar({
                 onNewChat()
                 onNavigate?.()
               }}
-              variant="secondary"
+              variant="primary"
               disabled={isLoading}
               title={isLoading ? 'Chats are loading' : 'Start a new chat'}
             >

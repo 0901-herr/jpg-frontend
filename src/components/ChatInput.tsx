@@ -1,4 +1,4 @@
-import { Input, Tooltip } from 'antd'
+import { Input, Tooltip, message } from 'antd'
 import { useState } from 'react'
 import {
   ChatCategorizeIcon,
@@ -9,6 +9,7 @@ import {
   ChatSummarizeIcon,
 } from '../icons/chat'
 import type { QueryTier } from '../api/types/query'
+import { fetchDocumentViewUrl } from '../api/browse'
 import { getSendDisabledReason } from '../utils/chatComposerGate'
 import { type, typeColor } from '../styles/typography'
 import { radius } from '../styles/theme'
@@ -39,7 +40,9 @@ function composerTooltipTitle(
 
 interface ChatInputProps {
   selectedCount: number
-  selectedFiles?: string[]
+  /** Selected documents for the files-chip tooltip — filename + id so each
+   * row can open in LogicalDOC on click. */
+  selectedFiles?: { documentId: string; filename: string }[]
   onClearSelection: () => void
   onSend: (message: string) => void
   onSummarize: () => void
@@ -110,22 +113,55 @@ interface ChatInputProps {
 // on the `<li>` clips its own "1." … "5." marker along with the text, in
 // every browser tested live. The fix drops native list markers entirely:
 // `.docu-selected-files-item` (index.css) renders the number as a CSS
-// counter in a flex row, and only the filename's own inner `<span>` (never
+// counter in a flex row, and only the filename's own inner control (never
 // the `<li>`) carries `overflow: hidden` — ellipsizing the filename can no
 // longer clip the number next to it. See the CSS comment in index.css for
 // the rest of the reasoning, including the left-alignment and popover-width
 // fixes. `role="list"` guards against Safari/VoiceOver dropping list
 // semantics once native markers (and the `list-style` they imply) are gone.
-function SelectedFilesTooltip({ files }: { files: string[] }) {
+function SelectedFilesTooltip({
+  files,
+}: {
+  files: { documentId: string; filename: string }[]
+}) {
+  const [openingId, setOpeningId] = useState<string | null>(null)
+
   if (files.length === 0) return null
+
+  const openFile = async (documentId: string, filename: string) => {
+    if (openingId) return
+    setOpeningId(documentId)
+    try {
+      const url = await fetchDocumentViewUrl(documentId)
+      window.open(url, '_blank', 'noopener,noreferrer')
+    } catch {
+      message.error(`Could not open ${filename}`)
+    } finally {
+      setOpeningId(null)
+    }
+  }
+
   return (
     <ol
       role="list"
-      className="docu-selected-files-list m-0 max-h-56 overflow-y-auto space-y-0.5"
+      className="docu-selected-files-list m-0 max-h-56 overflow-y-auto"
     >
-      {files.map((filename) => (
-        <li key={filename} className="docu-selected-files-item text-xs leading-tight">
-          <span className="truncate">{filename}</span>
+      {files.map((file) => (
+        <li key={file.documentId} className="docu-selected-files-item text-xs">
+          <button
+            type="button"
+            className="docu-selected-files-item-link"
+            aria-label={`Open ${file.filename} in LogicalDOC`}
+            title={`Open ${file.filename} in LogicalDOC`}
+            disabled={openingId === file.documentId}
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              void openFile(file.documentId, file.filename)
+            }}
+          >
+            {file.filename}
+          </button>
         </li>
       ))}
     </ol>
@@ -249,7 +285,10 @@ export default function ChatInput({
       <Tooltip
         title={
           <SelectedFilesTooltip
-            files={sharedScopeFiles.map((file) => file.filename ?? `File ${file.documentId}`)}
+            files={sharedScopeFiles.map((file) => ({
+              documentId: file.documentId,
+              filename: file.filename ?? `File ${file.documentId}`,
+            }))}
           />
         }
         placement="top"
@@ -451,12 +490,14 @@ export default function ChatInput({
                   {filesChip}
                   {sharedFilesChip}
                 </div>
-                {tierDropdown}
                 {summarizeButton}
                 {categorizeButton}
                 {extractButton}
               </div>
-              {sendButton}
+              <div className="docu-chat-composer-submit-controls flex items-center gap-2 shrink-0">
+                {tierDropdown}
+                {sendButton}
+              </div>
             </div>
           )}
         </div>

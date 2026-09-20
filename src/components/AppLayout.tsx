@@ -35,7 +35,11 @@ import { buildCategorizeMessages } from '../utils/categorizeMessages'
 import { DEFAULT_QUERY_TIER } from '../utils/queryTier'
 import { toUserFacingMetadataExtractionError, toUserFacingQueryError } from '../utils/userFacingErrors'
 import type { QueryTier } from '../api/types/query'
-import { isCitationDemoEnabled, isCitationLoadingDemoEnabled } from '../config/demo'
+import {
+  isCitationDemoEnabled,
+  isCitationLoadingDemoEnabled,
+  isComposerDemoEnabled,
+} from '../config/demo'
 import {
   createCitationDemoSession,
   createCitationLoadingDemoSession,
@@ -140,6 +144,7 @@ const NARROW_LAYOUT_QUERY = '(max-width: 767.98px)'
 
 export default function AppLayout() {
   const { session: authSession, isLoading: authLoading } = useAuth()
+  const composerDemo = isComposerDemoEnabled()
   const initialSessionRef = useRef<ChatSession>(createInitialSession())
   const chatUserId = authSession?.userId ?? (AUTH_BYPASS ? DEV_USER.userId : null)
   // Shared-link handoff: `/chat?share=<token>` loads that chat into the
@@ -199,6 +204,7 @@ export default function AppLayout() {
   )
   const [inputBlockedReason, setInputBlockedReason] = useState<string | undefined>()
   const [queryTier, setQueryTier] = useState<QueryTier>(DEFAULT_QUERY_TIER)
+  // Files-only sidebar; Chats opens as a floating panel.
   const { width: sidebarWidth, isResizing, startResize, sidebarRef } = useResizableWidth(280)
   const isNarrowLayout = useMediaQuery(NARROW_LAYOUT_QUERY)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -1412,7 +1418,7 @@ export default function AppLayout() {
           <Content className="flex flex-col h-full min-h-0">
             <div
               ref={scrollContainerRef}
-              className="docu-chat-scroll flex-1 overflow-y-auto px-4 sm:px-6 pt-6 pb-4 min-h-0 scroll-smooth flex flex-col"
+              className="docu-chat-scroll flex-1 overflow-y-auto px-4 sm:px-6 pt-6 pb-6 min-h-0 scroll-smooth flex flex-col"
             >
               {/* max-w-3xl (48rem) — the conversation column width of a
                   mainstream AI-chat layout (client feedback: UI polish
@@ -1451,12 +1457,7 @@ export default function AppLayout() {
                         className={`min-w-0 ${isLastTurn ? 'docu-chat-last-turn min-h-[min(72vh,calc(100dvh-13rem))]' : ''}`}
                       >
                         <ChatMessageItem message={pair.user} currentUsername={currentUsername} />
-                        {pair.assistant && (
-                          <ChatMessageItem
-                            message={pair.assistant}
-                            showDivider={!isLastTurn}
-                          />
-                        )}
+                        {pair.assistant && <ChatMessageItem message={pair.assistant} />}
                       </div>
                     )
                   })
@@ -1469,26 +1470,41 @@ export default function AppLayout() {
               // apply to a shared one (owner decision, 2026-09-16) — the
               // Files pane is disabled for it anyway, but the selection
               // itself is global state that outlives switching chats.
+              // Composer demo still uses the real tree selection for the
+              // files pill (count + tooltip list); only send/actions are stubbed.
               selectedCount={isSharedChat ? 0 : selection.selectedCount}
-              selectedFiles={isSharedChat ? [] : selection.selectedFilenames}
+              selectedFiles={
+                isSharedChat
+                  ? []
+                  : [...selection.selectedIds].map((documentId) => ({
+                      documentId,
+                      filename:
+                        selection.documentMeta.get(documentId)?.filename ??
+                        `Document ${documentId}`,
+                    }))
+              }
               onClearSelection={selection.clearSelection}
-              onSend={handleSend}
-              onSummarize={handleSummarize}
-              onCategorize={handleCategorize}
-              onExtractMetadata={handleExtractMetadata}
+              onSend={composerDemo ? () => undefined : handleSend}
+              onSummarize={composerDemo ? () => undefined : handleSummarize}
+              onCategorize={composerDemo ? () => undefined : handleCategorize}
+              onExtractMetadata={composerDemo ? () => undefined : handleExtractMetadata}
               onStop={handleStop}
               onComposerFocus={handleComposerFocus}
-              isResponding={sendQuery.isPending}
+              isResponding={composerDemo ? false : sendQuery.isPending}
               disabled={
-                browse.sessionExpired || isActiveChatMessagesLoading || isActiveChatBeingCreated
+                composerDemo
+                  ? false
+                  : browse.sessionExpired || isActiveChatMessagesLoading || isActiveChatBeingCreated
               }
               disabledReason={
-                inputBlockedReason ??
-                (isActiveChatBeingCreated ? 'Setting up this chat' : undefined)
+                composerDemo
+                  ? undefined
+                  : (inputBlockedReason ??
+                    (isActiveChatBeingCreated ? 'Setting up this chat' : undefined))
               }
-              summarizeDisabledReason={summarizeDisabledReason}
-              categorizeDisabledReason={categorizeDisabledReason}
-              extractMetadataDisabledReason={extractMetadataDisabledReason}
+              summarizeDisabledReason={composerDemo ? null : summarizeDisabledReason}
+              categorizeDisabledReason={composerDemo ? null : categorizeDisabledReason}
+              extractMetadataDisabledReason={composerDemo ? null : extractMetadataDisabledReason}
               queryTier={queryTier}
               onQueryTierChange={setQueryTier}
               viewOnly={isSharedViewOnly}

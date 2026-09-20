@@ -187,27 +187,19 @@ describe('describeStatus', () => {
 })
 
 describe('StatusIcon (compact file-row marker)', () => {
-  const expectedAriaLabel: Record<string, string> = {
-    READY: 'Ready',
-    PARTIAL: 'Partially ready — ready for questions',
-    INDEXING: 'Preparing',
-    FAILED: 'Failed',
-    NOT_INDEXED: 'Queued',
-  }
+  it('renders the green ready tick with an aria-label, no visible text', () => {
+    const { container } = render(createElement(StatusIcon, { status: 'READY' }))
 
-  for (const status of Object.keys(expectedAriaLabel)) {
-    it(`renders one icon with an aria-label for ${status}, no visible text`, () => {
-      const { container, unmount } = render(createElement(StatusIcon, { status }))
+    expect(screen.getByRole('img', { name: 'Ready' })).toBeInTheDocument()
+    expect(container).toHaveTextContent('')
+  })
 
-      expect(screen.getByRole('img', { name: expectedAriaLabel[status] })).toBeInTheDocument()
-      expect(container).toHaveTextContent('')
+  for (const status of ['PARTIAL', 'INDEXING', 'FAILED', 'NOT_INDEXED', 'PENDING'] as const) {
+    it(`hides the icon for ${status} — hover on the file row carries the status instead`, () => {
+      const { container } = render(createElement(StatusIcon, { status }))
 
-      unmount()
+      expect(screen.queryByRole('img')).not.toBeInTheDocument()
+      expect(container).toBeEmptyDOMElement()
     })
   }
-
-  it('treats an unrecognised status (e.g. adapter PENDING) as Queued', () => {
-    render(createElement(StatusIcon, { status: 'PENDING' }))
-    expect(screen.getByRole('img', { name: 'Queued' })).toBeInTheDocument()
-  })
 })

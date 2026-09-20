@@ -78,12 +78,12 @@ describe('AnswerContent Markdown rendering', () => {
       <ChatMessageItem message={assistantMessage({ content, sources: [sourceA, sourceB] })} />,
     )
 
-    const repeatedPills = screen.getAllByTitle('A.pdf · p. 2')
+    const repeatedPills = screen.getAllByRole('button', { name: '(A.pdf)' })
     expect(repeatedPills).toHaveLength(2)
     expect(repeatedPills[0]).toHaveTextContent('1')
     expect(repeatedPills[1]).toHaveTextContent('1')
 
-    const otherPill = screen.getByTitle('B.pdf · p. 5')
+    const otherPill = screen.getByRole('button', { name: '(B.pdf)' })
     expect(otherPill).toHaveTextContent('2')
 
     await user.click(screen.getByRole('button', { name: /Related documents/ }))
@@ -770,11 +770,15 @@ describe('chat pane never scrolls horizontally', () => {
   // for the bubble to force itself wider than its own container even on a
   // 390px phone, with no breakpoint-specific override needed. This is a
   // regression guard for that existing behaviour, not new styling.
-  it('caps the user bubble width at 100% of its container, never wider, on any screen size', () => {
-    render(<ChatMessageItem message={{ id: 'u1', role: 'user', content: 'Short question' }} />)
+  it('caps the user bubble width and right-aligns it like a ChatGPT-style turn', () => {
+    const { container } = render(
+      <ChatMessageItem message={{ id: 'u1', role: 'user', content: 'Short question' }} />,
+    )
 
+    const row = container.querySelector('.flex.justify-end')
+    expect(row).not.toBeNull()
     const bubble = screen.getByText('Short question').closest('div')
-    expect(bubble?.className).toMatch(/max-w-\[min\(36rem,100%\)\]/)
+    expect(bubble?.className).toMatch(/max-w-\[min\(36rem,85%\)\]/)
   })
 })
 
@@ -848,8 +852,8 @@ describe('answer-order citation numbering (client feedback: a second question us
       />,
     )
 
-    expect(screen.getByTitle('F6.pdf · p. 1')).toHaveTextContent('1')
-    expect(screen.getByTitle('F7.pdf · p. 1')).toHaveTextContent('2')
+    expect(screen.getByRole('button', { name: '(F6.pdf)' })).toHaveTextContent('1')
+    expect(screen.getByRole('button', { name: '(F7.pdf)' })).toHaveTextContent('2')
   })
 
   it('renders exactly one pill per distinct citation inside a repeated bracket group ([Doc6, Doc7, Doc6, Doc8] → pills 1, 2, 3, not 1, 2, 1, 3) (fix round 1)', () => {
@@ -911,11 +915,17 @@ describe('answer-order citation numbering (client feedback: a second question us
 
     expect(screen.getByText('(1)')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /Related documents/ }))
-    expect(screen.getByText('Cited.pdf')).toBeInTheDocument()
-    expect(screen.queryByText('Uncited.pdf')).not.toBeInTheDocument()
+    expect(screen.getByText('Cited.pdf')).toBeVisible()
+    expect(screen.getByText('Uncited.pdf').closest('.docu-collapse-panel')).toHaveAttribute(
+      'aria-hidden',
+      'true',
+    )
 
     await user.click(screen.getByRole('button', { name: /Also searched \(1\)/ }))
-    expect(screen.getByText('Uncited.pdf')).toBeInTheDocument()
+    expect(screen.getByText('Uncited.pdf').closest('.docu-collapse-panel')).toHaveAttribute(
+      'aria-hidden',
+      'false',
+    )
   })
 
   it('shows "Cited for" with the citing sentence, and highlights the question’s significant words in the snippet', async () => {
@@ -951,49 +961,21 @@ describe('answer-order citation numbering (client feedback: a second question us
 })
 
 describe('author label', () => {
-  it('shows the message authorUsername above a user bubble once it has one', () => {
-    render(
-      <ChatMessageItem
-        message={{ id: 'u1', role: 'user', content: 'Hi', authorUsername: 'alice' }}
-        currentUsername="bob"
-      />,
+  it('does not show user or assistant name/avatar labels', () => {
+    const { container } = render(
+      <>
+        <ChatMessageItem
+          message={{ id: 'u1', role: 'user', content: 'Hi', authorUsername: 'alice' }}
+          currentUsername="bob"
+        />
+        <ChatMessageItem message={assistantMessage({ content: 'Answer.' })} />
+      </>,
     )
 
-    expect(screen.getByText('alice')).toBeInTheDocument()
+    expect(screen.queryByText('alice')).not.toBeInTheDocument()
     expect(screen.queryByText('bob')).not.toBeInTheDocument()
-  })
-
-  it('falls back to the viewer own display name when authorUsername has not arrived yet', () => {
-    render(
-      <ChatMessageItem message={{ id: 'u1', role: 'user', content: 'Hi' }} currentUsername="bob" />,
-    )
-
-    expect(screen.getByText('bob')).toBeInTheDocument()
-  })
-
-  it('falls back to "You" when neither authorUsername nor currentUsername is available', () => {
-    render(<ChatMessageItem message={{ id: 'u1', role: 'user', content: 'Hi' }} />)
-
-    expect(screen.getByText('You')).toBeInTheDocument()
-  })
-
-  it('always labels the assistant "Arche AI", regardless of any author field', () => {
-    render(<ChatMessageItem message={assistantMessage({ content: 'Answer.' })} />)
-
-    expect(screen.getByText('Arche AI')).toBeInTheDocument()
-  })
-
-  it('renders an avatar with the author initial next to the user label', () => {
-    render(
-      <ChatMessageItem
-        message={{ id: 'u1', role: 'user', content: 'Hi', authorUsername: 'admin' }}
-      />,
-    )
-
-    const label = screen.getByLabelText('admin')
-    const avatar = label.querySelector('.ant-avatar')
-    expect(avatar).not.toBeNull()
-    expect(avatar).toHaveTextContent('A')
+    expect(screen.queryByText('Arche AI')).not.toBeInTheDocument()
+    expect(container.querySelector('.ant-avatar')).toBeNull()
   })
 })
 

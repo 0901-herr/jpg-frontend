@@ -33,9 +33,12 @@ describe('PipelineProgressCard', () => {
     expect(screen.getByText('Pipeline progress')).toBeInTheDocument()
     expect(screen.getByText('Discovered')).toBeInTheDocument()
     expect(screen.getByText('Queued')).toBeInTheDocument()
-    expect(screen.getByText('Live capacity')).toBeInTheDocument()
-    expect(screen.getByText('Waiting to prepare')).toBeInTheDocument()
-    expect(screen.getByText('Waiting for RAG')).toBeInTheDocument()
+    expect(screen.getByText('Queue')).toBeInTheDocument()
+    expect(screen.getByText('Discovered from LogicalDOC')).toBeInTheDocument()
+    expect(screen.getByText('Ready for indexing')).toBeInTheDocument()
+    expect(screen.getAllByText('Indexing').length).toBeGreaterThanOrEqual(1)
+    expect(screen.queryByText('Waiting for RAG')).not.toBeInTheDocument()
+    expect(screen.queryByText('Waiting to prepare')).not.toBeInTheDocument()
     expect(screen.getByText(/^Last update /)).toBeInTheDocument()
     expect(screen.queryByText(/Auto-refreshes/i)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Refresh/i })).toBeInTheDocument()
@@ -49,7 +52,7 @@ describe('PipelineProgressCard', () => {
     expect(screen.queryByText(/waiting to be scheduled/i)).not.toBeInTheDocument()
   })
 
-  it('explains when RAG capacity is applying backpressure', () => {
+  it('explains when indexing capacity is applying backpressure', () => {
     renderCard({
       ...mockOverviewRunning,
       bulk_progress: {
@@ -60,17 +63,28 @@ describe('PipelineProgressCard', () => {
     })
 
     expect(screen.getByText('80 / 80')).toBeInTheDocument()
-    expect(screen.getByText(/RAG is at capacity/)).toBeInTheDocument()
+    expect(screen.getByText(/Indexing is at capacity/)).toBeInTheDocument()
   })
 
-  it('explains each live capacity queue on hover', async () => {
+  it('explains the LogicalDOC backlog on hover', async () => {
     const user = userEvent.setup()
     renderCard()
 
-    await user.hover(screen.getByText('Waiting for RAG'))
+    await user.hover(screen.getByText('Discovered from LogicalDOC'))
 
     expect(
-      await screen.findByText(/Prepared documents waiting to be sent to RAG/),
+      await screen.findByText(/Found in LogicalDOC and still being prepared locally/),
+    ).toBeInTheDocument()
+  })
+
+  it('explains the ready-for-indexing queue on hover', async () => {
+    const user = userEvent.setup()
+    renderCard()
+
+    await user.hover(screen.getByText('Ready for indexing'))
+
+    expect(
+      await screen.findByText(/Prepared and waiting to be sent for indexing/),
     ).toBeInTheDocument()
   })
 
@@ -89,7 +103,7 @@ describe('PipelineProgressCard', () => {
     renderCard({ ...mockOverviewRunning, bulk_progress: legacyBulk })
 
     expect(screen.getByText('Pipeline progress')).toBeInTheDocument()
-    expect(screen.queryByText('Live capacity')).not.toBeInTheDocument()
+    expect(screen.queryByText('Queue')).not.toBeInTheDocument()
   })
 
   it('shows pause control while work is active', () => {

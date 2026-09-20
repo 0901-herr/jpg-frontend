@@ -1,4 +1,4 @@
-/** Short timestamp for admin refresh metadata, e.g. "Last update Sep 13, 4:22 PM". */
+/** Short timestamp for admin refresh metadata, e.g. "Last update Sep 13, 4:22:05 PM". */
 export function formatLastUpdate(dataUpdatedAt: number): string {
   const date = new Date(dataUpdatedAt)
   if (Number.isNaN(date.getTime())) return ''
@@ -7,6 +7,7 @@ export function formatLastUpdate(dataUpdatedAt: number): string {
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
+    second: '2-digit',
   })}`
 }
 

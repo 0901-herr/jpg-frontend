@@ -20,7 +20,7 @@ function session(overrides: Partial<ChatSession> = {}): ChatSession {
 }
 
 describe('ChatListItem', () => {
-  it('renders the dated title with an ellipsis-safe title attribute', () => {
+  it('falls back to the session title on a single truncated line when there are no messages', () => {
     render(
       <ChatListItem
         chat={session()}
@@ -34,9 +34,11 @@ describe('ChatListItem', () => {
     const title = screen.getByText('Session 15 Sep 2026 (1)')
     expect(title).toHaveAttribute('title', 'Session 15 Sep 2026 (1)')
     expect(title.className).toContain('truncate')
+    expect(title.closest('button')).toHaveClass('items-center')
+    expect(title.closest('button')).not.toHaveClass('flex-col')
   })
 
-  it('shows the first user message as a muted second line', () => {
+  it('shows only the first user message as the single row label (not the session title)', () => {
     render(
       <ChatListItem
         chat={session({
@@ -52,12 +54,12 @@ describe('ChatListItem', () => {
       />,
     )
 
-    const preview = screen.getByText('What is the refund policy?')
-    expect(preview.className).toContain('truncate')
-    expect(preview.className).toContain('text-xs')
+    const label = screen.getByText('What is the refund policy?')
+    expect(label.className).toContain('truncate')
+    expect(screen.queryByText('Session 15 Sep 2026 (1)')).not.toBeInTheDocument()
   })
 
-  it('renders no second line when the session has no messages yet', () => {
+  it('renders a single line when the session has no messages yet', () => {
     render(
       <ChatListItem
         chat={session({ messages: [] })}
@@ -68,7 +70,6 @@ describe('ChatListItem', () => {
       />,
     )
 
-    // Only the title line renders — nothing else inside the row button.
     const title = screen.getByText('Session 15 Sep 2026 (1)')
     const button = title.closest('button') as HTMLElement
     expect(button.querySelectorAll('span')).toHaveLength(1)
@@ -91,6 +92,7 @@ describe('ChatListItem', () => {
     )
 
     expect(screen.getByText('Second try question')).toBeInTheDocument()
+    expect(screen.queryByText('Session 15 Sep 2026 (1)')).not.toBeInTheDocument()
   })
 
   it('calls onSelect when the title row is clicked', async () => {
@@ -136,7 +138,7 @@ describe('ChatListItem', () => {
         onSelect={vi.fn()}
         onRename={vi.fn()}
         onDelete={vi.fn()}
-        projects={[]}
+        projects={[{ id: 'p1', name: 'Research' }]}
         onMove={vi.fn()}
         onShare={vi.fn()}
       />,
@@ -148,6 +150,69 @@ describe('ChatListItem', () => {
     const shareItem = screen.getByText('Share').closest('li')
     expect(moveItem?.querySelector('svg')).toBeTruthy()
     expect(shareItem?.querySelector('svg')).toBeTruthy()
+  })
+
+  it('hides Move to when there are no projects and the chat is already ungrouped', async () => {
+    const user = userEvent.setup()
+    render(
+      <ChatListItem
+        chat={session()}
+        isActive={false}
+        onSelect={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+        projects={[]}
+        onMove={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Chat options' }))
+    expect(screen.queryByText('Move to')).not.toBeInTheDocument()
+    expect(screen.queryByText('No project')).not.toBeInTheDocument()
+  })
+
+  it('lists projects for an ungrouped chat without a redundant No project entry', async () => {
+    const user = userEvent.setup()
+    render(
+      <ChatListItem
+        chat={session()}
+        isActive={false}
+        onSelect={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+        projects={[{ id: 'p1', name: 'Research' }]}
+        onMove={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Chat options' }))
+    await user.hover(screen.getByText('Move to'))
+    expect(await screen.findByRole('menuitem', { name: 'Research' })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: 'No project' })).not.toBeInTheDocument()
+  })
+
+  it('offers No project only when the chat is already in a project', async () => {
+    const user = userEvent.setup()
+    render(
+      <ChatListItem
+        chat={session({ projectId: 'p1' })}
+        isActive={false}
+        onSelect={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+        projects={[
+          { id: 'p1', name: 'Research' },
+          { id: 'p2', name: 'Legal' },
+        ]}
+        onMove={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Chat options' }))
+    await user.hover(screen.getByText('Move to'))
+    expect(await screen.findByRole('menuitem', { name: 'Legal' })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: 'Research' })).not.toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'No project' })).toBeInTheDocument()
   })
 
   it('never renders a "Stop sharing" menu item, even for an already-shared chat', async () => {
