@@ -168,7 +168,8 @@ function ProjectGroupHeader({
         <Dropdown
           menu={{ items: menuItems, onClick: handleMenuClick }}
           trigger={['click']}
-          placement="bottomRight"
+          placement="rightTop"
+          transitionName=""
           overlayClassName="docu-chat-options-menu"
         >
           <button

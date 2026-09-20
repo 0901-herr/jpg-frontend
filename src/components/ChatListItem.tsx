@@ -199,6 +199,7 @@ export default function ChatListItem({
             label: 'Move to',
             icon: <ChatMoveIcon />,
             children: moveDestinations,
+            popupClassName: 'docu-chat-options-menu',
           },
         ]
       : []),
@@ -308,7 +309,8 @@ export default function ChatListItem({
         <Dropdown
           menu={{ items: menuItems, onClick: handleMenuClick }}
           trigger={['click']}
-          placement="bottomRight"
+          placement="rightTop"
+          transitionName=""
           overlayClassName="docu-chat-options-menu"
           open={menuOpen}
           onOpenChange={setMenuOpen}
@@ -325,7 +327,8 @@ export default function ChatListItem({
         <Dropdown
           menu={{ items: readOnlyMenuItems, onClick: handleMenuClick }}
           trigger={['click']}
-          placement="bottomRight"
+          placement="rightTop"
+          transitionName=""
           overlayClassName="docu-chat-options-menu"
           open={menuOpen}
           onOpenChange={setMenuOpen}

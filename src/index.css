@@ -1304,32 +1304,61 @@ button.docu-citation-pill:hover {
   color: var(--docu-text-primary) !important;
 }
 
+.docu-chat-options-menu.ant-dropdown,
+.docu-chat-options-menu {
+  animation: none !important;
+  transition: none !important;
+}
+
+.docu-chat-options-menu.ant-slide-up-enter,
+.docu-chat-options-menu.ant-slide-up-appear,
+.docu-chat-options-menu.ant-slide-up-leave,
+.docu-chat-options-menu.ant-slide-up-enter-active,
+.docu-chat-options-menu.ant-slide-up-appear-active,
+.docu-chat-options-menu.ant-slide-up-leave-active,
+.docu-chat-options-menu.ant-zoom-big-enter,
+.docu-chat-options-menu.ant-zoom-big-appear,
+.docu-chat-options-menu.ant-zoom-big-leave,
+.docu-chat-options-menu.ant-zoom-big-enter-active,
+.docu-chat-options-menu.ant-zoom-big-appear-active,
+.docu-chat-options-menu.ant-zoom-big-leave-active {
+  animation: none !important;
+  transition: none !important;
+  animation-duration: 0s !important;
+  opacity: 1 !important;
+  transform: none !important;
+}
+
+/* ChatGPT-like chat/project options menu: roomier padding, soft radius,
+   no enter motion (also `transitionName=""` on the Dropdown). */
 .docu-chat-options-menu .ant-dropdown-menu {
-  border-radius: 12px !important;
-  padding: 4px !important;
-  min-width: 200px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12) !important;
-  border: 1px solid var(--docu-border) !important;
+  border-radius: 16px !important;
+  padding: 6px !important;
+  min-width: 220px;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.04),
+    0 8px 24px rgba(0, 0, 0, 0.1) !important;
+  border: none !important;
+  background: #fff !important;
 }
 
-.docu-chat-options-menu .ant-dropdown-menu-item {
-  border-radius: 8px !important;
-  padding: 6px 10px !important;
-  font-size: var(--docu-sidebar-text) !important;
-  color: var(--docu-text-primary) !important;
-}
-
-/* Submenu title ("Move to") — antd's default title layout doesn't flex-
-   align the icon with the label the way regular items do, so the folder
-   glyph sat a hair high. Match item icon sizing and center both axes. */
+.docu-chat-options-menu .ant-dropdown-menu-item,
 .docu-chat-options-menu .ant-dropdown-menu-submenu-title {
   display: flex !important;
   align-items: center !important;
-  border-radius: 8px !important;
-  padding: 6px 10px !important;
-  font-size: var(--docu-sidebar-text) !important;
-  color: var(--docu-text-primary) !important;
+  border-radius: 10px !important;
+  padding: 10px 12px !important;
+  font-size: 0.875rem !important;
   line-height: 1.25 !important;
+  color: #0d0d0d !important;
+  gap: 0;
+}
+
+.docu-chat-options-menu .ant-dropdown-menu-item:hover,
+.docu-chat-options-menu .ant-dropdown-menu-item-active,
+.docu-chat-options-menu .ant-dropdown-menu-submenu-title:hover,
+.docu-chat-options-menu .ant-dropdown-menu-submenu-title.ant-dropdown-menu-submenu-active {
+  background: #f3f3f3 !important;
 }
 
 .docu-chat-options-menu .ant-dropdown-menu-item-icon,
@@ -1338,24 +1367,30 @@ button.docu-citation-pill:hover {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: 1rem !important;
-  min-width: 1rem !important;
-  height: 1rem !important;
-  margin-inline-end: 8px !important;
-  font-size: 14px !important;
+  width: 1.125rem !important;
+  min-width: 1.125rem !important;
+  height: 1.125rem !important;
+  margin-inline-end: 12px !important;
+  font-size: 16px !important;
   line-height: 0 !important;
-  color: var(--docu-text-primary) !important;
+  color: #0d0d0d !important;
 }
 
 .docu-chat-options-menu .ant-dropdown-menu-item-icon > svg,
 .docu-chat-options-menu .ant-dropdown-menu-submenu-title .ant-dropdown-menu-item-icon > svg {
-  width: 14px !important;
-  height: 14px !important;
+  width: 16px !important;
+  height: 16px !important;
   display: block;
 }
 
+.docu-chat-options-menu .ant-dropdown-menu-submenu-expand-icon {
+  color: #8e8e8e !important;
+  inset-inline-end: 12px !important;
+}
+
 .docu-chat-options-menu .ant-dropdown-menu-item-divider {
-  margin: 4px 0 !important;
+  margin: 6px 8px !important;
+  border-color: #ececec !important;
 }
 
 /* Danger actions (Log out / Delete) — red at rest. Must come after the
