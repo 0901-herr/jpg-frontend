@@ -905,6 +905,36 @@ describe('sendMessage final_answer handling', () => {
     expect(result.content).toBe('Same either way.')
   })
 
+  it('keeps the streamed content when final_answer is whitespace-only (review fix: never blank a good answer)', async () => {
+    scriptedEvents = [
+      { event: 'answer', data: { text: 'A perfectly good streamed answer.' } },
+      { event: 'done', data: { duration_ms: 5, final_answer: '   ' } },
+    ]
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'A question',
+      documents: ['doc1'],
+    })
+
+    expect(result.content).toBe('A perfectly good streamed answer.')
+  })
+
+  it('is a no-op when final_answer matches the assembled content modulo surrounding whitespace', async () => {
+    scriptedEvents = [
+      { event: 'answer', data: { text: 'Same either way.' } },
+      { event: 'done', data: { duration_ms: 5, final_answer: '  Same either way.  ' } },
+    ]
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'A question',
+      documents: ['doc1'],
+    })
+
+    expect(result.content).toBe('Same either way.')
+  })
+
   it('still applies the abstained done-event handling when final_answer is also present', async () => {
     scriptedEvents = [
       { event: 'citation', data: { citations: [{ document_id: 'doc-1', filename: 'A.pdf', page: 2 }] } },

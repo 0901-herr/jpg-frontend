@@ -434,10 +434,17 @@ async function streamQuery(
             // message content" for every caller, with no per-caller
             // wiring. Only applied when it's a real, different answer;
             // an empty string or a value matching what was already
-            // assembled is left alone (nothing to replace).
+            // assembled is left alone (nothing to replace). Compared and
+            // gated on the *trimmed* value (review fix): an untrimmed
+            // `finalAnswer` is truthy for a whitespace-only string
+            // ("   "), which would otherwise overwrite a perfectly good
+            // streamed answer with a blank bubble — `content` itself is
+            // still assigned untrimmed (a real answer's own meaningful
+            // leading/trailing whitespace, if any, is preserved).
             const finalAnswer = obj ? readString(obj, 'final_answer') : undefined
-            if (finalAnswer && finalAnswer !== content) {
-              content = finalAnswer
+            const trimmedFinalAnswer = finalAnswer?.trim()
+            if (trimmedFinalAnswer && trimmedFinalAnswer !== content.trim()) {
+              content = finalAnswer as string
             }
             callbacks.onDone?.({ duration_ms: durationMs })
             break
