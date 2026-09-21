@@ -1,5 +1,5 @@
 import { apiGet, apiPost } from './http'
-import { isComposerDemoEnabled } from '../config/demo'
+import { isLayoutDemoEnabled } from '../config/demo'
 import type {
   BrowseCategoriesRequest,
   BrowseCategoriesResponse,
@@ -71,7 +71,7 @@ const COMPOSER_DEMO_DOCUMENTS: Record<number, BrowseDocumentItem[]> = {
 }
 
 export async function fetchBrowseRoot(): Promise<BrowseRootResponse> {
-  if (isComposerDemoEnabled()) return { root_folder_id: 1, username: 'Demo user' }
+  if (isLayoutDemoEnabled()) return { root_folder_id: 1, username: 'Demo user' }
   return apiGet<BrowseRootResponse>('/browse/root')
 }
 
@@ -79,7 +79,7 @@ export async function fetchFolderContents(
   folderId: number,
   page = 0,
 ): Promise<BrowseFolderContentsResponse> {
-  if (isComposerDemoEnabled()) {
+  if (isLayoutDemoEnabled()) {
     const folder = COMPOSER_DEMO_FOLDERS[folderId] ?? COMPOSER_DEMO_FOLDERS[1]
     return {
       folder,
@@ -105,7 +105,7 @@ export async function fetchFolderContents(
 export async function fetchSubtreeDocuments(
   folderId: number,
 ): Promise<BrowseSubtreeDocumentsResponse> {
-  if (isComposerDemoEnabled()) {
+  if (isLayoutDemoEnabled()) {
     const contents = await fetchFolderContents(folderId)
     const documents =
       folderId === 1
@@ -125,7 +125,7 @@ export async function fetchBrowseCategories(
   documents: string[],
   signal?: AbortSignal,
 ): Promise<BrowseCategoriesResponse> {
-  if (isComposerDemoEnabled()) {
+  if (isLayoutDemoEnabled()) {
     return {
       categories: [{ name: 'Policies', count: documents.length }],
       uncategorized_count: 0,
@@ -151,7 +151,7 @@ export async function fetchBrowseStatus(
   signal?: AbortSignal,
 ): Promise<BrowseStatusResponse> {
   if (documentIds.length === 0) return { documents: [] }
-  if (isComposerDemoEnabled()) {
+  if (isLayoutDemoEnabled()) {
     return {
       documents: documentIds.map((document_id) => ({
         document_id,
@@ -199,7 +199,7 @@ export async function validateQueryScope(
   documents: string[],
   signal?: AbortSignal,
 ): Promise<QueryScopeResponse> {
-  if (isComposerDemoEnabled()) {
+  if (isLayoutDemoEnabled()) {
     return {
       total_files: documents.length,
       ready_files: documents.length,
@@ -218,7 +218,7 @@ export async function validateQueryScope(
 }
 
 export async function fetchDocumentViewUrl(documentId: string, page?: number): Promise<string> {
-  if (isComposerDemoEnabled()) {
+  if (isLayoutDemoEnabled()) {
     const base = (import.meta.env.VITE_LOGICALDOC_BASE_URL ?? 'http://localhost:8082').replace(
       /\/$/,
       '',

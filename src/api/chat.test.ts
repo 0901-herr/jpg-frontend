@@ -106,16 +106,24 @@ describe('sessions', () => {
 })
 
 describe('messages', () => {
-  it('posts a new (or upserted) message', async () => {
-    vi.mocked(apiPost).mockResolvedValue(undefined)
+  it('posts a new (or upserted) message and returns the saved DTO', async () => {
+    vi.mocked(apiPost).mockResolvedValue({
+      id: 'm1',
+      seq: 1,
+      role: 'user',
+      content: 'hi',
+      author_username: 'alice',
+      created_at: '2026-09-01T00:00:00Z',
+    })
 
-    await postChatMessage('c1', { id: 'm1', role: 'user', content: 'hi' })
+    const saved = await postChatMessage('c1', { id: 'm1', role: 'user', content: 'hi' })
 
     expect(apiPost).toHaveBeenCalledWith('/chat/sessions/c1/messages', {
       id: 'm1',
       role: 'user',
       content: 'hi',
     })
+    expect(saved.author_username).toBe('alice')
   })
 
 })

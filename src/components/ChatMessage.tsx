@@ -1,4 +1,4 @@
-import { Typography } from 'antd'
+import { Avatar, Typography } from 'antd'
 import { useMemo, useRef } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -290,25 +290,79 @@ function AssistantMessage({ message }: AssistantMessageProps) {
   )
 }
 
+/** Who asked this turn — top-right above the user bubble. Prefer
+ * `message.authorUsername` (server-stamped from the acting user on POST /
+ * detail GET) so a shared chat shows each sender correctly; only fall back
+ * to the viewer's display name for an in-flight local message that has not
+ * round-tripped yet. */
+/** Stable palette so each distinct author gets a recognisable circle colour
+ * in shared chats (same name → same colour across turns). */
+const AUTHOR_AVATAR_COLORS = [
+  '#1e3a5f', // navy (matches the sidebar profile)
+  '#0f766e', // teal
+  '#9a3412', // terracotta
+  '#166534', // green
+  '#7c2d12', // brown
+  '#075985', // sky
+  '#854d0e', // olive
+  '#4a044e', // plum
+] as const
+
+function authorAvatarColor(name: string): string {
+  // FNV-1a — better spread than a simple polynomial hash for short names,
+  // so co-authors in a shared chat rarely land on the same circle colour.
+  let hash = 2166136261
+  const key = name.trim().toLowerCase()
+  for (let i = 0; i < key.length; i++) {
+    hash ^= key.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  return AUTHOR_AVATAR_COLORS[(hash >>> 0) % AUTHOR_AVATAR_COLORS.length]
+}
+
+function UserLabel({ name }: { name: string }) {
+  const initial = name.trim().charAt(0).toUpperCase() || '?'
+  const background = authorAvatarColor(name)
+  return (
+    <div className="flex items-center justify-end gap-1.5 mb-1.5" aria-label={name}>
+      <Avatar
+        size={20}
+        className="!text-white !text-[11px] shrink-0"
+        style={{ backgroundColor: background }}
+      >
+        {initial}
+      </Avatar>
+      <span className={`${type.caption} font-medium ${typeColor.muted}`}>{name}</span>
+    </div>
+  )
+}
+
 interface ChatMessageItemProps {
   message: ChatMessage
   showDivider?: boolean
-  /** Kept for call-site compatibility; labels/avatars are no longer shown. */
+  /** Viewer display name — fallback only when `message.authorUsername` is
+   * still missing (just-sent, not yet confirmed by the server). */
   currentUsername?: string
 }
 
 export default function ChatMessageItem({
   message,
   showDivider,
+  currentUsername,
 }: ChatMessageItemProps) {
+  const authorName = message.authorUsername ?? currentUsername ?? 'You'
+
   return (
     <div className="min-w-0">
       {message.role === 'user' ? (
         <div className="mt-8 mb-6 flex justify-end">
-          <div
-            className={`inline-block bg-[#f4f4f4] ${radius.lg} px-4 py-3 max-w-[min(36rem,85%)] min-w-0 break-words [overflow-wrap:anywhere]`}
-          >
-            <Text className={`${type.body} ${typeColor.body}`}>{message.content}</Text>
+          <div className="inline-flex flex-col items-end max-w-[min(36rem,85%)] min-w-0">
+            <UserLabel name={authorName} />
+            <div
+              className={`inline-block bg-[#f4f4f4] ${radius.lg} px-4 py-3 min-w-0 break-words [overflow-wrap:anywhere]`}
+            >
+              <Text className={`${type.body} ${typeColor.body}`}>{message.content}</Text>
+            </div>
           </div>
         </div>
       ) : (

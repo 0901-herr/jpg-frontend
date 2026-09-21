@@ -39,10 +39,12 @@ import {
   isCitationDemoEnabled,
   isCitationLoadingDemoEnabled,
   isComposerDemoEnabled,
+  isShareDemoEnabled,
 } from '../config/demo'
 import {
   createCitationDemoSession,
   createCitationLoadingDemoSession,
+  createShareDemoSession,
 } from '../mock/citationDemoChat'
 import type { ChatMessage, ChatSession, CoverageInfo } from '../types'
 import ChatInput from './ChatInput'
@@ -113,6 +115,7 @@ function queryErrorRawMessage(err: unknown): string | undefined {
 
 function createInitialSession(): ChatSession {
   if (isCitationLoadingDemoEnabled()) return createCitationLoadingDemoSession()
+  if (isShareDemoEnabled()) return createShareDemoSession()
   if (isCitationDemoEnabled()) return createCitationDemoSession()
   return createEmptySession()
 }
@@ -144,7 +147,8 @@ const NARROW_LAYOUT_QUERY = '(max-width: 767.98px)'
 
 export default function AppLayout() {
   const { session: authSession, isLoading: authLoading } = useAuth()
-  const composerDemo = isComposerDemoEnabled()
+  const layoutDemo = isComposerDemoEnabled() || isShareDemoEnabled()
+  const shareDemo = isShareDemoEnabled()
   const initialSessionRef = useRef<ChatSession>(createInitialSession())
   const chatUserId = authSession?.userId ?? (AUTH_BYPASS ? DEV_USER.userId : null)
   // Shared-link handoff: `/chat?share=<token>` loads that chat into the
@@ -171,6 +175,19 @@ export default function AppLayout() {
     sessionsCreating,
   } = chatStore
   const chatHydrated = chatStore.hydrated
+
+  // Share-layout demo: the mock session is a follower view — move it into
+  // the Shared group (and clear own chats) so the sidebar matches a real
+  // shared-link open.
+  const shareDemoSeededRef = useRef(false)
+  useEffect(() => {
+    if (!shareDemo || shareDemoSeededRef.current) return
+    shareDemoSeededRef.current = true
+    const shared = initialSessionRef.current
+    setSharedSessions([shared])
+    setSessions([])
+    setActiveChatId(shared.id)
+  }, [shareDemo, setSharedSessions, setSessions, setActiveChatId])
   // Read (never written to trigger a render) wherever a callback needs the
   // latest `sessions` synchronously right after calling `setSessions` —
   // React may defer that call's own updater to a later microtask (it isn't
@@ -1484,27 +1501,27 @@ export default function AppLayout() {
                     }))
               }
               onClearSelection={selection.clearSelection}
-              onSend={composerDemo ? () => undefined : handleSend}
-              onSummarize={composerDemo ? () => undefined : handleSummarize}
-              onCategorize={composerDemo ? () => undefined : handleCategorize}
-              onExtractMetadata={composerDemo ? () => undefined : handleExtractMetadata}
+              onSend={layoutDemo ? () => undefined : handleSend}
+              onSummarize={layoutDemo ? () => undefined : handleSummarize}
+              onCategorize={layoutDemo ? () => undefined : handleCategorize}
+              onExtractMetadata={layoutDemo ? () => undefined : handleExtractMetadata}
               onStop={handleStop}
               onComposerFocus={handleComposerFocus}
-              isResponding={composerDemo ? false : sendQuery.isPending}
+              isResponding={layoutDemo ? false : sendQuery.isPending}
               disabled={
-                composerDemo
+                layoutDemo
                   ? false
                   : browse.sessionExpired || isActiveChatMessagesLoading || isActiveChatBeingCreated
               }
               disabledReason={
-                composerDemo
+                layoutDemo
                   ? undefined
                   : (inputBlockedReason ??
                     (isActiveChatBeingCreated ? 'Setting up this chat' : undefined))
               }
-              summarizeDisabledReason={composerDemo ? null : summarizeDisabledReason}
-              categorizeDisabledReason={composerDemo ? null : categorizeDisabledReason}
-              extractMetadataDisabledReason={composerDemo ? null : extractMetadataDisabledReason}
+              summarizeDisabledReason={layoutDemo ? null : summarizeDisabledReason}
+              categorizeDisabledReason={layoutDemo ? null : categorizeDisabledReason}
+              extractMetadataDisabledReason={layoutDemo ? null : extractMetadataDisabledReason}
               queryTier={queryTier}
               onQueryTierChange={setQueryTier}
               viewOnly={isSharedViewOnly}

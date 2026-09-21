@@ -1,5 +1,6 @@
 import { apiDelete, apiGet, apiPatch, apiPost } from './http'
 import type {
+  ChatMessageDto,
   ChatProjectDto,
   ChatSessionDetailDto,
   ChatSessionSummaryDto,
@@ -57,8 +58,8 @@ export async function deleteChatSession(id: string): Promise<void> {
 export async function postChatMessage(
   sessionId: string,
   body: PostMessageRequest,
-): Promise<void> {
-  await apiPost(`/chat/sessions/${sessionId}/messages`, body)
+): Promise<ChatMessageDto> {
+  return apiPost<ChatMessageDto>(`/chat/sessions/${sessionId}/messages`, body)
 }
 
 export async function getSharedChatSession(token: string): Promise<ChatSessionDetailDto> {

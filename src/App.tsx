@@ -70,6 +70,7 @@ export default function App() {
                 <Route path="/" element={<Navigate to="/chat" replace />} />
                 <Route path="/chat" element={<AppLayout />} />
                 <Route path="/chat/demo/composer" element={<AppLayout />} />
+                <Route path="/chat/demo/share" element={<AppLayout />} />
               </Route>
               <Route element={<AdminRoute />}>
                 <Route path="/admin" element={<AdminIndexRedirect />} />
