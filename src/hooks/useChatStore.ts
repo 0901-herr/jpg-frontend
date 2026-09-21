@@ -844,7 +844,9 @@ export function useChatStore({
         status: msg.status,
         abstained: msg.abstained,
         interrupted: msg.interrupted,
-      }).catch(() => {})
+      })
+        .then(() => {})
+        .catch(() => {})
     },
     [enabled],
   )

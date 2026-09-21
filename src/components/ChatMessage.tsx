@@ -376,7 +376,7 @@ export default function ChatMessageItem({
           <div className="inline-flex flex-col items-end max-w-[min(36rem,85%)] min-w-0">
             <UserLabel name={authorName} />
             <div
-              className={`inline-block bg-[#f4f4f4] ${radius.lg} px-4 py-3 min-w-0 break-words [overflow-wrap:anywhere]`}
+              className={`inline-block bg-[#f4f4f4] ${radius.lg} px-4 py-3 min-w-0 max-w-[min(36rem,85%)] break-words [overflow-wrap:anywhere]`}
             >
               <Text className={`${type.body} ${typeColor.body}`}>{message.content}</Text>
             </div>

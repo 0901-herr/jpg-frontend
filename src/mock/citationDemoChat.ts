@@ -111,7 +111,7 @@ export function createShareDemoSession(): ChatSession {
     title: 'Q3 finance review',
     createdAt: '2026-09-18T09:00:00Z',
     visibility: 'query',
-    shareToken: 'demo-share-token',
+    shareToken: 'demo-share-code',
     ownerUsername: 'Alice',
     isOwner: false,
     canQuery: true,
