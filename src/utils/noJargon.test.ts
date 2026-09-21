@@ -169,8 +169,24 @@ const ALLOWLIST = new Set([
   "'classification_category'",
   // CSS class names / data-testid values.
   '"docu-query-tier-menu"',
+  // P1-4 (UI polish pass): QueryTierDropdown.tsx's antd v6 deprecation fix
+  // (Dropdown overlayClassName -> classNames={{ root }}) rewrote this one
+  // class name as a single-quoted object-literal value instead of a
+  // double-quoted JSX attribute string — same class, different quote
+  // style, so it needs its own allowlist entry alongside the one above.
+  "'docu-query-tier-menu'",
   '"docu-query-tier-dropdown"',
   '"docu-query-tier-dropdown-chevron"',
+  // The tier option row's own class names (QueryTierDropdown.tsx) were
+  // never allowlisted even though every one above them was — found while
+  // fixing the sibling class name above (client feedback: UI polish
+  // pass). Genuinely the same "CSS class name, not prose" category as the
+  // rest of this block.
+  '"docu-query-tier-option"',
+  '"docu-query-tier-option-icon"',
+  '"docu-query-tier-option-text"',
+  '"docu-query-tier-option-label"',
+  '"docu-query-tier-option-description"',
   "'streaming-cursor'",
   // A React Router path, not prose.
   '"/admin/ingestion"',
