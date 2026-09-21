@@ -420,6 +420,25 @@ async function streamQuery(
                 reason: readString(obj, 'abstain_reason'),
               })
             }
+            // `final_answer` (additive field, absent on an older engine):
+            // the engine's post-generation answer-normalisation pass can
+            // rewrite the streamed text — e.g. trimming a duplicated
+            // trailing sentence or fixing spacing — after every `answer`
+            // segment has already streamed and been shown live via
+            // `onAnswer`. `content` (not a callback) is what actually
+            // becomes the message once this stream finishes: `sendMessage`
+            // returns it as `content`, and the caller builds the final,
+            // persisted `ChatMessage` straight from that return value
+            // rather than from the accumulated `onAnswer` deltas — so
+            // swapping it in here, once, is what "replaces the rendered
+            // message content" for every caller, with no per-caller
+            // wiring. Only applied when it's a real, different answer;
+            // an empty string or a value matching what was already
+            // assembled is left alone (nothing to replace).
+            const finalAnswer = obj ? readString(obj, 'final_answer') : undefined
+            if (finalAnswer && finalAnswer !== content) {
+              content = finalAnswer
+            }
             callbacks.onDone?.({ duration_ms: durationMs })
             break
           }
