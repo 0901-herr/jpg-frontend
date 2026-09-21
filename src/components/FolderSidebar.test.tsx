@@ -605,7 +605,7 @@ describe('FolderSidebar file row status', () => {
 
     const tooltip = await screen.findByRole('tooltip')
     expect(tooltip).toHaveTextContent('Ready')
-    expect(tooltip).toHaveTextContent('Fully indexed and ready for questions.')
+    expect(tooltip).toHaveTextContent('Ready to answer questions about this file.')
   })
 
   it('shows an error toast when opening a document in LogicalDOC fails (App.useApp() coverage)', async () => {

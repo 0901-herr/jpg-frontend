@@ -33,10 +33,10 @@ function doc(
 describe('getReadinessTooltipExplanation', () => {
   it('explains Ready, Partial, and Not ready in plain language', () => {
     expect(getReadinessTooltipExplanation('READY')).toBe(
-      'Fully indexed and ready for questions.',
+      'Ready to answer questions about this file.',
     )
     expect(getReadinessTooltipExplanation('PARTIAL')).toBe(
-      'Searchable, but not fully indexed — answers may be less accurate.',
+      'Partly searchable for now. Answers may miss some details until processing finishes.',
     )
     expect(getReadinessTooltipExplanation('INDEXING')).toBe('Not ready for questions yet.')
   })

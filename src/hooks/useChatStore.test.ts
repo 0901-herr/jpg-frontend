@@ -1,5 +1,12 @@
-import { act, renderHook, waitFor } from '@testing-library/react'
-import { message } from 'antd'
+import {
+  act,
+  renderHook as rtlRenderHook,
+  waitFor,
+  type RenderHookOptions,
+} from '@testing-library/react'
+import { App, message } from 'antd'
+import type { MessageInstance } from 'antd/es/message/interface'
+import { createElement, type ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createEmptySession, useChatStore } from './useChatStore'
 import * as chatApi from '../api/chat'
@@ -9,6 +16,36 @@ import type { ChatSession } from '../types'
 vi.mock('../api/chat')
 
 const chatUserId = 'user-1'
+
+// useChatStore.ts reads `message` via `App.useApp()` (P1-4, UI polish
+// pass), not the static import above any more — that static import is
+// only still here for the couple of assertions below that check `message`
+// was NOT called (true either way, since production code never touches
+// the static singleton now). Every renderHook in this file wraps the hook
+// in a real <App> (via createElement — this is a .ts file, no JSX) so
+// those `App.useApp()` calls resolve to working functions instead of
+// throwing (the default, provider-less AppContext value is
+// `{ message: {}, ... }`, and `{}.error(...)` throws). This captures that
+// real, working instance so tests that assert an error/warning toast
+// fired can spy on the one the hook actually calls.
+let capturedMessageApi: MessageInstance | undefined
+
+function MessageCapture() {
+  const { message: appMessage } = App.useApp()
+  capturedMessageApi = appMessage
+  return null
+}
+
+function AppWrapper({ children }: { children: ReactNode }) {
+  return createElement(App, null, createElement(MessageCapture), children)
+}
+
+function renderHook<TResult, TProps>(
+  callback: (props: TProps) => TResult,
+  options?: Omit<RenderHookOptions<TProps>, 'wrapper'>,
+) {
+  return rtlRenderHook(callback, { ...options, wrapper: AppWrapper })
+}
 
 function baseParams(overrides: Partial<Parameters<typeof useChatStore>[0]> = {}) {
   return {
@@ -297,8 +334,11 @@ describe('chat CRUD', () => {
   })
 
   it('rolls back the optimistic project move if the PATCH fails, and shows an error', async () => {
-    const errorSpy = vi.spyOn(message, 'error')
     const result = await hydrated()
+    // Spied only after `hydrated()` renders the hook under `AppWrapper` —
+    // `capturedMessageApi` is the real App.useApp() instance the hook
+    // reads `message` from, set the same render pass MessageCapture mounts.
+    const errorSpy = vi.spyOn(capturedMessageApi!, 'error')
     vi.mocked(chatApi.patchChatSession).mockRejectedValueOnce(new Error('network error'))
 
     // See the sibling "moves a chat between projects" test above for why
@@ -409,7 +449,6 @@ describe('chat CRUD', () => {
   })
 
   it('rolls back the project and every one of its chats if the cascade DELETE fails', async () => {
-    const errorSpy = vi.spyOn(message, 'error')
     vi.mocked(chatApi.listChatProjects).mockResolvedValue([
       { id: 'proj-1', name: 'Research', created_at: '2026-09-16T00:00:00Z', updated_at: '2026-09-16T00:00:00Z' },
     ])
@@ -470,6 +509,9 @@ describe('chat CRUD', () => {
     const { result } = renderHook(() => useChatStore(baseParams()))
     await waitFor(() => expect(result.current.hydrated).toBe(true))
     expect(result.current.projects).toEqual([{ id: 'proj-1', name: 'Research' }])
+    // See the sibling "rolls back the optimistic project move" test above
+    // for why this is spied here rather than at the top of the test.
+    const errorSpy = vi.spyOn(capturedMessageApi!, 'error')
 
     await act(async () => {
       await result.current.deleteProject('proj-1')
@@ -757,7 +799,7 @@ describe('verifyChatBeforeQuery', () => {
     const otherId = result.current.sessions.find((s) => s.id !== 's1')!.id
     await waitFor(() => expect(result.current.sessionsCreating.size).toBe(0))
 
-    const warnSpy = vi.spyOn(message, 'warning')
+    const warnSpy = vi.spyOn(capturedMessageApi!, 'warning')
     vi.mocked(chatApi.getChatSession).mockRejectedValue(new ApiError('Not found', 404))
 
     let ok: boolean | undefined

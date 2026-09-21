@@ -165,11 +165,11 @@ export function getReadinessTooltipExplanation(
   status: IndexingStatus | string,
   statusReason?: string | null,
 ): string {
-  if (status === 'READY') return 'Fully indexed and ready for questions.'
+  if (status === 'READY') return 'Ready to answer questions about this file.'
   if (status === 'PARTIAL') {
     return (
       statusReason?.trim() ||
-      'Searchable, but not fully indexed — answers may be less accurate.'
+      'Partly searchable for now. Answers may miss some details until processing finishes.'
     )
   }
   return statusReason?.trim() || 'Not ready for questions yet.'
