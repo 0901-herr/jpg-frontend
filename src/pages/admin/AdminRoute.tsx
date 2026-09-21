@@ -44,7 +44,7 @@ function AdminAuthGate() {
           <Alert
             type="error"
             showIcon
-            message="Admin authorization failed"
+            title="Admin authorization failed"
             description={
               ADMIN_API_KEY
                 ? 'The admin API key was rejected. Contact your administrator.'

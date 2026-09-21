@@ -113,7 +113,7 @@ export default function IngestionOverviewPage() {
         <Alert
           type="error"
           showIcon
-          message="Failed to load ingestion overview"
+          title="Failed to load ingestion overview"
           description={err instanceof ApiError ? err.detail ?? err.message : (err as Error).message}
         />
       </div>

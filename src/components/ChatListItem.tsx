@@ -318,7 +318,7 @@ export default function ChatListItem({
           placement="rightTop"
           transitionName=""
           destroyOnHidden
-          overlayClassName="docu-chat-options-menu"
+          classNames={{ root: 'docu-chat-options-menu' }}
           open={menuOpen}
           onOpenChange={setMenuOpen}
         >
@@ -337,7 +337,7 @@ export default function ChatListItem({
           placement="rightTop"
           transitionName=""
           destroyOnHidden
-          overlayClassName="docu-chat-options-menu"
+          classNames={{ root: 'docu-chat-options-menu' }}
           open={menuOpen}
           onOpenChange={setMenuOpen}
         >

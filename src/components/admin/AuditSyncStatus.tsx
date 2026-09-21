@@ -43,7 +43,7 @@ export default function AuditSyncStatus({ overview }: AuditSyncStatusProps) {
               className="admin-system-alert"
               type="warning"
               showIcon
-              message={`Audit sync stale for ${STALE_MINUTES}+ minutes`}
+              title={`Audit sync stale for ${STALE_MINUTES}+ minutes`}
             />
           )}
         </>

@@ -299,7 +299,7 @@ export default function PipelineProgressCard({
                 <Statistic
                   title={metric.title}
                   value={metric.value}
-                  valueStyle={metric.valueStyle}
+                  styles={{ content: metric.valueStyle }}
                   className={`${ADMIN_STAT_VALUE} ${ADMIN_STAT_TITLE}`}
                 />
               </div>
