@@ -69,14 +69,13 @@ export interface ChatMessage {
    * preceding user message in the session. Only query answers set this;
    * summary/categorize/metadata chat messages leave it unset. */
   question?: string
-  /** The display name of whoever asked/answered this turn — set server-side
-   * from the acting `AISession` and echoed back on every message
-   * (`src/api/chat.ts`). Rendered above every user bubble (see
-   * `ChatMessage.tsx`'s `AssistantLabel`/user branch); assistant messages
-   * always render "Arche AI" regardless of this field. Absent for a
-   * message that hasn't round-tripped to the server yet (still in flight,
-   * or a pre-persistence local session) — callers fall back to the
-   * current viewer's own display name. */
+  /** The display name of whoever asked this turn — set server-side from
+   * the acting user and echoed on every message DTO (`author_username`).
+   * Rendered top-right above user bubbles. Prefer this over the viewer's
+   * session name so shared chats attribute each sender correctly. Absent
+   * only for an in-flight local message that has not round-tripped yet
+   * — callers may fall back to the viewer's display name until POST
+   * returns. */
   authorUsername?: string
 }
 

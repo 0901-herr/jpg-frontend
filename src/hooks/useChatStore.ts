@@ -794,14 +794,32 @@ export function useChatStore({
         content: msg.content,
         scope_document_ids: scopeDocumentIds,
       }
-      // One retry on failure: this POST is what actually persists the
-      // query's scope onto the session (`ChatService._apply_scope`) — a
-      // dropped one silently loses that scope for the rest of the chat's
-      // sharing lifetime (nothing else ever backfills it), so it's worth
-      // one more attempt before giving up quietly, same as before.
-      void postChatMessage(chatId, payload).catch(() =>
-        postChatMessage(chatId, payload).catch(() => {}),
-      )
+      // Stamp `authorUsername` from the server response (acting user), not
+      // the viewer's session — required for shared chats where A and B both
+      // post into the same thread. One retry on failure: this POST is what
+      // actually persists the query's scope onto the session
+      // (`ChatService._apply_scope`) — a dropped one silently loses that
+      // scope for the rest of the chat's sharing lifetime.
+      const applyAuthor = (dto: { author_username?: string }) => {
+        const authorUsername = dto.author_username
+        if (!authorUsername) return
+        const patch = (prev: ChatSession[]) =>
+          prev.map((s) =>
+            s.id !== chatId
+              ? s
+              : {
+                  ...s,
+                  messages: s.messages.map((m) =>
+                    m.id === msg.id ? { ...m, authorUsername } : m,
+                  ),
+                },
+          )
+        setSessions(patch)
+        setSharedSessions(patch)
+      }
+      void postChatMessage(chatId, payload)
+        .then(applyAuthor)
+        .catch(() => postChatMessage(chatId, payload).then(applyAuthor).catch(() => {}))
     },
     [enabled],
   )

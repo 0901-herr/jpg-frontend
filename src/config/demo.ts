@@ -7,7 +7,9 @@ export function isCitationDemoEnabled(): boolean {
     demo === 'citations' ||
     demo === 'citations-loading' ||
     demo === 'composer' ||
-    isComposerDemoEnabled()
+    demo === 'share' ||
+    isComposerDemoEnabled() ||
+    isShareDemoEnabled()
   )
 }
 
@@ -22,4 +24,17 @@ export function isComposerDemoEnabled(): boolean {
   if (typeof window === 'undefined') return false
   const demo = new URLSearchParams(window.location.search).get('demo')
   return demo === 'composer' || window.location.pathname === '/chat/demo/composer'
+}
+
+/** Shared-chat layout demo — viewer is not the owner; messages include
+ * another user's turns so author labels can be checked. */
+export function isShareDemoEnabled(): boolean {
+  if (typeof window === 'undefined') return false
+  const demo = new URLSearchParams(window.location.search).get('demo')
+  return demo === 'share' || window.location.pathname === '/chat/demo/share'
+}
+
+/** Composer or share layout demos — both use the local mock browse tree. */
+export function isLayoutDemoEnabled(): boolean {
+  return isComposerDemoEnabled() || isShareDemoEnabled()
 }

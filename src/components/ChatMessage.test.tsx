@@ -1003,7 +1003,7 @@ describe('answer-order citation numbering (client feedback: a second question us
 })
 
 describe('author label', () => {
-  it('does not show user or assistant name/avatar labels', () => {
+  it('shows the message authorUsername (backend), not the viewer fallback', () => {
     const { container } = render(
       <>
         <ChatMessageItem
@@ -1014,10 +1014,42 @@ describe('author label', () => {
       </>,
     )
 
-    expect(screen.queryByText('alice')).not.toBeInTheDocument()
+    expect(screen.getByText('alice')).toBeInTheDocument()
     expect(screen.queryByText('bob')).not.toBeInTheDocument()
     expect(screen.queryByText('Arche AI')).not.toBeInTheDocument()
-    expect(container.querySelector('.ant-avatar')).toBeNull()
+    expect(container.querySelector('.ant-avatar')).toHaveTextContent('A')
+  })
+
+  it('falls back to currentUsername only when authorUsername is missing', () => {
+    const { container } = render(
+      <ChatMessageItem
+        message={{ id: 'u1', role: 'user', content: 'Hi' }}
+        currentUsername="bob"
+      />,
+    )
+
+    expect(screen.getByText('bob')).toBeInTheDocument()
+    expect(container.querySelector('.ant-avatar')).toHaveTextContent('B')
+  })
+
+  it('picks different avatar colours for different authors', () => {
+    const { container } = render(
+      <>
+        <ChatMessageItem
+          message={{ id: 'u1', role: 'user', content: 'Hi', authorUsername: 'Alice' }}
+        />
+        <ChatMessageItem
+          message={{ id: 'u2', role: 'user', content: 'Hello', authorUsername: 'Demo user' }}
+        />
+      </>,
+    )
+
+    const avatars = container.querySelectorAll('.ant-avatar')
+    expect(avatars).toHaveLength(2)
+    const colors = [...avatars].map((el) => (el as HTMLElement).style.backgroundColor)
+    expect(colors[0]).toBeTruthy()
+    expect(colors[1]).toBeTruthy()
+    expect(colors[0]).not.toBe(colors[1])
   })
 })
 

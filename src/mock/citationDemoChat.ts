@@ -73,6 +73,7 @@ export function createCitationDemoSession(title = 'Citation demo'): ChatSession 
         id: 'demo-user-1',
         role: 'user',
         content: 'What did our financial documents say about revenue and expenses?',
+        authorUsername: 'Demo user',
       },
       {
         id: 'demo-assistant-1',
@@ -81,11 +82,13 @@ export function createCitationDemoSession(title = 'Citation demo'): ChatSession 
         thinkingSeconds: 2,
         content: COMPLETE_ANSWER,
         sources: [...DEMO_SOURCES],
+        question: 'What did our financial documents say about revenue and expenses?',
       },
       {
         id: 'demo-user-2',
         role: 'user',
         content: 'Can you break down Q3 expenses by category?',
+        authorUsername: 'Demo user',
       },
       {
         id: 'demo-assistant-2',
@@ -94,6 +97,60 @@ export function createCitationDemoSession(title = 'Citation demo'): ChatSession 
         thinkingSeconds: 1,
         content: Q3_BREAKDOWN_ANSWER,
         sources: [...DEMO_SOURCES],
+        question: 'Can you break down Q3 expenses by category?',
+      },
+    ],
+  }
+}
+
+/** Shared-chat demo as seen by a follower ("Demo user"): host Alice asked
+ * first, then the viewer followed up — so author labels show two people. */
+export function createShareDemoSession(): ChatSession {
+  return {
+    id: 'demo-share-chat',
+    title: 'Q3 finance review',
+    createdAt: '2026-09-18T09:00:00Z',
+    visibility: 'query',
+    shareToken: 'demo-share-token',
+    ownerUsername: 'Alice',
+    isOwner: false,
+    canQuery: true,
+    messageCount: 4,
+    scopeDocumentIds: [ACL_DOC_A, ACL_DOC_B],
+    scopeDocuments: [
+      { documentId: ACL_DOC_A, filename: 'ACL Test Doc A.pdf' },
+      { documentId: ACL_DOC_B, filename: 'ACL Test Doc B.pdf' },
+    ],
+    messages: [
+      {
+        id: 'demo-share-user-alice',
+        role: 'user',
+        content: 'What did our financial documents say about revenue and expenses?',
+        authorUsername: 'Alice',
+      },
+      {
+        id: 'demo-share-assistant-1',
+        role: 'assistant',
+        status: 'complete',
+        thinkingSeconds: 2,
+        content: COMPLETE_ANSWER,
+        sources: [...DEMO_SOURCES],
+        question: 'What did our financial documents say about revenue and expenses?',
+      },
+      {
+        id: 'demo-share-user-viewer',
+        role: 'user',
+        content: 'Can you break down Q3 expenses by category?',
+        authorUsername: 'Demo user',
+      },
+      {
+        id: 'demo-share-assistant-2',
+        role: 'assistant',
+        status: 'complete',
+        thinkingSeconds: 1,
+        content: Q3_BREAKDOWN_ANSWER,
+        sources: [...DEMO_SOURCES],
+        question: 'Can you break down Q3 expenses by category?',
       },
     ],
   }
@@ -109,6 +166,7 @@ export function createCitationLoadingDemoSession(): ChatSession {
         id: 'demo-user-loading',
         role: 'user',
         content: 'What did our financial documents say about revenue and expenses?',
+        authorUsername: 'Demo user',
       },
       {
         id: 'demo-assistant-thinking',

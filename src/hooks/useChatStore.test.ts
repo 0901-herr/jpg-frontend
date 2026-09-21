@@ -1081,8 +1081,16 @@ describe('recordAssistantMessage', () => {
     let resolvePost: (() => void) | undefined
     vi.mocked(chatApi.postChatMessage).mockImplementation(
       () =>
-        new Promise<void>((resolve) => {
-          resolvePost = resolve
+        new Promise((resolve) => {
+          resolvePost = () =>
+            resolve({
+              id: 'm1',
+              seq: 1,
+              role: 'assistant',
+              content: 'Answer',
+              author_username: 'tester',
+              created_at: '2026-09-16T00:00:00Z',
+            })
         }),
     )
 
@@ -1200,7 +1208,14 @@ describe('recordUserMessage', () => {
     const result = await hydrated()
     vi.mocked(chatApi.postChatMessage)
       .mockRejectedValueOnce(new Error('not found yet'))
-      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({
+        id: 'm1',
+        seq: 1,
+        role: 'user',
+        content: 'hi',
+        author_username: 'tester',
+        created_at: '2026-09-16T00:00:00Z',
+      })
 
     act(() => {
       result.current.recordUserMessage('s1', { id: 'm1', role: 'user', content: 'hi' }, ['doc-1'])
@@ -1225,6 +1240,36 @@ describe('recordUserMessage', () => {
     }).not.toThrow()
 
     await waitFor(() => expect(chatApi.postChatMessage).toHaveBeenCalledTimes(2))
+  })
+
+  it('stamps authorUsername from the POST response onto the local message', async () => {
+    const result = await hydrated()
+    act(() => {
+      result.current.setSessions((prev) =>
+        prev.map((s) =>
+          s.id === 's1'
+            ? { ...s, messages: [{ id: 'm1', role: 'user', content: 'hi' }] }
+            : s,
+        ),
+      )
+    })
+    vi.mocked(chatApi.postChatMessage).mockResolvedValueOnce({
+      id: 'm1',
+      seq: 1,
+      role: 'user',
+      content: 'hi',
+      author_username: 'alice',
+      created_at: '2026-09-16T00:00:00Z',
+    })
+
+    act(() => {
+      result.current.recordUserMessage('s1', { id: 'm1', role: 'user', content: 'hi' }, [])
+    })
+
+    await waitFor(() => {
+      const chat = result.current.sessions.find((s) => s.id === 's1')
+      expect(chat?.messages[0]?.authorUsername).toBe('alice')
+    })
   })
 })
 

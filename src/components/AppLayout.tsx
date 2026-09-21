@@ -48,10 +48,12 @@ import {
   isCitationDemoEnabled,
   isCitationLoadingDemoEnabled,
   isComposerDemoEnabled,
+  isShareDemoEnabled,
 } from '../config/demo'
 import {
   createCitationDemoSession,
   createCitationLoadingDemoSession,
+  createShareDemoSession,
 } from '../mock/citationDemoChat'
 import type { ChatMessage, ChatSession, CoverageInfo } from '../types'
 import ChatInput from './ChatInput'
@@ -122,6 +124,7 @@ function queryErrorRawMessage(err: unknown): string | undefined {
 
 function createInitialSession(): ChatSession {
   if (isCitationLoadingDemoEnabled()) return createCitationLoadingDemoSession()
+  if (isShareDemoEnabled()) return createShareDemoSession()
   // P2-1 (UI polish pass): `/chat/demo/composer` previews the full layout
   // with the composer's controls enabled, reusing the citation demo's own
   // content to have something realistic on screen — but `isCitationDemoEnabled()`
@@ -164,7 +167,8 @@ export default function AppLayout() {
   // see App.tsx's comment on the `<AntApp>` provider this reads from.
   const { message } = App.useApp()
   const { session: authSession, isLoading: authLoading } = useAuth()
-  const composerDemo = isComposerDemoEnabled()
+  const layoutDemo = isComposerDemoEnabled() || isShareDemoEnabled()
+  const shareDemo = isShareDemoEnabled()
   const initialSessionRef = useRef<ChatSession>(createInitialSession())
   const chatUserId = authSession?.userId ?? (AUTH_BYPASS ? DEV_USER.userId : null)
   // Shared-link handoff: `/chat?share=<token>` loads that chat into the
@@ -191,6 +195,19 @@ export default function AppLayout() {
     sessionsCreating,
   } = chatStore
   const chatHydrated = chatStore.hydrated
+
+  // Share-layout demo: the mock session is a follower view — move it into
+  // the Shared group (and clear own chats) so the sidebar matches a real
+  // shared-link open.
+  const shareDemoSeededRef = useRef(false)
+  useEffect(() => {
+    if (!shareDemo || shareDemoSeededRef.current) return
+    shareDemoSeededRef.current = true
+    const shared = initialSessionRef.current
+    setSharedSessions([shared])
+    setSessions([])
+    setActiveChatId(shared.id)
+  }, [shareDemo, setSharedSessions, setSessions, setActiveChatId])
   // Read (never written to trigger a render) wherever a callback needs the
   // latest `sessions` synchronously right after calling `setSessions` —
   // React may defer that call's own updater to a later microtask (it isn't
@@ -1548,7 +1565,7 @@ export default function AppLayout() {
                 // apply to a shared one (owner decision, 2026-09-16) — the
                 // Files pane is disabled for it anyway, but the selection
                 // itself is global state that outlives switching chats.
-                // Composer demo still uses the real tree selection for the
+                // Layout demos still use the real tree selection for the
                 // files pill (count + tooltip list); only send/actions are stubbed.
                 selectedCount={isSharedChat ? 0 : selection.selectedCount}
                 selectedFiles={
@@ -1562,27 +1579,27 @@ export default function AppLayout() {
                       }))
                 }
                 onClearSelection={selection.clearSelection}
-                onSend={composerDemo ? () => undefined : handleSend}
-                onSummarize={composerDemo ? () => undefined : handleSummarize}
-                onCategorize={composerDemo ? () => undefined : handleCategorize}
-                onExtractMetadata={composerDemo ? () => undefined : handleExtractMetadata}
+                onSend={layoutDemo ? () => undefined : handleSend}
+                onSummarize={layoutDemo ? () => undefined : handleSummarize}
+                onCategorize={layoutDemo ? () => undefined : handleCategorize}
+                onExtractMetadata={layoutDemo ? () => undefined : handleExtractMetadata}
                 onStop={handleStop}
                 onComposerFocus={handleComposerFocus}
-                isResponding={composerDemo ? false : sendQuery.isPending}
+                isResponding={layoutDemo ? false : sendQuery.isPending}
                 disabled={
-                  composerDemo
+                  layoutDemo
                     ? false
                     : browse.sessionExpired || isActiveChatMessagesLoading || isActiveChatBeingCreated
                 }
                 disabledReason={
-                  composerDemo
+                  layoutDemo
                     ? undefined
                     : (inputBlockedReason ??
                       (isActiveChatBeingCreated ? 'Setting up this chat' : undefined))
                 }
-                summarizeDisabledReason={composerDemo ? null : summarizeDisabledReason}
-                categorizeDisabledReason={composerDemo ? null : categorizeDisabledReason}
-                extractMetadataDisabledReason={composerDemo ? null : extractMetadataDisabledReason}
+                summarizeDisabledReason={layoutDemo ? null : summarizeDisabledReason}
+                categorizeDisabledReason={layoutDemo ? null : categorizeDisabledReason}
+                extractMetadataDisabledReason={layoutDemo ? null : extractMetadataDisabledReason}
                 queryTier={queryTier}
                 onQueryTierChange={setQueryTier}
                 viewOnly={isSharedViewOnly}
