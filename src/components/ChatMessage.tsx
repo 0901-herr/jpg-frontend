@@ -166,7 +166,17 @@ function InterruptedNote() {
  * answers (`src/api/query.ts`) ever set `sources`, so summary and
  * categorize chat messages are unaffected by either gate. */
 function AbstainedCaption() {
-  return <p className={`${type.caption} ${typeColor.muted}`}>No matching content</p>
+  // P2-4 (UI polish pass): was plain muted caption text (#8e8e8e) with no
+  // icon — easy to miss next to the answer text it's explaining. A small
+  // info icon plus the slightly darker `secondary` tone (still muted, not
+  // an alert) makes it clearly visible without treating an honest "found
+  // nothing to answer from" the way ErrorMessage treats a real failure.
+  return (
+    <p className={`flex items-center gap-1.5 ${type.caption} ${typeColor.secondary}`}>
+      <ChatInfoIcon className="shrink-0" aria-hidden />
+      No matching content
+    </p>
+  )
 }
 
 function CoverageNotice({ coverage }: { coverage?: CoverageInfo }) {

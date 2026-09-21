@@ -1615,13 +1615,18 @@ button.docu-citation-page-chips:hover .docu-citation-page-chip {
 }
 
 .docu-thinking-shimmer {
+  /* P2-5 (UI polish pass): the darkest tone was #8e8e8e, ~3.3:1 against
+     --docu-bg-app (#fefdfc) — under the 4.5:1 WCAG AA threshold for text.
+     #707070 against the same background is ~4.9:1, clearing it with
+     margin, while the lighter #ececec sweep (the shimmer highlight, never
+     the resting/darkest tone) is unchanged. */
   background: linear-gradient(
     90deg,
-    #8e8e8e 0%,
-    #8e8e8e 35%,
+    #707070 0%,
+    #707070 35%,
     #ececec 50%,
-    #8e8e8e 65%,
-    #8e8e8e 100%
+    #707070 65%,
+    #707070 100%
   );
   background-size: 200% 100%;
   background-clip: text;
