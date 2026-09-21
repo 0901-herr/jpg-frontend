@@ -1484,7 +1484,6 @@ export default function AppLayout() {
                 activeChatId={activeChatId}
                 isLoading={!chatHydrated}
                 isSharedChat={isSharedChat}
-                sharedScopeDocuments={sharedScopeDocuments}
                 browse={browse}
                 selection={selection}
                 onSelectChat={handleSelectChat}
@@ -1665,7 +1664,6 @@ export default function AppLayout() {
             activeChatId={activeChatId}
             isLoading={!chatHydrated}
             isSharedChat={isSharedChat}
-            sharedScopeDocuments={sharedScopeDocuments}
             browse={browse}
             selection={selection}
             onSelectChat={handleSelectChat}

@@ -262,9 +262,6 @@ interface SidebarProps {
    * Disables the Files pane (owner decision, 2026-09-16: a follower can't
    * choose documents at all). */
   isSharedChat?: boolean
-  /** Host scope files the follower may see (ACL-filtered). Shown read-only
-   * in the Files pane when `isSharedChat` is true. */
-  sharedScopeDocuments?: { documentId: string; filename: string | null }[]
   browse: BrowseTreeState
   selection: DocumentSelection
   onSelectChat: (chatId: string) => void
@@ -307,7 +304,6 @@ export default function Sidebar({
   activeChatId,
   isLoading = false,
   isSharedChat = false,
-  sharedScopeDocuments = [],
   browse,
   selection,
   onSelectChat,
@@ -542,12 +538,7 @@ export default function Sidebar({
             inner content so the scrollbar sits flush on the right edge. */}
         <div className="docu-sidebar-scroll flex flex-col flex-1 min-h-0 overflow-y-auto overflow-x-hidden pt-1">
           <div className="px-2.5">
-            <FolderSidebar
-              browse={browse}
-              selection={selection}
-              disabled={isSharedChat}
-              sharedScopeDocuments={sharedScopeDocuments}
-            />
+            <FolderSidebar browse={browse} selection={selection} disabled={isSharedChat} />
 
             <div className="mt-4 pt-1">
               <div className="flex items-center justify-between">

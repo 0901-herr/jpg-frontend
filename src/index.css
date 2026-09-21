@@ -2710,19 +2710,3 @@ button.docu-citation-page-chips:hover .docu-citation-page-chip {
   cursor: not-allowed;
 }
 
-/* Shared-chat Files pane: read-only list of ACL-visible host-scoped docs. */
-.docu-shared-scope-file {
-  padding: 0.25rem 0.35rem;
-  margin: 0;
-  border: none;
-  border-radius: 0.375rem;
-  background: transparent;
-  cursor: pointer;
-}
-
-.docu-shared-scope-file:hover,
-.docu-shared-scope-file:focus-visible {
-  background: var(--docu-bg-muted, #f4f4f4);
-  text-decoration: underline;
-  outline: none;
-}

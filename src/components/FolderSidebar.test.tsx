@@ -663,43 +663,22 @@ describe('FolderSidebar initial loading', () => {
 })
 
 describe('FolderSidebar disabled (shared chat, follower view)', () => {
-  it('renders a read-only list of ACL-visible shared files instead of the file tree', () => {
+  it('renders a dimmed, non-interactive note instead of the file tree', () => {
     render(
       <FolderSidebar
         browse={createBrowseFixture()}
         selection={createSelectionFixture()}
         disabled
-        sharedScopeDocuments={[
-          { documentId: 'doc-b', filename: 'shared.pdf' },
-          { documentId: 'doc-c', filename: null },
-        ]}
       />,
     )
 
-    expect(screen.getByTestId('shared-scope-files')).toBeInTheDocument()
     expect(
-      screen.getByText(/Files chosen by the chat owner that you can access/),
-    ).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Open shared.pdf in LogicalDOC' })).toBeInTheDocument()
-    expect(
-      screen.getByRole('button', { name: 'Open Document doc-c in LogicalDOC' }),
+      screen.getByText(
+        'Files are chosen by the chat owner. In a shared chat you can only ask about the files they picked.',
+      ),
     ).toBeInTheDocument()
     expect(screen.queryByRole('tree')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Refresh document status' })).not.toBeInTheDocument()
-  })
-
-  it('explains when no shared files are available to the follower', () => {
-    render(
-      <FolderSidebar
-        browse={createBrowseFixture()}
-        selection={createSelectionFixture()}
-        disabled
-        sharedScopeDocuments={[]}
-      />,
-    )
-
-    expect(screen.getByText('No shared files are available to you yet.')).toBeInTheDocument()
-    expect(screen.queryByRole('tree')).not.toBeInTheDocument()
   })
 
   it('takes priority over every other state (session expired, loading, etc.)', () => {
@@ -711,7 +690,7 @@ describe('FolderSidebar disabled (shared chat, follower view)', () => {
       />,
     )
 
-    expect(screen.getByTestId('shared-scope-files')).toBeInTheDocument()
+    expect(screen.getByText('Files are chosen by the chat owner.', { exact: false })).toBeInTheDocument()
     expect(screen.queryByText('Session expired')).not.toBeInTheDocument()
   })
 })
