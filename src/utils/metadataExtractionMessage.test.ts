@@ -54,9 +54,15 @@ describe('buildMetadataExtractionAnswer', () => {
     )
   })
 
-  it('notes the failed save when pushed is false', () => {
+  it('notes the failed save with the specific reason when push_error is set', () => {
     expect(
       buildMetadataExtractionAnswer(response({ pushed: false, push_error: 'timeout' })),
+    ).toContain('Could not save to LogicalDOC — timeout')
+  })
+
+  it('falls back to the generic save-failure line when pushed is false and push_error is absent', () => {
+    expect(
+      buildMetadataExtractionAnswer(response({ pushed: false, push_error: null })),
     ).toContain('Could not save to LogicalDOC — the values are shown here.')
   })
 
@@ -93,6 +99,48 @@ describe('buildMetadataExtractionAnswer', () => {
     // Header + separator + the six fixed field rows, nothing more.
     const rowCount = markdown.split('\n').filter((line) => line.startsWith('| ')).length
     expect(rowCount).toBe(8)
+  })
+
+  it('renders an explanatory sentence, not an empty table, when no_fields_configured is true', () => {
+    const markdown = buildMetadataExtractionAnswer(
+      response({
+        fields: {},
+        field_order: [],
+        pushed: false,
+        push_error: null,
+        no_fields_configured: true,
+        comment: 'No metadata fields are configured for this document in LogicalDOC.',
+      }),
+    )
+
+    expect(markdown).toContain('**Extracted metadata — 01_Meeting_Minutes.pdf**')
+    expect(markdown).toContain(
+      'No metadata fields are configured for this document in LogicalDOC.',
+    )
+    expect(markdown).not.toContain('| Field | Value |')
+    expect(markdown).not.toContain('Could not save to LogicalDOC')
+  })
+
+  it('renders an explanatory sentence when field_order is empty even without the flag set (defensive)', () => {
+    const markdown = buildMetadataExtractionAnswer(
+      response({ fields: {}, field_order: [], pushed: false, push_error: null, comment: '' }),
+    )
+
+    expect(markdown).not.toContain('| Field | Value |')
+    expect(markdown).toContain(
+      'No metadata fields are configured for this document in LogicalDOC, so there was nothing to extract.',
+    )
+  })
+
+  it('shows the specific save-failure reason when fields were extracted but push_error is set', () => {
+    const markdown = buildMetadataExtractionAnswer(
+      response({ pushed: false, push_error: 'LogicalDOC rejected the update: 400 Bad Request' }),
+    )
+
+    expect(markdown).toContain('| Programme Coordinator | Dr. Jane Tan |')
+    expect(markdown).toContain(
+      'Could not save to LogicalDOC — LogicalDOC rejected the update: 400 Bad Request',
+    )
   })
 
   it('renders an arbitrary field set unrelated to any fixed field list, to prove genericity', () => {

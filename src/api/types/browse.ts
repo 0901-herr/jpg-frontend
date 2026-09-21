@@ -127,6 +127,13 @@ export interface MetadataExtractionResponse {
   /** Extra attribute names the adapter found but couldn't ask about (a
    * non-string type) — informational only, never rendered as a field row. */
   skipped_fields?: string[]
+  /** True when the document has no metadata fields configured in
+   * LogicalDOC at all (no template assigned, or its template has no
+   * usable string-typed attributes) — extraction was skipped entirely:
+   * `fields`/`field_order` are empty and this is NOT a save failure.
+   * Optional only for safety against an older adapter response; treat
+   * missing as false. */
+  no_fields_configured?: boolean
 }
 
 /** One of the folder's current subfolders, offered to the model as a
