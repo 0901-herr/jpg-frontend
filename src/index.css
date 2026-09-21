@@ -195,6 +195,7 @@ input.ant-input:focus-visible {
   flex-shrink: 0 !important;
   align-self: center !important;
   box-shadow: none !important;
+  font-size: 14px !important;
 }
 
 .docu-file-tree .ant-tree-switcher:hover,
@@ -209,10 +210,8 @@ input.ant-input:focus-visible {
   outline: none !important;
 }
 
-/* Keep the switcher hit area comfortably tappable (20 × 24px), while
-   suppressing Ant's large hover/focus surface. The chevron itself is only
-   12px; an oversized rounded outline makes it look like a mismatched button
-   beside the checkbox rather than a disclosure affordance. */
+/* Same glyph size as project-group chevrons — Ant Tree can otherwise
+   inherit a larger switcher font-size and make Files look oversized. */
 .docu-file-tree .ant-tree-switcher::before,
 .docu-file-tree .ant-tree-switcher::after {
   display: none !important;
@@ -226,23 +225,127 @@ input.ant-input:focus-visible {
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
-  width: 12px !important;
-  height: 12px !important;
-  font-size: 9px !important;
+  box-sizing: border-box !important;
+  transition: transform 180ms ease;
+  width: 14px !important;
+  height: 14px !important;
+  min-width: 14px !important;
+  min-height: 14px !important;
+  max-width: 14px !important;
+  max-height: 14px !important;
+  font-size: 14px !important;
   color: var(--docu-text-secondary) !important;
   transform: rotate(0deg);
   transform-origin: center center;
   transition: transform 0.15s ease;
   line-height: 1 !important;
   vertical-align: middle !important;
+  flex-shrink: 0 !important;
 }
 
 .docu-tree-chevron.expanded {
   transform: rotate(90deg);
 }
 
+/* Smooth expand/collapse for Related documents / Also searched
+   (CitationList). grid 0fr→1fr animates height without measuring. */
+.docu-collapse-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 220ms ease;
+}
+
+.docu-collapse-panel.is-open {
+  grid-template-rows: 1fr;
+}
+
+.docu-collapse-panel-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .docu-collapse-panel {
+    transition: none;
+  }
+
+  .docu-tree-chevron {
+    transition: none;
+  }
+}
+
+.docu-tree-chevron svg,
+.docu-file-tree .docu-tree-chevron svg {
+  width: 14px !important;
+  height: 14px !important;
+  max-width: 14px !important;
+  max-height: 14px !important;
+  font-size: 14px !important;
+  display: block !important;
+}
+
 .docu-file-tree .ant-tree-indent-unit {
   width: 18px !important;
+}
+
+.docu-file-row-tooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  text-align: left;
+  max-width: 280px;
+}
+
+.docu-file-row-tooltip-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 600;
+  font-size: 0.875rem;
+  line-height: 1.25;
+}
+
+.docu-file-row-tooltip-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  flex-shrink: 0;
+}
+
+.docu-file-row-tooltip-status--ready .docu-file-row-tooltip-dot {
+  background: #16a34a;
+}
+
+.docu-file-row-tooltip-status--not-ready .docu-file-row-tooltip-dot {
+  background: #dc2626;
+}
+
+/* Full filename in the Ready/Not-ready tooltip — underline on hover and
+   clickable to open LogicalDOC. Unlayered so antd's button color reset
+   can't strip the link treatment. */
+.docu-file-row-tooltip-name {
+  display: inline;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 400;
+  font-size: 0.75rem;
+  line-height: 1.25;
+  opacity: 0.85;
+  text-align: left;
+  word-break: break-word;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.docu-file-row-tooltip-name:hover,
+.docu-file-row-tooltip-name:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  opacity: 1;
 }
 
 .docu-file-tree .ant-tree-checkbox {
@@ -340,6 +443,21 @@ input.ant-input:focus-visible {
 
 .chat-delete-modal-btn--cancel:hover {
   background: #d4d4d4;
+}
+
+.chat-delete-modal-btn--primary {
+  background: #0084ff;
+  color: #fff;
+}
+
+.chat-delete-modal-btn--primary:hover:not(:disabled) {
+  background: #0077e6;
+  color: #fff;
+}
+
+.chat-delete-modal-btn--primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .chat-delete-modal-btn--delete {
@@ -474,7 +592,7 @@ input.ant-input:focus-visible {
 
 .docu-chat-input-footer {
   padding: 0 1.5rem 1rem;
-  margin-top: 0.75rem;
+  margin-top: 0;
 }
 
 .docu-chat-input-stack {
@@ -534,6 +652,58 @@ input.ant-input:focus-visible {
 
 button.docu-citation-pill:hover {
   background: #dedede;
+}
+
+/* ErrorBoundary Reload — same antd `button { color }` reset vs Tailwind
+   utilities issue as citation pills. Keep color/radius in unlayered CSS. */
+.docu-error-reload {
+  margin-top: 0.5rem;
+  padding: 0.5rem 1.25rem;
+  border: none;
+  border-radius: 9999px;
+  background: #0084ff;
+  color: #fff;
+  font-size: 1rem;
+  font-family: inherit;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.docu-error-reload:hover {
+  background: #0077e6;
+  color: #fff;
+}
+
+.docu-citation-preview-tooltip .ant-tooltip-inner {
+  max-width: 280px;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.docu-citation-preview-filename {
+  font-weight: 600;
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+  color: #fff;
+  word-break: break-word;
+}
+
+.docu-citation-preview-meta {
+  margin-top: 0.125rem;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.docu-citation-preview-snippet {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  line-height: 1.15rem;
+  color: rgba(255, 255, 255, 0.88);
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 /* Answer Markdown — tables and lists (ChatMessage.tsx / markdownRenderers.tsx).
@@ -602,33 +772,27 @@ button.docu-citation-pill:hover {
 }
 
 /* Mainstream AI-chat layouts use a rounded rectangle for the composer, not
-   a full stadium pill — `--docu-radius-lg` (16px) rather than 9999px. The
-   soft shadow gives it a touch of elevation off the page background at
-   rest; on focus-within the border and a matching ring pick up the one
-   accent colour, per the "focus rings" rule. */
+   a full stadium pill — `--docu-radius-lg` (16px) rather than 9999px. */
 .docu-chat-composer {
   border: 1px solid var(--docu-border);
   border-radius: var(--docu-radius-lg);
   background: var(--docu-bg-surface);
-  padding: 0.625rem 0.75rem;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.06);
+  padding: 0.875rem 1rem;
+  row-gap: 1.125rem;
+  box-shadow: none;
 }
 
 .docu-chat-composer:focus-within {
-  border-color: var(--docu-accent);
-  box-shadow: 0 0 0 3px var(--docu-accent-ring);
+  border-color: var(--docu-border);
+  box-shadow: none;
 }
 
 .docu-chat-composer-lead {
   gap: 0;
 }
 
-/* Toolbar row (row 2): left cluster (files chip, tier dropdown, action
-   buttons) grows to fill the space and wraps onto a further line only
-   when it doesn't fit; the send button (`-send-wrap`) stays fixed on the
-   right, vertically centred against the cluster via the toolbar's own
-   `align-items: center` below. */
+/* Toolbar row (row 2): the file and action cluster grows and wraps when
+   needed; query speed and Send stay together on the right. */
 .docu-chat-composer-toolbar {
   gap: 0.5rem;
 }
@@ -716,9 +880,8 @@ button.docu-citation-pill:hover {
   color: #404040;
 }
 
-/* Light pill buttons, not filled blue — the accent colour is reserved for
-   the primary send action and focus rings (client feedback: "one accent
-   colour only"). Icons (ChatInput.tsx) sit inline via `gap`, at every
+/* Enabled composer actions use the same blue as Send; unavailable actions
+   remain neutral. Icons (ChatInput.tsx) sit inline via `gap`, at every
    width now, not only the <480px icon+short-label variant. `height: 2rem`
    (32px) matches the files chip and tier dropdown — chip/dropdown/buttons
    share one height and one (9999px) radius on the toolbar row. */
@@ -732,8 +895,8 @@ button.docu-citation-pill:hover {
   align-items: center;
   justify-content: center;
   gap: 0.375rem;
-  color: var(--docu-text-secondary);
-  background: var(--docu-bg-muted);
+  color: #fff;
+  background: var(--docu-accent);
   font-weight: 500;
   line-height: 1;
 }
@@ -741,8 +904,8 @@ button.docu-citation-pill:hover {
 .docu-chat-composer-summarize:hover:not(:disabled),
 .docu-chat-composer-categorize:hover:not(:disabled),
 .docu-chat-composer-extract:hover:not(:disabled) {
-  background: var(--docu-bg-active);
-  color: var(--docu-text-primary);
+  background: var(--docu-accent-hover);
+  color: #fff;
 }
 
 .docu-chat-composer-summarize:disabled,
@@ -917,7 +1080,7 @@ button.docu-citation-pill:hover {
    comment on the `Tooltip` in ChatInput.tsx. This rule only owns the inner
    content's padding, which the root's `maxWidth` doesn't touch. */
 .docu-selected-files-tooltip .ant-tooltip-inner {
-  padding: 10px 12px;
+  padding: 18px 20px;
 }
 
 /* Numbered entries (`.docu-selected-files-item`, one per `<li>`) as a flex
@@ -930,13 +1093,15 @@ button.docu-citation-pill:hover {
    the counter in a flex item with `text-align: left` gets that for free. */
 .docu-selected-files-tooltip .docu-selected-files-list {
   padding-left: 0;
+  margin: 0;
   counter-reset: docu-selected-file;
 }
 
 .docu-selected-files-tooltip .docu-selected-files-item {
   display: flex;
   align-items: baseline;
-  gap: 0.35em;
+  gap: 0.4em;
+  padding: 3px 0;
   counter-increment: docu-selected-file;
 }
 
@@ -947,12 +1112,37 @@ button.docu-citation-pill:hover {
   text-align: left;
 }
 
-/* The filename itself is the only part that ellipsizes — `min-width: 0`
-   lets it shrink inside the flex row (a flex item's default `min-width:
-   auto` would otherwise refuse to shrink below its own text's intrinsic
-   width and defeat `truncate`'s `overflow: hidden`). */
-.docu-selected-files-tooltip .docu-selected-files-item > span {
+/* Filename opens LogicalDOC. Unlayered so antd's `button { color/… }`
+   reset can't strip the hover underline the way Tailwind utilities would. */
+.docu-selected-files-tooltip .docu-selected-files-item-link {
   min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: inherit;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.docu-selected-files-tooltip .docu-selected-files-item-link:hover,
+.docu-selected-files-tooltip .docu-selected-files-item-link:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.docu-selected-files-tooltip .docu-selected-files-item-link:disabled {
+  cursor: wait;
+  opacity: 0.7;
+  text-decoration: none;
 }
 
 /* Sharing is a permission decision, so each choice needs enough space to
@@ -1053,8 +1243,45 @@ button.docu-citation-pill:hover {
   flex-direction: column;
 }
 
+/* Middle Files+Chats scroller — track flush to the sider’s right edge so the
+   thumb isn’t inset by panel padding (ChatGPT-style). Only this region
+   scrolls; header / New chat / account stay outside, so the bar is shorter. */
+.docu-sidebar-scroll {
+  scrollbar-gutter: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #c5c5c5 transparent;
+}
+
+.docu-sidebar-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.docu-sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.docu-sidebar-scroll::-webkit-scrollbar-thumb {
+  background: #c5c5c5;
+  border-radius: 9999px;
+}
+
+.docu-sidebar-scroll::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
 .docu-sidebar .ant-btn {
   box-shadow: none !important;
+}
+
+/* Project name — gray at rest, black on row hover. Unlayered so antd's
+   `button { color }` reset can't keep the name stuck on inherited gray. */
+.docu-sidebar .docu-project-name {
+  color: #6b6b6b !important;
+  transition: color 120ms ease;
+}
+
+.docu-sidebar .group:hover .docu-project-name {
+  color: #000 !important;
 }
 
 .docu-profile-menu .ant-dropdown-menu {
@@ -1077,38 +1304,119 @@ button.docu-citation-pill:hover {
   color: var(--docu-text-primary) !important;
 }
 
-.docu-menu-item-danger,
-.docu-menu-item-danger .ant-dropdown-menu-item-icon {
-  color: #dc2626 !important;
+.docu-chat-options-menu.ant-dropdown,
+.docu-chat-options-menu {
+  animation: none !important;
+  transition: none !important;
 }
 
-.docu-menu-item-danger:hover,
-.docu-menu-item-danger.ant-dropdown-menu-item-active {
-  background: #fee2e2 !important;
+.docu-chat-options-menu.ant-slide-up-enter,
+.docu-chat-options-menu.ant-slide-up-appear,
+.docu-chat-options-menu.ant-slide-up-leave,
+.docu-chat-options-menu.ant-slide-up-enter-active,
+.docu-chat-options-menu.ant-slide-up-appear-active,
+.docu-chat-options-menu.ant-slide-up-leave-active,
+.docu-chat-options-menu.ant-zoom-big-enter,
+.docu-chat-options-menu.ant-zoom-big-appear,
+.docu-chat-options-menu.ant-zoom-big-leave,
+.docu-chat-options-menu.ant-zoom-big-enter-active,
+.docu-chat-options-menu.ant-zoom-big-appear-active,
+.docu-chat-options-menu.ant-zoom-big-leave-active {
+  animation: none !important;
+  transition: none !important;
+  animation-duration: 0s !important;
+  opacity: 1 !important;
+  transform: none !important;
 }
 
+/* ChatGPT-like chat/project options menu: roomier padding, soft radius,
+   no enter motion (also `transitionName=""` on the Dropdown). */
 .docu-chat-options-menu .ant-dropdown-menu {
-  border-radius: 12px !important;
-  padding: 4px !important;
-  min-width: 200px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12) !important;
-  border: 1px solid var(--docu-border) !important;
+  border-radius: 16px !important;
+  padding: 6px !important;
+  min-width: 220px;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.04),
+    0 8px 24px rgba(0, 0, 0, 0.1) !important;
+  border: none !important;
+  background: #fff !important;
 }
 
-.docu-chat-options-menu .ant-dropdown-menu-item {
-  border-radius: 8px !important;
-  padding: 6px 10px !important;
-  font-size: var(--docu-sidebar-text) !important;
-  color: var(--docu-text-primary) !important;
+.docu-chat-options-menu .ant-dropdown-menu-item,
+.docu-chat-options-menu .ant-dropdown-menu-submenu-title {
+  display: flex !important;
+  align-items: center !important;
+  border-radius: 10px !important;
+  padding: 10px 12px !important;
+  font-size: 0.875rem !important;
+  line-height: 1.25 !important;
+  color: #0d0d0d !important;
+  gap: 0;
 }
 
-.docu-chat-options-menu .ant-dropdown-menu-item-icon {
-  font-size: 14px !important;
-  color: var(--docu-text-primary) !important;
+.docu-chat-options-menu .ant-dropdown-menu-item:hover,
+.docu-chat-options-menu .ant-dropdown-menu-item-active,
+.docu-chat-options-menu .ant-dropdown-menu-submenu-title:hover,
+.docu-chat-options-menu .ant-dropdown-menu-submenu-title.ant-dropdown-menu-submenu-active {
+  background: #f3f3f3 !important;
+}
+
+.docu-chat-options-menu .ant-dropdown-menu-item-icon,
+.docu-chat-options-menu .ant-dropdown-menu-submenu-title .ant-dropdown-menu-item-icon {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1.125rem !important;
+  min-width: 1.125rem !important;
+  height: 1.125rem !important;
+  margin-inline-end: 12px !important;
+  font-size: 16px !important;
+  line-height: 0 !important;
+  color: #0d0d0d !important;
+}
+
+.docu-chat-options-menu .ant-dropdown-menu-item-icon > svg,
+.docu-chat-options-menu .ant-dropdown-menu-submenu-title .ant-dropdown-menu-item-icon > svg {
+  width: 16px !important;
+  height: 16px !important;
+  display: block;
+}
+
+.docu-chat-options-menu .ant-dropdown-menu-submenu-expand-icon {
+  color: #8e8e8e !important;
+  inset-inline-end: 12px !important;
 }
 
 .docu-chat-options-menu .ant-dropdown-menu-item-divider {
-  margin: 4px 0 !important;
+  margin: 6px 8px !important;
+  border-color: #ececec !important;
+}
+
+/* Danger actions (Log out / Delete) — red at rest. Must come after the
+   profile/chat menu item color rules above: those share 0,2,0 specificity,
+   so source order decides the winner. Extra `.ant-dropdown-menu-item`
+   class bumps us to 0,3,0 so we stay red even if base rules move later. */
+.docu-profile-menu .ant-dropdown-menu-item.docu-menu-item-danger,
+.docu-profile-menu .ant-dropdown-menu-item.docu-menu-item-danger .ant-dropdown-menu-item-icon,
+.docu-chat-options-menu .ant-dropdown-menu-item.docu-menu-item-danger,
+.docu-chat-options-menu .ant-dropdown-menu-item.docu-menu-item-danger .ant-dropdown-menu-item-icon {
+  color: #dc2626 !important;
+}
+
+.docu-profile-menu .ant-dropdown-menu-item.docu-menu-item-danger:hover,
+.docu-profile-menu .ant-dropdown-menu-item.docu-menu-item-danger.ant-dropdown-menu-item-active,
+.docu-chat-options-menu .ant-dropdown-menu-item.docu-menu-item-danger:hover,
+.docu-chat-options-menu .ant-dropdown-menu-item.docu-menu-item-danger.ant-dropdown-menu-item-active {
+  background: #fee2e2 !important;
+  color: #dc2626 !important;
+}
+
+.docu-profile-menu .ant-dropdown-menu-item.docu-menu-item-danger:hover .ant-dropdown-menu-item-icon,
+.docu-profile-menu .ant-dropdown-menu-item.docu-menu-item-danger.ant-dropdown-menu-item-active .ant-dropdown-menu-item-icon,
+.docu-chat-options-menu .ant-dropdown-menu-item.docu-menu-item-danger:hover .ant-dropdown-menu-item-icon,
+.docu-chat-options-menu .ant-dropdown-menu-item.docu-menu-item-danger.ant-dropdown-menu-item-active .ant-dropdown-menu-item-icon {
+  color: #dc2626 !important;
 }
 
 .docu-doc-status-menu .ant-dropdown-menu {
@@ -1269,27 +1577,91 @@ button.docu-citation-pill:hover {
 
 .docu-query-tier-dropdown-chevron {
   color: inherit !important;
-  font-size: 12px !important;
+  width: 14px !important;
+  height: 14px !important;
+  font-size: 14px !important;
+}
+
+.docu-query-tier-dropdown-chevron svg {
+  width: 14px !important;
+  height: 14px !important;
+  display: block !important;
 }
 
 .docu-query-tier-menu .ant-dropdown-menu {
   border-radius: 12px !important;
-  padding: 4px !important;
-  min-width: 120px;
+  padding: 6px !important;
+  min-width: 280px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12) !important;
   border: 1px solid var(--docu-border) !important;
 }
 
 .docu-query-tier-menu .ant-dropdown-menu-item {
   border-radius: 8px !important;
-  padding: 6px 12px !important;
+  padding: 10px 12px !important;
+  margin-block: 3px !important;
   font-size: var(--docu-sidebar-text) !important;
   color: var(--docu-text-primary) !important;
+}
+
+.docu-query-tier-menu .ant-dropdown-menu-item:first-child {
+  margin-top: 0 !important;
+}
+
+.docu-query-tier-menu .ant-dropdown-menu-item:last-child {
+  margin-bottom: 0 !important;
+}
+
+.docu-query-tier-option {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.docu-query-tier-option-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1.25rem;
+  height: 1.25rem;
+  color: var(--docu-text-secondary);
+  line-height: 1;
+}
+
+.docu-query-tier-option-icon > svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
+.docu-query-tier-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.docu-query-tier-option-label {
+  font-weight: 500;
+  line-height: 1.25rem;
+}
+
+.docu-query-tier-option-description {
+  color: var(--docu-text-muted);
+  font-size: 0.75rem;
+  line-height: 1rem;
+  white-space: normal;
 }
 
 .docu-query-tier-menu .ant-dropdown-menu-item-selected {
   background: var(--docu-bg-hover) !important;
   font-weight: 500;
+}
+
+.docu-query-tier-menu .ant-dropdown-menu-item-selected .docu-query-tier-option-icon {
+  color: var(--docu-text-primary);
 }
 
 /* Admin panel — unified typography */
@@ -1385,9 +1757,7 @@ button.docu-citation-pill:hover {
 
 .admin-capacity-section {
   margin: 0.25rem 0 1.75rem;
-  padding: 1.75rem 0;
-  border-top: 1px solid var(--admin-border);
-  border-bottom: 1px solid var(--admin-border);
+  padding: 0.5rem 0 1.25rem;
 }
 
 .admin-capacity-section-heading,

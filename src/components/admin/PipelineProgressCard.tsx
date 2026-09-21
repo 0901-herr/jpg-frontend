@@ -161,19 +161,19 @@ export default function PipelineProgressCard({
     bulk
       ? [
           {
-            label: 'Waiting to prepare',
+            label: 'Discovered from LogicalDOC',
             value: bulk.total_preparing,
             capacity: bulk.preparing_capacity,
             description:
-              'Documents discovered in LogicalDOC that are waiting to be downloaded and prepared. Discovery pauses automatically if this queue fills.',
+              'Found in LogicalDOC and still being prepared locally. Discovery slows if this backlog fills up.',
             backpressured: bulk.discovery_backpressured,
           },
           {
-            label: 'Waiting for RAG',
+            label: 'Ready for indexing',
             value: bulk.total_staged_for_rag,
             capacity: bulk.staged_capacity,
             description:
-              'Prepared documents waiting to be sent to RAG for indexing. Preparation slows automatically when this queue reaches capacity.',
+              'Prepared and waiting to be sent for indexing. Preparation slows if this queue fills up.',
             backpressured: bulk.preparation_backpressured,
           },
           {
@@ -181,7 +181,7 @@ export default function PipelineProgressCard({
             value: bulk.current_inflight ?? bulk.total_submitted,
             capacity: bulk.target_inflight,
             description:
-              'Documents currently being indexed by RAG. New submissions wait when all indexing slots are in use.',
+              'Documents currently being indexed. New documents wait here when all indexing slots are in use.',
             backpressured: bulk.submission_backpressured,
           },
         ].flatMap((item) =>
@@ -191,11 +191,11 @@ export default function PipelineProgressCard({
         )
       : []
   const backpressureMessage = bulk?.discovery_backpressured
-    ? 'Discovery is waiting while the preparation queue drains.'
+    ? 'Discovery is waiting while the LogicalDOC backlog drains.'
     : bulk?.preparation_backpressured
-      ? 'Document preparation is waiting while the RAG queue drains.'
+      ? 'Preparation is waiting while the ready-for-indexing queue drains.'
       : bulk?.submission_backpressured
-        ? 'RAG is at capacity. Prepared documents will be sent as space becomes available.'
+        ? 'Indexing is at capacity. Queued documents will start as slots free up.'
         : null
 
   function confirmPause() {
@@ -265,18 +265,13 @@ export default function PipelineProgressCard({
             strokeColor="var(--admin-accent)"
             showInfo={Boolean(progress.label)}
           />
-          {!traversalComplete && bulk?.job_state === 'running' && (
-            <Text className={`block ${ADMIN_TEXT_MUTED}`}>
-              Folder traversal in progress. Corpus total may change.
-            </Text>
-          )}
         </div>
       )}
 
       {capacityItems.length > 0 && (
         <section className="admin-capacity-section">
           <div className="admin-capacity-section-heading">
-            <Text strong>Live capacity</Text>
+            <Text strong>Queue</Text>
             {bulk?.job_state === 'running' &&
               !traversalComplete &&
               bulk.current_page != null && (

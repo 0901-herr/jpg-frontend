@@ -3,19 +3,17 @@ import {
   ChatAppsIcon,
   ChatAppsSuffixIcon,
   ChatChevronIcon,
-  ChatDescriptionIcon,
-  ChatFolderIcon,
   ChatRefreshIcon,
 } from '../icons/chat'
 import type { AntTreeNodeProps, DataNode, TreeProps } from 'antd/es/tree'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { sectionLabel } from '../styles/theme'
 import { sidebar, typeColor } from '../styles/typography'
 import type { BrowseTreeState } from '../hooks/useBrowseTree'
 import type { DocumentSelection } from '../hooks/useDocumentSelection'
 import { useBrowseCategories } from '../hooks/useBrowseCategories'
 import { FEATURES } from '../config/features'
-import { fetchSubtreeDocuments } from '../api/browse'
+import { fetchDocumentViewUrl, fetchSubtreeDocuments } from '../api/browse'
 import type { BrowseDocumentItem } from '../api/types/browse'
 import {
   extractCategories,
@@ -27,10 +25,8 @@ import BrowseViewToggle, { type BrowseViewMode } from './BrowseViewToggle'
 import CategoryTag from './CategoryTag'
 import DocumentChecklist from './DocumentChecklist'
 import {
-  describeStatus,
   getSelectableDocumentIds,
   isDocumentSelectable,
-  StatusIcon,
 } from './IndexingStatusBadge'
 
 interface FolderSidebarProps {
@@ -266,29 +262,30 @@ export default function FolderSidebar({ browse, selection, disabled = false }: F
     return ids
   }, [folderCheckStates])
 
-  // Building a doc's tree row: a 14px status icon, then the filename
-  // filling the rest of the line and eliding under a long name — never the
-  // reverse, where a wide status badge used to crowd the filename off to
-  // one line and leave it unreadable (client feedback). The row's Tooltip
-  // carries only the status label and reason (`describeStatus`) — the
-  // filename is not repeated here (client feedback: "the file name isn't
-  // necessary here, only the status would do"). The filename itself keeps
-  // its own native `title` attribute on the row's text span below, which
-  // is a separate element/mechanism from this antd Tooltip, so a long name
-  // is still discoverable without duplicating it in the status hover.
+  // Building a doc's tree row: the filename fills the line and elides under
+  // a long name. Hover shows Ready / Not ready (with a status dot) above
+  // the full name; the tooltip filename underlines and opens LogicalDOC.
   const buildDocLeaf = useCallback((doc: BrowseDocumentItem): DataNode => {
     const selectable = isDocumentSelectable(doc.indexing_status, doc.queryable)
-    const tooltip = describeStatus(doc.indexing_status, doc.status_reason)
+    const isReady = doc.indexing_status === 'READY'
+    const openFile = async (event: MouseEvent) => {
+      event.preventDefault()
+      event.stopPropagation()
+      try {
+        const url = await fetchDocumentViewUrl(doc.document_id)
+        window.open(url, '_blank', 'noopener,noreferrer')
+      } catch {
+        message.error(`Could not open ${doc.filename}`)
+      }
+    }
     const row = (
       <span
         className={`docu-document-row-primary flex min-w-0 flex-1 items-center gap-1.5 ${
           selectable ? '' : 'opacity-45'
         }`}
       >
-        <StatusIcon status={doc.indexing_status} />
         <span
           className={`min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap ${sidebar.body} ${typeColor.primary}`}
-          title={doc.filename}
         >
           {doc.filename}
         </span>
@@ -298,7 +295,33 @@ export default function FolderSidebar({ browse, selection, disabled = false }: F
     return {
       key: `${DOC_KEY_PREFIX}${doc.document_id}`,
       title: (
-        <Tooltip title={tooltip} mouseEnterDelay={0.2}>
+        <Tooltip
+          title={
+            <div className="docu-file-row-tooltip">
+              <div
+                className={`docu-file-row-tooltip-status ${
+                  isReady
+                    ? 'docu-file-row-tooltip-status--ready'
+                    : 'docu-file-row-tooltip-status--not-ready'
+                }`}
+              >
+                <span className="docu-file-row-tooltip-dot" aria-hidden />
+                {isReady ? 'Ready' : 'Not ready'}
+              </div>
+              <button
+                type="button"
+                className="docu-file-row-tooltip-name"
+                aria-label={`Open ${doc.filename} in LogicalDOC`}
+                onClick={(event) => {
+                  void openFile(event)
+                }}
+              >
+                {doc.filename}
+              </button>
+            </div>
+          }
+          mouseEnterDelay={0.2}
+        >
           {row}
         </Tooltip>
       ),
@@ -487,10 +510,7 @@ export default function FolderSidebar({ browse, selection, disabled = false }: F
   if (disabled) {
     return (
       <div className="flex flex-col gap-2 opacity-50 pointer-events-none select-none" aria-disabled="true">
-        <span className={sectionLabel}>
-          <ChatFolderIcon />
-          Files
-        </span>
+        <span className={sectionLabel}>Files</span>
         <p className={`${sidebar.caption} ${typeColor.muted} m-0 px-1`}>
           Files are chosen by the chat owner. In a shared chat you can only ask about the files
           they picked.
@@ -524,7 +544,7 @@ export default function FolderSidebar({ browse, selection, disabled = false }: F
   }
 
   return (
-    <div className="flex flex-col min-h-0 flex-1 gap-3">
+    <div className="flex flex-col gap-3">
       {FEATURES.categoryView && <BrowseViewToggle mode={viewMode} onChange={setViewMode} />}
 
       {FEATURES.categoryView && viewMode === 'category' && (
@@ -563,13 +583,10 @@ export default function FolderSidebar({ browse, selection, disabled = false }: F
         </div>
       )}
 
-      <div className="flex flex-col min-h-0 flex-1 gap-1.5 pt-1">
+      <div className="flex flex-col gap-1.5 pt-1">
         <div className="flex items-center justify-between shrink-0 gap-2">
-          <span className={`${sectionLabel} !mb-0 min-w-0 flex-1`}>
-            {viewMode === 'folder' ? <ChatFolderIcon /> : <ChatDescriptionIcon />}
-            <span className="truncate min-w-0 flex-1">
-              {viewMode === 'folder' ? 'Files' : 'Documents'}
-            </span>
+          <span className={`${sectionLabel} !mb-0 min-w-0 flex-1 truncate`}>
+            {viewMode === 'folder' ? 'Files' : 'Documents'}
           </span>
           <div className="flex min-w-0 items-center gap-1.5 shrink-0">
             {isTreeBusy && <Spin size="small" />}
@@ -580,22 +597,23 @@ export default function FolderSidebar({ browse, selection, disabled = false }: F
                   aria-label="Refresh document status"
                   onClick={() => void handleRefreshStatus()}
                   disabled={isRefreshingStatus || initialLoading}
-                  className="flex shrink-0 items-center justify-center w-6 h-6 rounded-full text-[#8e8e8e] transition-colors hover:bg-[#ececec] hover:text-[#1f1f1f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0084ff]/35 disabled:opacity-50"
+                  className="flex shrink-0 items-center justify-center w-7 h-7 rounded-full !text-[#8e8e8e] transition-colors hover:!text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0084ff]/35 disabled:opacity-50"
                 >
-                  <ChatRefreshIcon />
+                  <ChatRefreshIcon sx={{ fontSize: 18, color: 'currentColor' }} />
                 </button>
               </Tooltip>
             )}
           </div>
         </div>
-        <div className="flex flex-1 min-h-0 flex-col overflow-y-auto -mx-2.5 px-2.5">
+        {/* No local overflow — parent sidebar scrolls Files + Chats together. */}
+        <div className="flex flex-col -mx-2.5 px-2.5">
           {viewMode === 'folder' ? (
             initialLoading ? (
               <div data-testid="files-skeleton" className="px-3 py-2">
                 <Skeleton active paragraph={{ rows: 4 }} title={false} />
               </div>
             ) : fileTreeData.length === 0 ? (
-              <div className="flex h-full min-h-[80px] items-center justify-center">
+              <div className="flex min-h-[80px] items-center justify-center">
                 <Spin size="small" />
               </div>
             ) : (
@@ -616,7 +634,7 @@ export default function FolderSidebar({ browse, selection, disabled = false }: F
               />
             )
           ) : categoryOptions.length === 0 ? (
-            <div className="flex h-full min-h-[80px] items-center justify-center px-3 text-center">
+            <div className="flex min-h-[80px] items-center justify-center px-3 text-center">
               <span className={`${sidebar.caption} ${typeColor.muted}`}>
                 Categories appear once categorizing finishes for this folder.
               </span>

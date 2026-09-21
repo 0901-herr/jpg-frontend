@@ -219,30 +219,18 @@ describe('FolderSidebar manual status refresh', () => {
   })
 
   it('keeps the refresh button visible by truncating the section label instead of letting it overflow', () => {
-    // 240px matches the documented minimum sidebar width
-    // (src/hooks/useResizableWidth.ts) — jsdom doesn't compute real layout,
-    // so this is a DOM-structure assertion that the label can shrink/ellipsis
-    // and the button never does.
+    // 240px matches a narrow Files column — jsdom doesn't compute real
+    // layout, so this is a DOM-structure assertion that the label can
+    // shrink/ellipsis and the button never does.
     const { container } = render(
       <div style={{ width: 240 }}>
         <FolderSidebar browse={createBrowseFixture()} selection={createSelectionFixture()} />
       </div>,
     )
 
-    // `truncate` must sit on a span around the text run alone, not on the
-    // icon+text flex container itself — mixing an icon flex-item with a raw
-    // text node under `truncate` is a known CSS gotcha where browsers
-    // hard-clip without rendering the ellipsis glyph.
-    const textRun = within(container).getByText('Files', { selector: 'span.truncate' })
-    expect(textRun.className).toMatch(/truncate/)
-
-    // The label wrapper (icon + text run) — the text run's parent — must
-    // still be able to shrink within the header row, and must be distinct
-    // from the truncating text-run span itself.
-    const labelWrapper = textRun.parentElement as HTMLElement
-    expect(labelWrapper).not.toBe(textRun)
-    expect(labelWrapper.className).toMatch(/min-w-0/)
-    expect(labelWrapper.className).not.toMatch(/\btruncate\b/)
+    const label = within(container).getByText('Files')
+    expect(label.className).toMatch(/truncate/)
+    expect(label.className).toMatch(/min-w-0/)
 
     const refreshButton = screen.getByRole('button', { name: 'Refresh document status' })
     expect(refreshButton.className).toMatch(/shrink-0/)
@@ -476,7 +464,7 @@ describe('FolderSidebar with the category-view flag off', () => {
   })
 })
 
-describe('FolderSidebar file row status icon', () => {
+describe('FolderSidebar file row status', () => {
   beforeEach(() => {
     vi.mocked(useBrowseCategoriesModule.useBrowseCategories).mockReturnValue({
       serverCategories: null,
@@ -484,21 +472,17 @@ describe('FolderSidebar file row status icon', () => {
     })
   })
 
-  it('shows a coloured status icon with an aria-label and the full filename as a title attribute, no status-text chip', async () => {
+  it('shows no status tick or status-text chip beside the filename', async () => {
     render(<FolderSidebar browse={createBrowseFixture()} selection={createSelectionFixture()} />)
 
     const filename = await screen.findByText('contract.pdf')
-    expect(filename).toHaveAttribute('title', 'contract.pdf')
     expect(filename.className).toContain('text-ellipsis')
 
-    expect(screen.getByRole('img', { name: 'Ready' })).toBeInTheDocument()
-    // The old badge's visible status-text chip (e.g. "Ready" as its own
-    // span next to the filename) is gone — only the icon's aria-label
-    // carries that word now.
+    expect(screen.queryByRole('img', { name: 'Ready' })).not.toBeInTheDocument()
     expect(screen.queryByText('Ready')).not.toBeInTheDocument()
   })
 
-  it('shows only the status label + reason in the row tooltip on hover — not the filename (client feedback)', async () => {
+  it('shows Ready/Not ready with a status dot above the full filename in the row tooltip', async () => {
     const failedDoc: BrowseDocumentItem = {
       ...folderDocuments[0],
       indexing_status: 'FAILED',
@@ -531,11 +515,12 @@ describe('FolderSidebar file row status icon', () => {
     await user.hover(await screen.findByText('contract.pdf'))
 
     const tooltip = await screen.findByRole('tooltip')
-    expect(tooltip).toHaveTextContent('Failed — Unsupported file format.')
-    expect(tooltip.textContent).not.toContain('contract.pdf')
-    // The filename keeps its own native title attribute — a separate
-    // element/mechanism from the antd Tooltip asserted above.
-    expect(screen.getByText('contract.pdf')).toHaveAttribute('title', 'contract.pdf')
+    expect(tooltip).toHaveTextContent('Not ready')
+    expect(
+      within(tooltip).getByRole('button', { name: 'Open contract.pdf in LogicalDOC' }),
+    ).toBeInTheDocument()
+    expect(tooltip.querySelector('.docu-file-row-tooltip-status--not-ready')).not.toBeNull()
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
   })
 })
 

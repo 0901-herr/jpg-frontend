@@ -3,12 +3,8 @@ import type { ReactNode } from 'react'
 import type { IndexingStatus, BrowseDocumentItem } from '../api/types/browse'
 import {
   StatusFailedIcon,
-  StatusFailedIcon14,
   StatusIndexingIcon,
-  StatusIndexingIcon14,
   StatusNotIndexedIcon,
-  StatusNotIndexedIcon14,
-  StatusPartialIcon14,
   StatusReadyIcon,
   StatusReadyIcon14,
 } from '../icons/chat'
@@ -70,20 +66,11 @@ export function describeStatus(
   return reason && reason !== label ? `${label} — ${reason}` : label
 }
 
-const STATUS_ICON_CONFIG: Record<IndexingStatus, { icon: ReactNode; colorClass: string }> = {
-  READY: { icon: <StatusReadyIcon14 />, colorClass: 'text-emerald-600' },
-  PARTIAL: { icon: <StatusPartialIcon14 />, colorClass: 'text-amber-600' },
-  INDEXING: { icon: <StatusIndexingIcon14 className="animate-spin" />, colorClass: 'text-sky-600' },
-  FAILED: { icon: <StatusFailedIcon14 />, colorClass: 'text-red-600' },
-  NOT_INDEXED: { icon: <StatusNotIndexedIcon14 />, colorClass: 'text-zinc-400' },
-}
-
-/** The compact file-row status marker: just the 14px coloured icon, with
- * `aria-label` carrying the status label for anyone not hovering the row's
- * own tooltip (which additionally carries the filename and reason — see
- * `describeStatus` and `FolderSidebar`'s `buildDocLeaf`). No badge chrome,
- * no visible text — that's the whole point of this variant over the
- * `compact` badge below. */
+/** Compact file-row marker: green tick only when the file is fully ready.
+ * Non-ready statuses render nothing here — the row's hover tooltip (see
+ * `describeStatus` / `FolderSidebar`) already explains Preparing / Queued /
+ * Failed in plain language, so an icon next to those filenames just looks
+ * like a stray tick. */
 export function StatusIcon({
   status,
   className = '',
@@ -91,15 +78,16 @@ export function StatusIcon({
   status: IndexingStatus | string
   className?: string
 }) {
-  const key = (status in STATUS_ICON_CONFIG ? status : 'NOT_INDEXED') as IndexingStatus
-  const config = STATUS_ICON_CONFIG[key]
+  const key = (status in STATUS_CONFIG ? status : 'NOT_INDEXED') as IndexingStatus
+  if (key !== 'READY') return null
+
   return (
     <span
       role="img"
-      aria-label={getStatusLabel(status)}
-      className={`inline-flex shrink-0 items-center leading-none ${config.colorClass} ${className}`}
+      aria-label={getStatusLabel('READY')}
+      className={`inline-flex shrink-0 items-center leading-none text-emerald-600 ${className}`}
     >
-      {config.icon}
+      <StatusReadyIcon14 />
     </span>
   )
 }

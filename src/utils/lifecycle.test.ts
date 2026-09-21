@@ -3,16 +3,22 @@ import { buildDocumentQuery } from '../components/admin/DocumentSearch'
 import { computeProgressLabel, getPipelineProgress } from '../utils/lifecycle'
 
 describe('computeProgressLabel', () => {
-  it('shows traversal-in-progress label when total unknown', () => {
+  it('shows indexed out of discovered while discovery is still growing', () => {
     const result = computeProgressLabel(310000, null, 342000, false)
-    expect(result.label).toContain('currently discovered')
-    expect(result.label).toContain('traversal in progress')
+    expect(result.label).toBe('310,000 indexed of 342,000 discovered')
+    expect(result.percent).toBe(91)
   })
 
-  it('shows final total when traversal complete', () => {
+  it('shows indexed out of the final discovered total', () => {
     const result = computeProgressLabel(310000, 500000, 500000, true)
-    expect(result.label).toBe('310,000 READY out of 500,000 total')
+    expect(result.label).toBe('310,000 indexed of 500,000 discovered')
     expect(result.percent).toBe(62)
+  })
+
+  it('shows zero indexed while documents are still waiting', () => {
+    const result = computeProgressLabel(0, null, 20, false)
+    expect(result.label).toBe('0 indexed of 20 discovered')
+    expect(result.percent).toBe(0)
   })
 })
 

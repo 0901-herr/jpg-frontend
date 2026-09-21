@@ -45,11 +45,11 @@ export const ChatOptionsButton = forwardRef<
       aria-label="Chat options"
       onClick={onClick}
       disabled={disabled}
-      className={`docu-chat-options-trigger shrink-0 w-8 h-8 px-2 py-1.5 inline-flex items-center justify-center leading-none rounded-lg ${typeColor.muted} transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0084ff]/35 disabled:opacity-50 disabled:cursor-not-allowed ${
+      className={`docu-chat-options-trigger shrink-0 w-8 h-8 px-2 py-1.5 inline-flex items-center justify-center leading-none rounded-lg !text-[#8e8e8e] hover:!text-black transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0084ff]/35 disabled:opacity-50 disabled:cursor-not-allowed ${
         menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
       }`}
     >
-      <ChatMoreIcon className={sidebar.caption} />
+      <ChatMoreIcon sx={{ fontSize: 18, color: 'currentColor' }} />
     </button>
   )
 })
@@ -175,18 +175,31 @@ export default function ChatListItem({
    * chat with stale `visibility` from before the flag was flipped off. */
   const isShared = FEATURES.chatSharing && Boolean(chat.visibility) && chat.visibility !== 'private'
 
+  // Destinations only — skip the chat's current project, and only offer
+  // "No project" when the chat is already in one (ungrouped chats with
+  // zero projects used to open a submenu whose only entry was "No
+  // project", which did nothing useful).
+  const moveDestinations = onMove
+    ? [
+        ...projects
+          .filter((project) => project.id !== chat.projectId)
+          .map((project) => ({ key: `move:${project.id}`, label: project.name })),
+        ...(chat.projectId
+          ? [{ key: `move:${NO_PROJECT_KEY}`, label: 'No project' }]
+          : []),
+      ]
+    : []
+
   const menuItems: MenuProps['items'] = [
     { key: 'rename', label: 'Rename', icon: <ChatEditIcon /> },
-    ...(onMove
+    ...(moveDestinations.length > 0
       ? [
           {
             key: 'move',
             label: 'Move to',
             icon: <ChatMoveIcon />,
-            children: [
-              ...projects.map((project) => ({ key: `move:${project.id}`, label: project.name })),
-              { key: `move:${NO_PROJECT_KEY}`, label: 'No project' },
-            ],
+            children: moveDestinations,
+            popupClassName: 'docu-chat-options-menu',
           },
         ]
       : []),
@@ -212,20 +225,24 @@ export default function ChatListItem({
     },
   ]
 
-  // The first user question, as a preview — the row's muted second line.
-  // Sidebar titles are now dated ("Session 15 Sep 2026 (1)"), not the
-  // question itself, so this is the only place that question still shows
-  // up in the Chats list. A shared row shows "by <owner>" instead.
-  const preview = subtitle ?? chat.messages.find((m) => m.role === 'user')?.content
+  // Single-line row label: first user question when we have one, otherwise
+  // the session title (empty / newly created chats). Shared rows keep the
+  // title and append "by <owner>" on the same line.
+  const content = chat.messages.find((m) => m.role === 'user')?.content
+  const label = content ?? chat.title
+  const fullLabel = subtitle ? `${label} · ${subtitle}` : label
 
-  const titleSpan = (
+  const labelSpan = (
     <span
       className={`block min-w-0 truncate ${sidebar.body} ${
         isActive ? `${typeColor.primary} font-normal` : typeColor.secondary
       }`}
-      title={chat.title}
+      title={fullLabel}
     >
-      {chat.title}
+      {label}
+      {subtitle ? (
+        <span className={`${typeColor.muted}`}> · {subtitle}</span>
+      ) : null}
     </span>
   )
 
@@ -265,11 +282,11 @@ export default function ChatListItem({
         <button
           type="button"
           onClick={onSelect}
-          className="flex-1 min-w-0 flex flex-col gap-0.5 text-left px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0084ff]/35 rounded-[10px]"
+          className="flex-1 min-w-0 flex items-center text-left px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0084ff]/35 rounded-[10px]"
         >
           {isShared || renaming || moving ? (
             <span className="flex items-center gap-1 min-w-0">
-              {titleSpan}
+              {labelSpan}
               {isShared && (
                 <span
                   role="img"
@@ -283,12 +300,7 @@ export default function ChatListItem({
               {moving && <Spin size="small" data-testid="move-chat-spinner" />}
             </span>
           ) : (
-            titleSpan
-          )}
-          {preview && (
-            <span className={`block min-w-0 truncate ${sidebar.caption} ${typeColor.muted}`}>
-              {preview}
-            </span>
+            labelSpan
           )}
         </button>
       )}
@@ -297,7 +309,8 @@ export default function ChatListItem({
         <Dropdown
           menu={{ items: menuItems, onClick: handleMenuClick }}
           trigger={['click']}
-          placement="bottomRight"
+          placement="rightTop"
+          transitionName=""
           overlayClassName="docu-chat-options-menu"
           open={menuOpen}
           onOpenChange={setMenuOpen}
@@ -314,7 +327,8 @@ export default function ChatListItem({
         <Dropdown
           menu={{ items: readOnlyMenuItems, onClick: handleMenuClick }}
           trigger={['click']}
-          placement="bottomRight"
+          placement="rightTop"
+          transitionName=""
           overlayClassName="docu-chat-options-menu"
           open={menuOpen}
           onOpenChange={setMenuOpen}

@@ -1,4 +1,4 @@
-import { Avatar, Typography } from 'antd'
+import { Typography } from 'antd'
 import { useMemo, useRef } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -8,7 +8,7 @@ import { createAnswerMarkdownComponents, createStreamingTailPlugin } from '../ut
 import { useElapsedSeconds } from '../hooks/useElapsedSeconds'
 import { useProgressTicker } from '../hooks/useProgressTicker'
 import { progressTickerLabel } from '../utils/queryProgress'
-import { ChatBubbleIcon, ChatInfoIcon } from '../icons/chat'
+import { ChatInfoIcon } from '../icons/chat'
 import type { ChatMessage, CoverageInfo, Source } from '../types'
 import CitationList from './CitationList'
 import { answerHasInlineCitation } from '../utils/citations'
@@ -290,64 +290,29 @@ function AssistantMessage({ message }: AssistantMessageProps) {
   )
 }
 
-/** A small muted label above every assistant turn (client feedback: UI
- * polish pass) — not a heavy card, just enough to read as "this is the
- * assistant speaking" the way a mainstream AI-chat layout marks its
- * replies, without repeating on every paragraph inside one answer. */
-function AssistantLabel() {
-  return (
-    <div className="flex items-center gap-1.5 mb-2" aria-hidden="true">
-      <ChatBubbleIcon sx={{ fontSize: 16 }} className={typeColor.muted} />
-      <span className={`${type.caption} font-medium ${typeColor.muted}`}>Arche AI</span>
-    </div>
-  )
-}
-
-/** The equivalent label above a user bubble — who asked it, in a project
- * or shared chat where more than one person's turns can show up in the
- * same conversation. `message.authorUsername` is set once a message has
- * round-tripped to the server (`src/api/chat.ts`); a message still only
- * local (just sent, or from before this field existed) falls back to the
- * viewer's own display name. */
-function UserLabel({ name }: { name: string }) {
-  const initial = name.trim().charAt(0).toUpperCase() || '?'
-  return (
-    <div className="flex items-center gap-1.5 mb-2" aria-label={name}>
-      <Avatar size={20} className="!bg-[#1e3a5f] !text-white !text-[11px] shrink-0">
-        {initial}
-      </Avatar>
-      <span className={`${type.caption} font-medium ${typeColor.muted}`}>{name}</span>
-    </div>
-  )
-}
-
 interface ChatMessageItemProps {
   message: ChatMessage
   showDivider?: boolean
-  /** The signed-in viewer's own display name — shown above a user bubble
-   * whose `authorUsername` hasn't arrived from the server yet. */
+  /** Kept for call-site compatibility; labels/avatars are no longer shown. */
   currentUsername?: string
 }
 
 export default function ChatMessageItem({
   message,
   showDivider,
-  currentUsername,
 }: ChatMessageItemProps) {
   return (
     <div className="min-w-0">
       {message.role === 'user' ? (
-        <div className="mt-8 mb-6">
-          <UserLabel name={message.authorUsername ?? currentUsername ?? 'You'} />
+        <div className="mt-8 mb-6 flex justify-end">
           <div
-            className={`inline-block bg-[#f4f4f4] ${radius.lg} px-4 py-3 max-w-[min(36rem,100%)] min-w-0 break-words [overflow-wrap:anywhere]`}
+            className={`inline-block bg-[#f4f4f4] ${radius.lg} px-4 py-3 max-w-[min(36rem,85%)] min-w-0 break-words [overflow-wrap:anywhere]`}
           >
             <Text className={`${type.body} ${typeColor.body}`}>{message.content}</Text>
           </div>
         </div>
       ) : (
-        <div className="mb-6">
-          <AssistantLabel />
+        <div className="mb-2 max-w-[min(48rem,100%)]">
           <AssistantMessage message={message} />
         </div>
       )}

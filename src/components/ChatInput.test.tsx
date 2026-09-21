@@ -1,9 +1,18 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import React from 'react'
+import { vi } from 'vitest'
 import ChatInput from './ChatInput'
+
+vi.mock('../api/browse', () => ({
+  fetchDocumentViewUrl: vi.fn(async (documentId: string) => `https://logicaldoc.example/view/${documentId}`),
+}))
+
+function fileEntries(...names: string[]) {
+  return names.map((filename, i) => ({ documentId: `doc-${i + 1}`, filename }))
+}
 
 function renderChatInput(props: Partial<React.ComponentProps<typeof ChatInput>> = {}) {
   return render(
@@ -241,7 +250,7 @@ describe('ChatInput — narrow phone widths (<480px)', () => {
 
     const { container } = renderChatInput({
       selectedCount: 2,
-      selectedFiles: ['a.pdf', 'b.pdf'],
+      selectedFiles: fileEntries('a.pdf', 'b.pdf'),
       categorizeDisabledReason: null,
       extractMetadataDisabledReason: null,
     })
@@ -274,12 +283,25 @@ describe('ChatInput — narrow phone widths (<480px)', () => {
     expect(container.querySelector('.docu-chat-composer-row1')).toBeNull()
     expect(container.querySelector('.docu-chat-composer-row2')).toBeNull()
   })
+
+  it('places the query speed selector immediately left of Send on desktop', () => {
+    vi.spyOn(window, 'matchMedia').mockReturnValue(mockMediaQueryList(false))
+
+    const { container } = renderChatInput({ selectedCount: 1 })
+    const submitControls = container.querySelector('.docu-chat-composer-submit-controls')
+
+    expect(submitControls).not.toBeNull()
+    const buttons = within(submitControls as HTMLElement).getAllByRole('button')
+    expect(buttons).toHaveLength(2)
+    expect(buttons[0]).toHaveAccessibleName(/Query speed: Normal/i)
+    expect(buttons[1]).toHaveAccessibleName('Send message')
+  })
 })
 
 describe('ChatInput — selected files popover', () => {
   it('renders an ordered, numbered list with one <li> per selected file, in selection order, with the class hooks the CSS numbering/truncation rules target', async () => {
     const user = userEvent.setup()
-    const files = ['charlie.pdf', 'alpha.pdf', 'bravo.pdf']
+    const files = fileEntries('charlie.pdf', 'alpha.pdf', 'bravo.pdf')
     renderChatInput({ selectedCount: files.length, selectedFiles: files })
 
     await user.hover(screen.getByText(`${files.length} files`))
@@ -299,21 +321,50 @@ describe('ChatInput — selected files popover', () => {
     // The numbers are CSS-generated `::before` counter content (see
     // index.css), not DOM text, so each <li>'s own text content is still
     // just the filename.
-    expect(items.map((li) => li.textContent)).toEqual(files)
+    expect(items.map((li) => li.textContent)).toEqual(files.map((f) => f.filename))
     for (const li of items) {
       expect(li).toHaveClass('docu-selected-files-item')
-      // Regression guard for the round-3 root cause: `truncate` (which
-      // sets `overflow: hidden`) must live on the inner <span>, never on
-      // the <li> itself — an `overflow: hidden` `<li>` clips its own
-      // `list-style` marker box in every browser tested live, which is
-      // exactly how the "1." … "5." markers went missing before this fix.
+      // Overflow/ellipsis lives on the filename control, never the <li> —
+      // an `overflow: hidden` `<li>` clips the CSS counter marker.
       expect(li).not.toHaveClass('truncate')
       expect(li).not.toHaveClass('break-all')
-      const span = li.querySelector('span')
-      expect(span).not.toBeNull()
-      expect(span).toHaveClass('truncate')
-      expect(span?.textContent).toBe(li.textContent)
+      const link = li.querySelector('button.docu-selected-files-item-link')
+      expect(link).not.toBeNull()
+      expect(link?.textContent).toBe(li.textContent)
     }
+  })
+
+  it('underlines on hover styling is declared in unlayered CSS and opens the file in LogicalDOC on click', async () => {
+    const user = userEvent.setup()
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+    const { fetchDocumentViewUrl } = await import('../api/browse')
+
+    renderChatInput({
+      selectedCount: 1,
+      selectedFiles: fileEntries('Workplace_Policy_2026.pdf'),
+    })
+    await user.hover(screen.getByText('1 file'))
+    const link = await screen.findByRole('button', {
+      name: 'Open Workplace_Policy_2026.pdf in LogicalDOC',
+    })
+    await user.click(link)
+
+    await waitFor(() => {
+      expect(fetchDocumentViewUrl).toHaveBeenCalledWith('doc-1')
+      expect(openSpy).toHaveBeenCalledWith(
+        'https://logicaldoc.example/view/doc-1',
+        '_blank',
+        'noopener,noreferrer',
+      )
+    })
+
+    const css = readFileSync(path.resolve(__dirname, '../index.css'), 'utf-8')
+    expect(css).toMatch(
+      /\.docu-selected-files-tooltip \.docu-selected-files-item-link:hover/,
+    )
+    expect(css).toMatch(/text-decoration:\s*underline/)
+
+    openSpy.mockRestore()
   })
 
   it('caps the popover root at 440px on desktop and calc(100vw - 32px) on phone, via Tooltip styles.root (not a stylesheet rule)', async () => {
@@ -322,7 +373,7 @@ describe('ChatInput — selected files popover', () => {
     vi.spyOn(window, 'matchMedia').mockReturnValue(mockMediaQueryList(false))
     const { unmount } = renderChatInput({
       selectedCount: 1,
-      selectedFiles: ['report.pdf'],
+      selectedFiles: fileEntries('report.pdf'),
     })
     await user.hover(screen.getByText('1 file'))
     let tooltipRoot = (await screen.findByRole('tooltip')).closest('.docu-selected-files-tooltip')
@@ -331,7 +382,7 @@ describe('ChatInput — selected files popover', () => {
     unmount()
 
     vi.spyOn(window, 'matchMedia').mockReturnValue(mockMediaQueryList(true))
-    renderChatInput({ selectedCount: 1, selectedFiles: ['report.pdf'] })
+    renderChatInput({ selectedCount: 1, selectedFiles: fileEntries('report.pdf') })
     await user.hover(screen.getByText('1 file'))
     tooltipRoot = (await screen.findByRole('tooltip')).closest('.docu-selected-files-tooltip')
     expect(tooltipRoot).not.toBeNull()

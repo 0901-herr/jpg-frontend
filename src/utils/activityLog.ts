@@ -1,5 +1,5 @@
 import type { AdminDocumentSummary, LifecycleStatus } from '../api/types/admin'
-import { isTerminalLifecycle, LIFECYCLE_HINTS, LIFECYCLE_LABELS } from './lifecycle'
+import { isTerminalLifecycle } from './lifecycle'
 
 export type ActivityLevel = 'info' | 'success' | 'warning' | 'error'
 export type ActivityKind =
@@ -22,101 +22,115 @@ export interface ActivityEntry {
   lifecycleStatus?: LifecycleStatus
 }
 
-function levelForStatus(status: LifecycleStatus): ActivityLevel {
-  if (status === 'READY') return 'success'
-  if (status === 'FAILED') return 'error'
-  if (status === 'INDEXING' || status === 'SUBMITTED' || status === 'PREPARING') return 'warning'
-  return 'info'
+function isNumericId(value: string): boolean {
+  return /^\d+$/.test(value)
 }
 
-function docLabel(doc: AdminDocumentSummary): string {
-  return doc.filename ?? `Document ${doc.source_document_id}`
-}
-
-function discoverySourceLabel(source: string | null): string {
-  switch (source) {
-    case 'bfs':
-      return 'scheduled document scan'
-    case 'audit':
-      return 'LogicalDOC change detection'
-    case 'manual':
-      return 'manual request'
-    case 'reconciliation':
-      return 'system consistency check'
-    default:
-      return 'document discovery'
+function folderLabel(doc: AdminDocumentSummary): string {
+  if (doc.source_folder_name?.trim()) {
+    return doc.source_folder_name.trim()
   }
+  const path = doc.file_path?.trim()
+  if (path && !isNumericId(path)) {
+    const parts = path.split('/').filter(Boolean)
+    // Prefer the parent folder when path looks like …/Folder/file.ext
+    if (parts.length >= 2 && parts[parts.length - 1]!.includes('.')) {
+      return parts[parts.length - 2]!
+    }
+    if (parts.length >= 1) {
+      return parts[parts.length - 1]!
+    }
+  }
+  const folderId =
+    doc.source_folder_id ?? (path && isNumericId(path) ? Number(path) : null)
+  if (folderId != null) {
+    return `Folder ${folderId}`
+  }
+  return 'Unknown folder'
 }
 
-/** Expand one document row into timeline events from known timestamps. */
+function capitalizeHeadline(text: string): string {
+  if (!text) return text
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
+function folderKey(doc: AdminDocumentSummary): string {
+  if (doc.source_folder_id != null) {
+    return `id:${doc.source_folder_id}`
+  }
+  return `name:${folderLabel(doc)}`
+}
+
+function latestTimestamp(docs: AdminDocumentSummary[]): string {
+  let latest = ''
+  for (const doc of docs) {
+    for (const value of [doc.ready_at, doc.failed_at, doc.submitted_at, doc.discovered_at, doc.updated_at]) {
+      if (value && value > latest) latest = value
+    }
+  }
+  return latest || new Date().toISOString()
+}
+
+function formatCount(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count.toLocaleString()} ${count === 1 ? singular : plural}`
+}
+
+/** One Activity line per folder instead of one line per file. */
+export function buildFolderActivityEvents(documents: AdminDocumentSummary[]): ActivityEntry[] {
+  const byFolder = new Map<string, AdminDocumentSummary[]>()
+  for (const doc of documents) {
+    const key = folderKey(doc)
+    const group = byFolder.get(key)
+    if (group) group.push(doc)
+    else byFolder.set(key, [doc])
+  }
+
+  const entries: ActivityEntry[] = []
+  for (const [key, docs] of byFolder) {
+    const label = folderLabel(docs[0]!)
+    const ready = docs.filter((doc) => doc.lifecycle_status === 'READY').length
+    const failed = docs.filter((doc) => doc.lifecycle_status === 'FAILED').length
+    const inFlight = docs.filter((doc) => !isTerminalLifecycle(doc.lifecycle_status)).length
+    const total = docs.length
+    const done = ready + failed
+    const at = latestTimestamp(docs)
+
+    const detailParts = [
+      formatCount(ready, 'ready'),
+      failed > 0 ? formatCount(failed, 'failed') : null,
+      inFlight > 0 ? `${inFlight.toLocaleString()} still processing` : null,
+    ].filter(Boolean)
+
+    if (inFlight === 0 && done > 0) {
+      entries.push({
+        id: `folder-${key}-done`,
+        at,
+        level: failed > 0 ? 'warning' : 'success',
+        kind: failed > 0 ? 'failed' : 'completed',
+        headline: `Finished ingesting “${label}”`,
+        detail: detailParts.join(' · '),
+      })
+      continue
+    }
+
+    if (done > 0 || inFlight > 0) {
+      entries.push({
+        id: `folder-${key}-progress`,
+        at,
+        level: failed > 0 ? 'warning' : 'info',
+        kind: 'processing',
+        headline: `Ingesting “${label}” (${done.toLocaleString()}/${total.toLocaleString()})`,
+        detail: detailParts.join(' · '),
+      })
+    }
+  }
+
+  return entries
+}
+
+/** @deprecated Prefer buildFolderActivityEvents — kept for older call sites/tests. */
 export function buildDocumentActivityEvents(doc: AdminDocumentSummary): ActivityEntry[] {
-  const label = docLabel(doc)
-  const events: ActivityEntry[] = []
-
-  const add = (
-    at: string | null | undefined,
-    headline: string,
-    level: ActivityLevel,
-    kind: ActivityKind,
-    detail?: string,
-  ) => {
-    if (!at) return
-    events.push({
-      id: `${doc.source_document_id}-${headline}-${at}`,
-      at,
-      level,
-      kind,
-      headline,
-      detail,
-      docId: doc.source_document_id,
-      lifecycleStatus: doc.lifecycle_status,
-    })
-  }
-
-  add(
-    doc.discovered_at,
-    `${label} was discovered`,
-    'info',
-    'discovery',
-    `LogicalDOC ID ${doc.source_document_id} · Found by ${discoverySourceLabel(doc.discovery_source)}.`,
-  )
-  add(
-    doc.submitted_at,
-    `${label} was sent for indexing`,
-    'info',
-    'processing',
-    'RAG Engine accepted the document and will make it searchable.',
-  )
-  add(
-    doc.ready_at,
-    `${label} is ready to search`,
-    'success',
-    'completed',
-    'Indexing completed successfully.',
-  )
-  add(
-    doc.failed_at,
-    `${label} could not be indexed`,
-    'error',
-    'failed',
-    doc.last_error ?? doc.last_error_code ?? undefined,
-  )
-
-  const status = doc.lifecycle_status
-  const alreadyRepresented =
-    (status === 'DISCOVERED' && Boolean(doc.discovered_at)) ||
-    (status === 'SUBMITTED' && Boolean(doc.submitted_at))
-  if (!isTerminalLifecycle(status) && !alreadyRepresented && doc.updated_at) {
-    add(
-      doc.updated_at,
-      `${label}: ${LIFECYCLE_LABELS[status]}`,
-      levelForStatus(status),
-      status === 'DISCOVERED' || status === 'QUEUED' ? 'discovery' : 'processing',
-      LIFECYCLE_HINTS[status],
-    )
-  }
-
-  return events
+  return buildFolderActivityEvents([doc])
 }
 
 export interface SystemActivityEvent {
@@ -141,16 +155,24 @@ function systemActivityKind(event: SystemActivityEvent): ActivityKind {
 
 function userFriendlySystemHeadline(event: SystemActivityEvent): string {
   if (event.action === 'mock_mode') return 'Sample data is active'
-  if (event.action === 'audit_poll') return 'LogicalDOC changes checked'
+  if (event.action === 'audit_poll_failed') {
+    return event.headline?.trim() || 'LogicalDOC change check failed'
+  }
+  if (event.action === 'audit_poll') {
+    if (/restored/i.test(event.headline)) return 'LogicalDOC change check restored'
+    return 'LogicalDOC changes checked'
+  }
   if (event.action === 'reconcile') return 'Document records checked'
   if (event.action === 'ingest_failed') {
     return event.headline
       .replace(/failed to ingest/gi, 'could not be indexed')
       .replace(/failed again/gi, 'could not be indexed')
   }
-  return event.headline
-    .replace(/bulk crawl/gi, 'document scan')
-    .replace(/audit poll/gi, 'LogicalDOC check')
+  return capitalizeHeadline(
+    event.headline
+      .replace(/bulk crawl/gi, 'document scan')
+      .replace(/audit poll/gi, 'LogicalDOC check'),
+  )
 }
 
 function userFriendlySystemDetail(event: SystemActivityEvent): string | undefined {
@@ -223,7 +245,8 @@ export function mergeActivityFeed(
     detail: userFriendlySystemDetail(event),
   }))
 
-  return [...documents.flatMap(buildDocumentActivityEvents), ...fromSystem]
+  return [...buildFolderActivityEvents(documents), ...fromSystem]
+    .map((entry) => ({ ...entry, headline: capitalizeHeadline(entry.headline) }))
     .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
     .slice(0, limit)
 }
@@ -258,7 +281,11 @@ export function formatActivityDayLabel(at: string): string {
 export function formatActivityTime(at: string): string {
   const date = new Date(at)
   if (Number.isNaN(date.getTime())) return at
-  return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  return date.toLocaleTimeString(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+  })
 }
 
 export interface ActivityDayGroup {

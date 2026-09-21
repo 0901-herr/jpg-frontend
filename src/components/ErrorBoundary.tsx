@@ -1,7 +1,6 @@
 import { Component } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
 import { type, typeColor } from '../styles/typography'
-import { radius } from '../styles/theme'
 
 interface ErrorBoundaryProps {
   children: ReactNode
@@ -44,11 +43,7 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
           The page hit an unexpected error. Reload to continue; your selected documents and chat
           history are kept.
         </p>
-        <button
-          type="button"
-          onClick={this.handleReload}
-          className={`mt-2 px-4 py-2 ${radius.md} bg-[#0084ff] text-white hover:bg-[#0077e6] ${type.body}`}
-        >
+        <button type="button" onClick={this.handleReload} className="docu-error-reload">
           Reload
         </button>
       </div>

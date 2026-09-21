@@ -39,13 +39,26 @@ const DEMO_SOURCES = [
 
 const COMPLETE_ANSWER = `Based on the selected documents:
 
-Revenue increased 12% year-over-year, with growth led by enterprise subscriptions [Doc1].
+**Revenue increased 12% year-over-year**, with growth led by enterprise subscriptions [Doc1].
 
-Operating expenses fell 4% in Q3 following office consolidation [Doc2].
+*Operating expenses fell 4% in Q3* following office consolidation [Doc2].
 
 Both figures come from the sections shown below. Click a source to open the document preview in LogicalDOC.`
 
-/** Sample chat with inline [DocN] refs, a completed answer, and a loading reply. */
+const Q3_BREAKDOWN_ANSWER = `Here is the Q3 expense breakdown from the financial summary [Doc2]:
+
+| Category | Q3 spend | Change |
+| --- | ---: | ---: |
+| People | $1.24m | +3% |
+| Software | $680k | -8% |
+| Offices | $420k | -14% |
+| Professional services | $310k | +2% |
+
+**Software and office costs produced the largest savings.**
+
+*These figures are mock data for testing formatted chat responses.*`
+
+/** Sample chat with citations and rich Markdown formatting. */
 export function createCitationDemoSession(): ChatSession {
   return {
     id: 'demo-citations-chat',
@@ -72,8 +85,10 @@ export function createCitationDemoSession(): ChatSession {
       {
         id: 'demo-assistant-2',
         role: 'assistant',
-        status: 'streaming',
-        content: 'Looking at the Q3 financial summary [Doc2], the largest expense categories were',
+        status: 'complete',
+        thinkingSeconds: 1,
+        content: Q3_BREAKDOWN_ANSWER,
+        sources: [...DEMO_SOURCES],
       },
     ],
   }

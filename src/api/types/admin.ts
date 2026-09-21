@@ -137,6 +137,9 @@ export interface AdminDocumentSummary {
   last_error: string | null
   last_error_code: string | null
   temporal_workflow_id: string | null
+  file_path: string | null
+  source_folder_id: number | null
+  source_folder_name: string | null
   discovered_at: string | null
   submitted_at: string | null
   ready_at: string | null
@@ -145,8 +148,6 @@ export interface AdminDocumentSummary {
 }
 
 export interface AdminDocumentDetail extends AdminDocumentSummary {
-  file_path: string | null
-  source_folder_id: number | null
   source_file_version: string | null
   audit_history_id: number | null
   processing_stage: string | null

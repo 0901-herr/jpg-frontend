@@ -27,12 +27,10 @@ export const border = {
   subtle: 'border-[#f0f0f0]',
 } as const
 
-/** Section headers ("Files", "Chats", "Category") — small, uppercase,
- * letter-spaced and muted (client feedback: UI polish pass), matching the
- * quiet section labels of a mainstream AI-chat sidebar rather than
- * standing out as their own heading. */
+/** Section headers ("Files", "Chats", "Category") — small and muted,
+ * sentence case (not all-caps), matching quiet sidebar section labels. */
 export const sectionLabel =
-  'inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-[#8e8e8e] mb-1.5 min-w-0'
+  'inline-flex items-center gap-2 text-[13px] font-medium text-[#8e8e8e] mb-1.5 min-w-0'
 
 /** @deprecated use sectionLabel — kept for imports */
 export const sectionLabelPrimary = sectionLabel

@@ -165,14 +165,20 @@ describe('CitationList — answer-order numbering (Task 2)', () => {
     expect(screen.getByText('(1)')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /Related documents/ }))
-    expect(screen.getByText('Cited.pdf')).toBeInTheDocument()
-    expect(screen.queryByText('Uncited.pdf')).not.toBeInTheDocument()
+    expect(screen.getByText('Cited.pdf')).toBeVisible()
+    expect(screen.getByText('Uncited.pdf').closest('.docu-collapse-panel')).toHaveAttribute(
+      'aria-hidden',
+      'true',
+    )
 
     const alsoSearchedToggle = screen.getByRole('button', { name: /Also searched \(1\)/ })
     expect(alsoSearchedToggle).toBeInTheDocument()
 
     await user.click(alsoSearchedToggle)
-    expect(screen.getByText('Uncited.pdf')).toBeInTheDocument()
+    expect(screen.getByText('Uncited.pdf').closest('.docu-collapse-panel')).toHaveAttribute(
+      'aria-hidden',
+      'false',
+    )
   })
 
   it('orders cited groups ascending by first-cited number, ahead of the uncited "Also searched" ones', async () => {
@@ -305,30 +311,51 @@ describe('CitationLink pill', () => {
     expect(pill).toHaveTextContent('3')
   })
 
-  it('shows the full filename and page as the tooltip title, regardless of filename length', () => {
+  it('shows a hover preview with the filename, page, and snippet', async () => {
+    const user = userEvent.setup()
     const src: Source = source({
       index: 1,
       filename: 'An_Extremely_Long_Document_Filename_That_Should_Be_Truncated.pdf',
       documentId: 'doc-1',
       page: 5,
+      snippet: 'Revenue increased in the enterprise segment.',
     })
 
     render(<CitationLink source={src} label={citationDisplayLabel(src)} number={1} />)
 
     const pill = screen.getByRole('button')
     expect(pill).toHaveTextContent('1')
-    expect(pill).toHaveAttribute(
-      'title',
-      'An_Extremely_Long_Document_Filename_That_Should_Be_Truncated.pdf · p. 5',
+    await user.hover(pill)
+
+    const tooltip = await screen.findByRole('tooltip')
+    expect(tooltip).toHaveTextContent(
+      'An_Extremely_Long_Document_Filename_That_Should_Be_Truncated.pdf',
     )
+    expect(tooltip).toHaveTextContent('Page 5')
+    expect(tooltip).toHaveTextContent('Revenue increased in the enterprise segment.')
   })
 
-  it('omits the page suffix from the title when no page is known', () => {
+  it('omits the page line from the hover preview when no page is known', async () => {
+    const user = userEvent.setup()
     const src: Source = source({ index: 1, filename: 'Report.pdf', documentId: 'doc-1' })
 
     render(<CitationLink source={src} label={citationDisplayLabel(src)} number={2} />)
 
-    expect(screen.getByRole('button')).toHaveAttribute('title', 'Report.pdf')
+    await user.hover(screen.getByRole('button'))
+
+    const tooltip = await screen.findByRole('tooltip')
+    expect(tooltip).toHaveTextContent('Report.pdf')
+    expect(tooltip).not.toHaveTextContent('Page')
+  })
+
+  it('vertically centers the pill with the surrounding text row', () => {
+    const src: Source = source({ index: 1, filename: 'Report.pdf', documentId: 'doc-1' })
+
+    render(<CitationLink source={src} label={citationDisplayLabel(src)} number={1} />)
+
+    const pill = screen.getByRole('button')
+    expect(pill.className).toMatch(/\balign-middle\b/)
+    expect(pill.className).not.toMatch(/top-\[0\.2em\]/)
   })
 
   it('keeps the full "(File.pdf, Page N)" text as the accessible name for screen readers', () => {

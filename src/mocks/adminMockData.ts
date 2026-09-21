@@ -100,6 +100,7 @@ function buildDoc(overrides: Partial<AdminDocumentDetail>): AdminDocumentDetail 
     updated_at: now(),
     file_path: '/Default/documents',
     source_folder_id: 4951,
+    source_folder_name: 'documents',
     source_file_version: '1.0',
     audit_history_id: null,
     processing_stage: null,
