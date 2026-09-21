@@ -361,6 +361,31 @@ function collapseCitationRuns(segments: AnswerSegment[]): AnswerSegment[] {
   return result
 }
 
+/** Matches leading whitespace directly followed by a sentence/clause mark —
+ * only that whitespace is captured (group 1 is the mark itself, kept). */
+const LEADING_SPACE_BEFORE_PUNCTUATION_RE = /^\s+([.,!?;:])/
+
+/** Closes the stray gap a space in the model's own text leaves between a
+ * citation pill and punctuation that immediately follows it — "subscriptions
+ * [Doc1] ." renders as "subscriptions ①  ." otherwise, the pill visually
+ * detached from the period it ends the sentence with (client feedback: UI
+ * polish pass). `collapseCitationRuns` above already moves punctuation
+ * for a *run* of 2+ markers, but leaves a lone marker's trailing text
+ * untouched — this covers that remaining case (and is a harmless no-op
+ * for the run case, since that branch never leaves a leading space on the
+ * segment right after the run's own last pill). Only the leading
+ * whitespace is stripped; any further text in the segment renders
+ * unchanged. */
+function tightenPillPunctuation(segments: AnswerSegment[]): AnswerSegment[] {
+  return segments.map((segment, i) => {
+    if (segment.type !== 'text') return segment
+    if (segments[i - 1]?.type !== 'ref') return segment
+    const match = LEADING_SPACE_BEFORE_PUNCTUATION_RE.exec(segment.value)
+    if (!match) return segment
+    return { type: 'text', value: segment.value.slice(match[0].length - match[1].length) }
+  })
+}
+
 /** Split answer text into segments, marking doc_ref tokens for linking. */
 export function splitAnswerByDocRefs(
   content: string,
@@ -388,7 +413,7 @@ export function splitAnswerByDocRefs(
       if (source) return { type: 'ref' as const, value: part, source }
       return { type: 'text' as const, value: part }
     })
-  return collapseCitationRuns(spaceAdjacentRefs(segments))
+  return tightenPillPunctuation(collapseCitationRuns(spaceAdjacentRefs(segments)))
 }
 
 /** True iff `content` quotes at least one of `sources` inline — i.e.

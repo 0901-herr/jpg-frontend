@@ -643,7 +643,21 @@ input.ant-input:focus-visible {
   min-width: 1.5em;
   height: 1.5em;
   padding: 0 0.35em;
-  margin: 0 0.2em;
+  /* P1-1 (UI polish pass): left margin only, not `0 0.2em` on both sides —
+     a symmetric margin put a visible gap on BOTH sides of the pill
+     regardless of what the surrounding text actually was, so even a marker
+     directly against its sentence's period with no space in the model's
+     own text ("subscriptions [Doc1].") rendered with a stray gap before
+     the period ("subscriptions ①  ."). The left margin still separates the
+     pill from the word before it (which in practice always has its own
+     trailing space in the source text anyway, same as any other inline
+     citation style); dropping the right margin lets the pill sit flush
+     against whatever comes right after it — punctuation hugs it, and a
+     following word still gets its own gap from that word's leading space
+     in the text (or, for two adjacent pills, from the space
+     `spaceAdjacentRefs`/`collapseCitationRuns` insert between them in
+     citations.ts). */
+  margin: 0 0 0 0.2em;
   border-radius: 999px;
   color: #525252;
   background: #ececec;
