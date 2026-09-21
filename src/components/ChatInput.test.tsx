@@ -1,10 +1,12 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render as rtlRender, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { App } from 'antd'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import React from 'react'
 import { vi } from 'vitest'
 import ChatInput from './ChatInput'
+import { fetchDocumentViewUrl } from '../api/browse'
 
 vi.mock('../api/browse', () => ({
   fetchDocumentViewUrl: vi.fn(async (documentId: string) => `https://logicaldoc.example/view/${documentId}`),
@@ -12,6 +14,17 @@ vi.mock('../api/browse', () => ({
 
 function fileEntries(...names: string[]) {
   return names.map((filename, i) => ({ documentId: `doc-${i + 1}`, filename }))
+}
+
+// ChatInput.tsx's SelectedFilesTooltip reads `message` via `App.useApp()`
+// (P1-4, UI polish pass) instead of the static antd import — outside a
+// real `<App>` provider that resolves to the context default `{}`, and
+// `{}.error(...)` throws. Every render() in this file wraps ChatInput in
+// a real `<App>` so that call resolves to a working, visible toast
+// instead (see the "shows an error toast" test below, which asserts the
+// rendered toast text rather than spying on a function reference).
+function render(ui: React.ReactElement) {
+  return rtlRender(<App>{ui}</App>)
 }
 
 function renderChatInput(props: Partial<React.ComponentProps<typeof ChatInput>> = {}) {
@@ -365,6 +378,29 @@ describe('ChatInput — selected files popover', () => {
     expect(css).toMatch(/text-decoration:\s*underline/)
 
     openSpy.mockRestore()
+  })
+
+  it('shows an error toast when opening the file in LogicalDOC fails (App.useApp() coverage)', async () => {
+    const user = userEvent.setup()
+    vi.mocked(fetchDocumentViewUrl).mockRejectedValueOnce(new Error('network error'))
+
+    renderChatInput({
+      selectedCount: 1,
+      selectedFiles: fileEntries('Workplace_Policy_2026.pdf'),
+    })
+    await user.hover(screen.getByText('1 file'))
+    const link = await screen.findByRole('button', {
+      name: 'Open Workplace_Policy_2026.pdf in LogicalDOC',
+    })
+    await user.click(link)
+
+    // SelectedFilesTooltip's `message.error(...)` call — read via
+    // App.useApp() (P1-4) — only resolves to a working, visible toast
+    // when this render is wrapped in a real `<App>` (see render() above);
+    // outside one it throws instead of ever reaching the DOM.
+    expect(
+      await screen.findByText('Could not open Workplace_Policy_2026.pdf'),
+    ).toBeInTheDocument()
   })
 
   it('caps the popover root at 440px on desktop and calc(100vw - 32px) on phone, via Tooltip styles.root (not a stylesheet rule)', async () => {
