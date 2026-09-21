@@ -1,5 +1,5 @@
 import { message, Tooltip } from 'antd'
-import { ChatChevronIcon, ChatDescriptionIcon, ChatRedirectIcon } from '../icons/chat'
+import { ChatChevronIcon, ChatDescriptionIcon } from '../icons/chat'
 import { Fragment, useCallback, useId, useMemo, useState, type ReactNode } from 'react'
 import { fetchDocumentViewUrl, withPageHint } from '../api/browse'
 import { type, typeColor } from '../styles/typography'
@@ -241,10 +241,14 @@ function DocumentRow({
   return (
     <li>
       <div
-        className={`group flex items-start gap-3 px-3 py-2.5 border border-[#ececec] ${listRow} hover:bg-[#f4f3f2] transition-colors`}
+        className={`docu-citation-row group relative flex items-center gap-3 px-3 py-2.5 border border-[#ececec] ${listRow} hover:bg-[#f4f3f2] transition-colors`}
       >
-        <ChatDescriptionIcon sx={{ fontSize: 20 }} className={`${typeColor.primary} shrink-0`} />
-        <div className="min-w-0 flex-1">
+        <ChatDescriptionIcon
+          sx={{ fontSize: 20 }}
+          className={`docu-citation-row-icon ${typeColor.primary} shrink-0`}
+          aria-hidden
+        />
+        <div className="docu-citation-row-body min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
             {canOpenRow ? (
               <button
@@ -266,20 +270,25 @@ function DocumentRow({
               const canOpenPage = Boolean(entry.source.url || entry.source.documentId)
               const pageKey = `${group.key}-p${entry.page}`
               const isPageOpening = openingKey === pageKey
-              // Prefixed with the same number the inline pill for this
-              // exact citation shows, so a reader can map one to the
-              // other. A page that was retrieved but never cited (an
-              // "Also searched" entry) has no number to show.
+              // Same number the inline pill for this citation shows, so a
+              // reader can map one to the other. Uncited pages have none.
               const number = numbers.get(citationNumberKey(entry.source))
-              const label = number != null ? `${number} · p. ${entry.page}` : `p. ${entry.page}`
+
+              const chips = (
+                <>
+                  {number != null && (
+                    <span className="docu-citation-num-chip" aria-hidden>
+                      {number}
+                    </span>
+                  )}
+                  <span className="docu-citation-page-chip">page {entry.page}</span>
+                </>
+              )
 
               if (!canOpenPage) {
                 return (
-                  <span
-                    key={pageKey}
-                    className={`${type.caption} ${typeColor.muted} rounded-full border border-[#ececec] px-2 py-0.5`}
-                  >
-                    {label}
+                  <span key={pageKey} className="docu-citation-page-chips inline-flex items-center gap-1.5">
+                    {chips}
                   </span>
                 )
               }
@@ -294,9 +303,9 @@ function DocumentRow({
                   }}
                   disabled={isPageOpening}
                   title={`Open ${group.filename} at page ${entry.page} in LogicalDOC`}
-                  className={`${type.caption} ${typeColor.body} rounded-full border border-[#ececec] px-2 py-0.5 hover:bg-white hover:border-[#c8c8c8] disabled:opacity-60 transition-colors`}
+                  className="docu-citation-page-chips inline-flex items-center gap-1.5 disabled:opacity-60"
                 >
-                  {label}
+                  {chips}
                 </button>
               )
             })}
@@ -318,12 +327,6 @@ function DocumentRow({
             </span>
           )}
         </div>
-        {canOpenRow && (
-          <ChatRedirectIcon
-            className={`${typeColor.primary} shrink-0 opacity-0 group-hover:opacity-100 transition-opacity`}
-            aria-hidden
-          />
-        )}
       </div>
     </li>
   )

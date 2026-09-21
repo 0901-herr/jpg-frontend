@@ -166,10 +166,17 @@ function ProjectGroupHeader({
 
       {!isEditing && (
         <Dropdown
-          menu={{ items: menuItems, onClick: handleMenuClick }}
+          menu={{
+            items: menuItems,
+            onClick: handleMenuClick,
+            expandIcon: (
+              <ChatChevronIcon className="docu-chat-options-expand" aria-hidden />
+            ),
+          }}
           trigger={['click']}
           placement="rightTop"
           transitionName=""
+          destroyOnHidden
           overlayClassName="docu-chat-options-menu"
         >
           <button
@@ -664,7 +671,10 @@ export default function Sidebar({
               menu={{ items: profileMenu, onClick: handleProfileMenuClick }}
               trigger={['click']}
               placement="topLeft"
-              overlayClassName="docu-profile-menu"
+              transitionName=""
+              destroyOnHidden
+              arrow={false}
+              overlayClassName="docu-chat-options-menu"
             >
               <button
                 type="button"

@@ -87,8 +87,12 @@ describe('AnswerContent Markdown rendering', () => {
     expect(otherPill).toHaveTextContent('2')
 
     await user.click(screen.getByRole('button', { name: /Related documents/ }))
-    expect(screen.getByText('1 · p. 2')).toBeInTheDocument()
-    expect(screen.getByText('2 · p. 5')).toBeInTheDocument()
+    expect(screen.getByText('page 2')).toBeInTheDocument()
+    expect(screen.getByText('page 5')).toBeInTheDocument()
+    const numChips = Array.from(document.querySelectorAll('.docu-citation-num-chip')).map(
+      (el) => el.textContent,
+    )
+    expect(numChips).toEqual(['1', '2'])
   })
 
   it('renders inline code, bold text, and demotes an h1 heading to a styled paragraph', () => {

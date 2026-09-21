@@ -1,5 +1,5 @@
 import { Dropdown, Input, Modal, Spin } from 'antd'
-import { ChatDeleteIcon, ChatEditIcon, ChatMoreIcon, ChatMoveIcon, ChatShareIcon } from '../icons/chat'
+import { ChatDeleteIcon, ChatEditIcon, ChatMoreIcon, ChatMoveIcon, ChatShareIcon, ChatChevronIcon } from '../icons/chat'
 import type { InputRef, MenuProps } from 'antd'
 import type { MouseEvent } from 'react'
 import { forwardRef, useEffect, useRef, useState } from 'react'
@@ -307,10 +307,17 @@ export default function ChatListItem({
 
       {!isEditing && !readOnly && (
         <Dropdown
-          menu={{ items: menuItems, onClick: handleMenuClick }}
+          menu={{
+            items: menuItems,
+            onClick: handleMenuClick,
+            expandIcon: (
+              <ChatChevronIcon className="docu-chat-options-expand" aria-hidden />
+            ),
+          }}
           trigger={['click']}
           placement="rightTop"
           transitionName=""
+          destroyOnHidden
           overlayClassName="docu-chat-options-menu"
           open={menuOpen}
           onOpenChange={setMenuOpen}
@@ -329,6 +336,7 @@ export default function ChatListItem({
           trigger={['click']}
           placement="rightTop"
           transitionName=""
+          destroyOnHidden
           overlayClassName="docu-chat-options-menu"
           open={menuOpen}
           onOpenChange={setMenuOpen}

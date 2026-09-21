@@ -73,9 +73,12 @@ describe('CitationList grouping', () => {
     render(<CitationList sources={sources} content={contentCiting(...sources)} />)
     await user.click(screen.getByRole('button', { name: /Related documents/ }))
 
-    expect(screen.getByText('1 · p. 2')).toBeInTheDocument()
-    expect(screen.getByText('2 · p. 5')).toBeInTheDocument()
-    expect(screen.getByText('3 · p. 7')).toBeInTheDocument()
+    expect(screen.getByText('1')).toBeInTheDocument()
+    expect(screen.getByText('page 2')).toBeInTheDocument()
+    expect(screen.getByText('2')).toBeInTheDocument()
+    expect(screen.getByText('page 5')).toBeInTheDocument()
+    expect(screen.getByText('3')).toBeInTheDocument()
+    expect(screen.getByText('page 7')).toBeInTheDocument()
   })
 
   it('prefixes each page chip with the same number an inline pill for that citation would show', async () => {
@@ -91,9 +94,12 @@ describe('CitationList grouping', () => {
 
     // First appearance order in the answer text: doc-a p2 → 1, doc-b p1 →
     // 2, doc-a p5 → 3 — independent of how they group by document.
-    expect(screen.getByText('1 · p. 2')).toBeInTheDocument()
-    expect(screen.getByText('2 · p. 1')).toBeInTheDocument()
-    expect(screen.getByText('3 · p. 5')).toBeInTheDocument()
+    expect(screen.getByText('page 2')).toBeInTheDocument()
+    expect(screen.getByText('page 1')).toBeInTheDocument()
+    expect(screen.getByText('page 5')).toBeInTheDocument()
+    expect(screen.getByText('1')).toBeInTheDocument()
+    expect(screen.getByText('2')).toBeInTheDocument()
+    expect(screen.getByText('3')).toBeInTheDocument()
   })
 
   it('opens the first page when the filename area is clicked', async () => {
@@ -149,9 +155,10 @@ describe('CitationList — answer-order numbering (Task 2)', () => {
     render(<CitationList sources={[doc6, doc7, doc8]} content={content} />)
     await user.click(screen.getByRole('button', { name: /Related documents/ }))
 
-    expect(screen.getByText('1 · p. 1')).toBeInTheDocument()
-    expect(screen.getByText('2 · p. 1')).toBeInTheDocument()
-    expect(screen.getByText('3 · p. 1')).toBeInTheDocument()
+    expect(screen.getByText('1')).toBeInTheDocument()
+    expect(screen.getByText('2')).toBeInTheDocument()
+    expect(screen.getByText('3')).toBeInTheDocument()
+    expect(screen.getAllByText('page 1')).toHaveLength(3)
   })
 
   it('puts a source the answer never cites under a collapsed "Also searched" section, separate from the cited count', async () => {
