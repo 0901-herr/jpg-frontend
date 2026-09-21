@@ -1,4 +1,4 @@
-import { ConfigProvider } from 'antd'
+import { App as AntApp, ConfigProvider } from 'antd'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import AppLayout from './components/AppLayout'
 import { ProtectedRoute } from './components/ProtectedRoute'
@@ -62,26 +62,38 @@ export default function App() {
         },
       }}
     >
-      <QueryProvider>
-        <AuthProvider>
-          <BrowserRouter>
-            <Routes>
-              <Route element={<ProtectedRoute />}>
-                <Route path="/" element={<Navigate to="/chat" replace />} />
-                <Route path="/chat" element={<AppLayout />} />
-                <Route path="/chat/demo/composer" element={<AppLayout />} />
-              </Route>
-              <Route element={<AdminRoute />}>
-                <Route path="/admin" element={<AdminIndexRedirect />} />
-                <Route element={<AdminLayout />}>
-                  <Route path="/admin/ingestion" element={<IngestionOverviewPage />} />
+      {/* Antd deprecation warnings (UI polish pass): the static `message`/
+          `notification`/`Modal` functions used across the chat side of the
+          app (AppLayout.tsx, useChatStore.ts, useBrowseTree.ts, ChatInput.tsx,
+          FolderSidebar.tsx) "can not consume context like dynamic theme" —
+          antd's own fix is this `<App>` provider, which every one of those
+          call sites now reads its `message` instance from via
+          `App.useApp()` instead of importing the static function directly.
+          The admin side (AdminLayout.tsx) already wraps its own subtree in
+          a nested `<App>` for the same reason — antd supports nesting, so
+          this doesn't change that. */}
+      <AntApp>
+        <QueryProvider>
+          <AuthProvider>
+            <BrowserRouter>
+              <Routes>
+                <Route element={<ProtectedRoute />}>
+                  <Route path="/" element={<Navigate to="/chat" replace />} />
+                  <Route path="/chat" element={<AppLayout />} />
+                  <Route path="/chat/demo/composer" element={<AppLayout />} />
                 </Route>
-              </Route>
-              <Route path="*" element={<Navigate to="/chat" replace />} />
-            </Routes>
-          </BrowserRouter>
-        </AuthProvider>
-      </QueryProvider>
+                <Route element={<AdminRoute />}>
+                  <Route path="/admin" element={<AdminIndexRedirect />} />
+                  <Route element={<AdminLayout />}>
+                    <Route path="/admin/ingestion" element={<IngestionOverviewPage />} />
+                  </Route>
+                </Route>
+                <Route path="*" element={<Navigate to="/chat" replace />} />
+              </Routes>
+            </BrowserRouter>
+          </AuthProvider>
+        </QueryProvider>
+      </AntApp>
     </ConfigProvider>
   )
 }

@@ -1,4 +1,4 @@
-import { Alert, message, Select, Skeleton, Spin, Tooltip, Tree } from 'antd'
+import { Alert, App, Select, Skeleton, Spin, Tooltip, Tree } from 'antd'
 import {
   ChatAppsIcon,
   ChatAppsSuffixIcon,
@@ -57,6 +57,9 @@ function switcherIcon({ expanded, isLeaf }: AntTreeNodeProps) {
 }
 
 export default function FolderSidebar({ browse, selection, disabled = false }: FolderSidebarProps) {
+  // `App.useApp()` rather than the static `message` import from 'antd' —
+  // see App.tsx's comment on the `<AntApp>` provider this reads from.
+  const { message } = App.useApp()
   const [viewMode, setViewMode] = useState<BrowseViewMode>('folder')
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
 
@@ -524,7 +527,7 @@ export default function FolderSidebar({ browse, selection, disabled = false }: F
       <Alert
         type="error"
         showIcon
-        message="Session expired"
+        title="Session expired"
         description="Reopen Arche AI from LogicalDOC to continue."
         className="!text-xs !m-0"
       />
@@ -536,7 +539,7 @@ export default function FolderSidebar({ browse, selection, disabled = false }: F
       <Alert
         type="warning"
         showIcon
-        message={initError.title}
+        title={initError.title}
         description={initError.body}
         className="!text-xs !m-0"
       />
