@@ -1,4 +1,4 @@
-import { App, Table } from 'antd'
+import { App, Table, Tooltip } from 'antd'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnsType } from 'antd/es/table'
 import { fetchAdminDocuments, fetchIngestionErrors, retryDocument, retryFailedDocuments } from '../../api/admin'
@@ -53,8 +53,20 @@ export default function FailedDocumentsTable({ onSelect }: FailedDocumentsTableP
     {
       title: 'Error',
       dataIndex: 'last_error',
-      ellipsis: true,
-      render: (v: string | null, row) => v ?? row.last_error_code ?? ADMIN_EMPTY,
+      // P1-5 (UI polish pass): `ellipsis: true` alone only sets a native
+      // HTML `title` attribute (the browser's own plain hover tooltip) —
+      // `showTitle: false` turns that off so the antd `Tooltip` below,
+      // styled consistently with the rest of the app, is the only hover
+      // affordance for the full text.
+      ellipsis: { showTitle: false },
+      render: (v: string | null, row) => {
+        const text = v ?? row.last_error_code ?? ADMIN_EMPTY
+        return (
+          <Tooltip title={text} placement="topLeft">
+            <span>{text}</span>
+          </Tooltip>
+        )
+      },
     },
     { title: 'Retries', dataIndex: 'retry_count', width: 80 },
     {
