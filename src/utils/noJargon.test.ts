@@ -167,26 +167,9 @@ const ALLOWLIST = new Set([
   // string-literal union members (field names), not runtime UI text.
   "'indexing_status'",
   "'classification_category'",
-  // CSS class names / data-testid values.
-  '"docu-query-tier-menu"',
-  // P1-4 (UI polish pass): QueryTierDropdown.tsx's antd v6 deprecation fix
-  // (Dropdown overlayClassName -> classNames={{ root }}) rewrote this one
-  // class name as a single-quoted object-literal value instead of a
-  // double-quoted JSX attribute string — same class, different quote
-  // style, so it needs its own allowlist entry alongside the one above.
-  "'docu-query-tier-menu'",
-  '"docu-query-tier-dropdown"',
-  '"docu-query-tier-dropdown-chevron"',
-  // The tier option row's own class names (QueryTierDropdown.tsx) were
-  // never allowlisted even though every one above them was — found while
-  // fixing the sibling class name above (client feedback: UI polish
-  // pass). Genuinely the same "CSS class name, not prose" category as the
-  // rest of this block.
-  '"docu-query-tier-option"',
-  '"docu-query-tier-option-icon"',
-  '"docu-query-tier-option-text"',
-  '"docu-query-tier-option-label"',
-  '"docu-query-tier-option-description"',
+  // data-testid value — not a `className`/`classNames` attribute (a plain
+  // object literal key instead: `{ 'data-testid': 'streaming-cursor' }`),
+  // so `neutralizeClassNameAttributes` below doesn't reach it.
   "'streaming-cursor'",
   // A React Router path, not prose.
   '"/admin/ingestion"',
@@ -219,6 +202,33 @@ function neutralizeImports(source: string): string {
     .replace(/import\(\s*('[^']*'|"[^"]*")\s*\)/g, "import('')")
     .replace(/require\(\s*('[^']*'|"[^"]*")\s*\)/g, "require('')")
     .replace(/^(\s*import\s+)('[^']*'|"[^"]*")/gm, "$1''")
+}
+
+/** Neutralizes a `className`/`xClassName` JSX attribute's string value —
+ * `className="docu-query-tier-option"`, `rootClassName='...'`,
+ * `overlayClassName={\`...\`}` — and antd v6's semantic `classNames={{ ... }}`
+ * object-literal prop (`classNames={{ root: 'docu-query-tier-menu' }}`).
+ * Both shapes are CSS class name(s) by construction, in this codebase and
+ * in React generally, never user-facing prose — but the guard's own
+ * string-literal scan can't tell a class name from any other string
+ * without this. Blanking the *value* (not the whole match) keeps every
+ * other neutralizer's shape ("a string literal region") working the same
+ * way, and keeps the fix general (one rule for every `*ClassName`
+ * attribute and every `classNames` prop) instead of an ever-growing
+ * per-class-name ALLOWLIST entry — the growing-list approach this
+ * replaced (see git history) required a new entry for every fix that
+ * touched or added a class name, which is what generalizing it here is
+ * meant to stop needing. None of this codebase's `classNames={{ ... }}`
+ * usages nest braces inside the object (always a flat `{ key: 'value' }`
+ * shape), so matching up to the first `}}` is safe. */
+function neutralizeClassNameAttributes(source: string): string {
+  return source
+    .replace(/\b\w*[Cc]lassName\s*=\s*"(?:[^"\\]|\\.)*"/g, 'className=""')
+    .replace(/\b\w*[Cc]lassName\s*=\s*'(?:[^'\\]|\\.)*'/g, "className=''")
+    .replace(/\b\w*[Cc]lassName\s*=\s*\{`(?:[^`\\]|\\.)*`\}/g, 'className={``}')
+    .replace(/\bclassNames\s*=\s*\{\{[^{}]*\}\}/g, (match) =>
+      match.replace(/'(?:[^'\\]|\\.)*'/g, "''").replace(/"(?:[^"\\]|\\.)*"/g, '""'),
+    )
 }
 
 /** Neutralizes the two other systematic "this string is compared against,
@@ -272,7 +282,9 @@ function extractUiText(source: string): string[] {
 }
 
 function findJargonViolations(rawSource: string): string[] {
-  const cleaned = neutralizeMatchOnlyLiterals(neutralizeImports(stripCommentsAndEscapes(rawSource)))
+  const cleaned = neutralizeClassNameAttributes(
+    neutralizeMatchOnlyLiterals(neutralizeImports(stripCommentsAndEscapes(rawSource))),
+  )
   const violations: string[] = []
   for (const region of extractUiText(cleaned)) {
     const trimmed = region.trim()
@@ -368,6 +380,26 @@ describe('no jargon anywhere in shipped, non-admin UI copy', () => {
     expect(
       findJargonViolations('const el = <button aria-label="Extract metadata" />'),
     ).toHaveLength(0)
+  })
+
+  it('self-test: a className/classNames CSS-class value is never flagged, however it stems-match, but the same word elsewhere on the same line still is', () => {
+    // Plain `className`, and any `*ClassName` variant (rootClassName,
+    // overlayClassName, ...), double- or single-quoted.
+    expect(findJargonViolations('<div className="docu-query-tier-option" />')).toHaveLength(0)
+    expect(findJargonViolations("<Drawer rootClassName='docu-tier-drawer' />")).toHaveLength(0)
+    expect(
+      findJargonViolations('<Tooltip overlayClassName={`docu-${kind}-tier-tip`} />'),
+    ).toHaveLength(0)
+    // antd v6's semantic `classNames={{ ... }}` object-literal prop.
+    expect(
+      findJargonViolations("<Dropdown classNames={{ root: 'docu-query-tier-menu' }} />"),
+    ).toHaveLength(0)
+    // A real violation right next to a `className` on the same line is
+    // still caught — the neutralizer only blanks the attribute's own
+    // value, not the rest of the line.
+    expect(
+      findJargonViolations('<p className="docu-tier-row">Now streaming your answer</p>'),
+    ).toHaveLength(1)
   })
 
   const files = listSourceFiles(SRC_DIR)

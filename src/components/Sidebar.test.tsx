@@ -291,7 +291,10 @@ describe('Sidebar — project grouping', () => {
 
     expect(screen.getByText('Shared')).toBeInTheDocument()
     expect(screen.getByText('Shared chat')).toBeInTheDocument()
-    expect(screen.getByText('by alice')).toBeInTheDocument()
+    // ChatListItem.tsx renders the subtitle with a middot separator
+    // (`<span> · {subtitle}</span>`) — the rendered text is "· by alice",
+    // not the bare "by alice" this assertion used to look for.
+    expect(screen.getByText('· by alice')).toBeInTheDocument()
     // Two owned chats (Chat A, Chat B) get an options button; the shared
     // row doesn't.
     expect(screen.getAllByRole('button', { name: 'Chat options' })).toHaveLength(2)
