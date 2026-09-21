@@ -55,6 +55,36 @@ body {
    inner column and each message wrapper). */
 .docu-chat-scroll {
   overflow-x: hidden;
+  /* P0-2 (UI polish pass): bottom padding equal to the composer's own
+     measured height (`--docu-composer-height`, set live by AppLayout.tsx's
+     ResizeObserver) instead of a flat `pb-6` — the composer's rendered
+     height varies (multi-line textarea, mobile two-row toolbar, the
+     host-of-query-share banner, a disabled-reason line), and under-
+     reserving space for it is what let the last message render hard-clipped
+     behind/under it. 13rem is only the fallback for the instant before the
+     first ResizeObserver measurement lands. Unlayered, so — unlike a
+     Tailwind `pb-*` utility, which this replaces — it can never be beaten
+     by a conflicting layered rule regardless of specificity/order, same
+     reasoning as every other unlayered rule in this file. */
+  padding-bottom: var(--docu-composer-height, 13rem);
+}
+
+/* Fade strip directly above the composer (P0-2, UI polish pass) — a
+   `docu-chat-fade` sibling rendered between the scroll area and the
+   composer in AppLayout.tsx. `margin-top` pulls it up to overlap the
+   scroll area's own bottom edge (a later DOM sibling paints over an
+   earlier one at the same stacking level, no `z-index` needed), so
+   content scrolling toward the composer softens out under a gradient
+   instead of ending on a hard edge. Height matches the pull so it never
+   affects the flex column's own total height. Decorative only —
+   `pointer-events: none` keeps it out of the way of clicks/hover on
+   whatever it's laid over. */
+.docu-chat-fade {
+  height: 1.75rem;
+  margin-top: -1.75rem;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent, var(--docu-bg-app));
+  position: relative;
 }
 
 /* Remove Ant Design / browser focus rings on text inputs app-wide */
