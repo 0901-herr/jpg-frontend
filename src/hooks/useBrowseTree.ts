@@ -1,4 +1,4 @@
-import { message, type TreeSelectProps } from 'antd'
+import { App, type TreeSelectProps } from 'antd'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError } from '../api/http'
 import { fetchBrowseRoot, fetchBrowseStatus, fetchFolderContents } from '../api/browse'
@@ -18,6 +18,7 @@ import {
   toUserFacingFolderLoadError,
   type FolderLoadError,
 } from '../utils/userFacingErrors'
+import { markUnreachableCardShown } from '../utils/backendUnreachableNotice'
 
 const REMEMBERED_FOLDER_GONE_WARNING =
   'The remembered folder no longer exists — showing the root folder.'
@@ -96,6 +97,11 @@ export interface DocumentsLoadedEvent {
 }
 
 export function useBrowseTree(onDocumentsLoaded?: (event: DocumentsLoadedEvent) => void) {
+  // `App.useApp()` rather than the static `message` import from 'antd' —
+  // the static functions "can not consume context like dynamic theme"
+  // (antd's own deprecation warning); this hook is only ever called from
+  // AppLayout, which now renders under the `<App>` provider (App.tsx).
+  const { message } = App.useApp()
   const [rootFolderId, setRootFolderId] = useState<number | null>(null)
   const [username, setUsername] = useState<string | null>(null)
   const [cache, setCache] = useState<Map<number, FolderCacheEntry>>(new Map())
@@ -325,7 +331,17 @@ export function useBrowseTree(onDocumentsLoaded?: (event: DocumentsLoadedEvent) 
           // P1-5 / scope item 12): a permission problem and a server
           // problem must read as clearly different, plain-language copy.
           const httpStatus = err instanceof ApiError ? err.status : undefined
-          setInitError(toUserFacingFolderLoadError(httpStatus))
+          const folderLoadError = toUserFacingFolderLoadError(httpStatus)
+          setInitError(folderLoadError)
+          // P1-3 (UI polish pass): only the server/network flavor of this
+          // card is the same "backend unreachable" failure useChatStore's
+          // own hydration toast can also fire for on this same app load —
+          // a 403 (FOLDER_LOAD_PERMISSION_ERROR) is a different, unrelated
+          // failure (the backend answered just fine) and never suppresses
+          // that toast. See backendUnreachableNotice.ts.
+          if (folderLoadError === FOLDER_LOAD_SERVER_ERROR) {
+            markUnreachableCardShown()
+          }
         }
       } finally {
         if (!cancelled) setIsInitializing(false)

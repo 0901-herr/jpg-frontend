@@ -757,4 +757,210 @@ describe('sendMessage abstention handling', () => {
     expect(onCitations).not.toHaveBeenCalled()
     expect(result.sources).toBeUndefined()
   })
+
+  it('drops already-streamed citations and calls onAbstention when only the done event flags abstained (streaming absence-assertion path, no abstention event)', async () => {
+    scriptedEvents = [
+      { event: 'citation', data: { citations: [{ document_id: 'doc-1', filename: 'A.pdf', page: 2 }] } },
+      { event: 'answer', data: { text: 'The provided documents do not mention that.' } },
+      { event: 'done', data: { duration_ms: 5, abstained: true, abstain_reason: 'absence_assertion' } },
+    ]
+
+    const onAbstention = vi.fn()
+    const onCitations = vi.fn()
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'Unrelated question',
+      documents: ['doc1'],
+      callbacks: { onAbstention, onCitations },
+    })
+
+    expect(onAbstention).toHaveBeenCalledWith({ reason: 'absence_assertion' })
+    expect(onCitations).toHaveBeenCalledTimes(1)
+    expect(result.sources).toBeUndefined()
+    expect(result.fileTags).toBeUndefined()
+  })
+
+  it('does not call onAbstention a second time when both an abstention event and a done.abstained=true arrive', async () => {
+    scriptedEvents = [
+      { event: 'abstention', data: { reason: 'no_relevant_content' } },
+      { event: 'answer', data: { text: "I couldn't find relevant content." } },
+      { event: 'done', data: { duration_ms: 5, abstained: true, abstain_reason: 'no_relevant_content' } },
+    ]
+
+    const onAbstention = vi.fn()
+
+    await sendMessage({
+      chatId: 'c1',
+      message: 'Unrelated question',
+      documents: ['doc1'],
+      callbacks: { onAbstention },
+    })
+
+    expect(onAbstention).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaves citations and sources untouched when the done event has no abstained field (older engine, backward compatible)', async () => {
+    scriptedEvents = [
+      { event: 'citation', data: { citations: [{ document_id: 'doc-1', filename: 'A.pdf', page: 2 }] } },
+      { event: 'answer', data: { text: 'The answer is [Doc1].' } },
+      { event: 'done', data: { duration_ms: 5 } },
+    ]
+
+    const onAbstention = vi.fn()
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'A question',
+      documents: ['doc1'],
+      callbacks: { onAbstention },
+    })
+
+    expect(onAbstention).not.toHaveBeenCalled()
+    expect(result.sources).toHaveLength(1)
+  })
+
+  it('leaves citations untouched when done.abstained is explicitly false', async () => {
+    scriptedEvents = [
+      { event: 'citation', data: { citations: [{ document_id: 'doc-1', filename: 'A.pdf', page: 2 }] } },
+      { event: 'answer', data: { text: 'The answer is [Doc1].' } },
+      { event: 'done', data: { duration_ms: 5, abstained: false, abstain_reason: null } },
+    ]
+
+    const onAbstention = vi.fn()
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'A question',
+      documents: ['doc1'],
+      callbacks: { onAbstention },
+    })
+
+    expect(onAbstention).not.toHaveBeenCalled()
+    expect(result.sources).toHaveLength(1)
+  })
+})
+
+describe('sendMessage final_answer handling', () => {
+  it('replaces the returned content with final_answer when present and different', async () => {
+    scriptedEvents = [
+      { event: 'answer', data: { text: 'The draft answer, still rough.' } },
+      {
+        event: 'done',
+        data: { duration_ms: 5, final_answer: 'The final, normalised answer.' },
+      },
+    ]
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'A question',
+      documents: ['doc1'],
+    })
+
+    expect(result.content).toBe('The final, normalised answer.')
+  })
+
+  it('keeps the streamed content when final_answer is absent (older engine, backward compatible)', async () => {
+    scriptedEvents = [
+      { event: 'answer', data: { text: 'The streamed answer.' } },
+      { event: 'done', data: { duration_ms: 5 } },
+    ]
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'A question',
+      documents: ['doc1'],
+    })
+
+    expect(result.content).toBe('The streamed answer.')
+  })
+
+  it('keeps the streamed content when final_answer is an empty string', async () => {
+    scriptedEvents = [
+      { event: 'answer', data: { text: 'The streamed answer.' } },
+      { event: 'done', data: { duration_ms: 5, final_answer: '' } },
+    ]
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'A question',
+      documents: ['doc1'],
+    })
+
+    expect(result.content).toBe('The streamed answer.')
+  })
+
+  it('is a no-op when final_answer matches the already-assembled content', async () => {
+    scriptedEvents = [
+      { event: 'answer', data: { text: 'Same either way.' } },
+      { event: 'done', data: { duration_ms: 5, final_answer: 'Same either way.' } },
+    ]
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'A question',
+      documents: ['doc1'],
+    })
+
+    expect(result.content).toBe('Same either way.')
+  })
+
+  it('keeps the streamed content when final_answer is whitespace-only (review fix: never blank a good answer)', async () => {
+    scriptedEvents = [
+      { event: 'answer', data: { text: 'A perfectly good streamed answer.' } },
+      { event: 'done', data: { duration_ms: 5, final_answer: '   ' } },
+    ]
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'A question',
+      documents: ['doc1'],
+    })
+
+    expect(result.content).toBe('A perfectly good streamed answer.')
+  })
+
+  it('is a no-op when final_answer matches the assembled content modulo surrounding whitespace', async () => {
+    scriptedEvents = [
+      { event: 'answer', data: { text: 'Same either way.' } },
+      { event: 'done', data: { duration_ms: 5, final_answer: '  Same either way.  ' } },
+    ]
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'A question',
+      documents: ['doc1'],
+    })
+
+    expect(result.content).toBe('Same either way.')
+  })
+
+  it('still applies the abstained done-event handling when final_answer is also present', async () => {
+    scriptedEvents = [
+      { event: 'citation', data: { citations: [{ document_id: 'doc-1', filename: 'A.pdf', page: 2 }] } },
+      { event: 'answer', data: { text: 'The provided documents do not mention that.' } },
+      {
+        event: 'done',
+        data: {
+          duration_ms: 5,
+          abstained: true,
+          abstain_reason: 'absence_assertion',
+          final_answer: "I couldn't find relevant content.",
+        },
+      },
+    ]
+
+    const onAbstention = vi.fn()
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'Unrelated question',
+      documents: ['doc1'],
+      callbacks: { onAbstention },
+    })
+
+    expect(onAbstention).toHaveBeenCalledWith({ reason: 'absence_assertion' })
+    expect(result.content).toBe("I couldn't find relevant content.")
+    expect(result.sources).toBeUndefined()
+  })
 })

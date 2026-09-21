@@ -1,5 +1,6 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render as rtlRender, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { App } from 'antd'
 import React from 'react'
 import { afterEach, beforeEach, vi } from 'vitest'
 import FolderSidebar from './FolderSidebar'
@@ -17,6 +18,17 @@ vi.mock('../api/browse')
 // re-mocking the module, since every describe block below needs a
 // different value and vi.mock's factory only runs once per file.
 vi.mock('../config/features', () => ({ FEATURES: { categoryView: true } }))
+
+// FolderSidebar.tsx reads `message` via `App.useApp()` (P1-4, UI polish
+// pass) instead of the static antd import — outside a real `<App>`
+// provider that resolves to the context default `{}`, and `{}.error(...)`
+// throws. Every render() in this file (including via the `Harness` helper
+// some describe blocks use below) wraps FolderSidebar in a real `<App>`
+// so those calls resolve to a working, visible toast instead (see "shows
+// an error toast when opening a document fails" further down).
+function render(ui: React.ReactElement) {
+  return rtlRender(<App>{ui}</App>)
+}
 
 beforeEach(() => {
   vi.mocked(browseApi.fetchSubtreeDocuments).mockResolvedValue({
@@ -521,6 +533,24 @@ describe('FolderSidebar file row status', () => {
     ).toBeInTheDocument()
     expect(tooltip.querySelector('.docu-file-row-tooltip-status--not-ready')).not.toBeNull()
     expect(screen.queryByRole('img')).not.toBeInTheDocument()
+  })
+
+  it('shows an error toast when opening a document in LogicalDOC fails (App.useApp() coverage)', async () => {
+    vi.mocked(browseApi.fetchDocumentViewUrl).mockRejectedValueOnce(new Error('network error'))
+    render(<FolderSidebar browse={createBrowseFixture()} selection={createSelectionFixture()} />)
+
+    const user = userEvent.setup()
+    await user.hover(await screen.findByText('contract.pdf'))
+    const tooltip = await screen.findByRole('tooltip')
+    await user.click(
+      within(tooltip).getByRole('button', { name: 'Open contract.pdf in LogicalDOC' }),
+    )
+
+    // buildDocLeaf's `message.error(...)` call — read via App.useApp()
+    // (P1-4) — only resolves to a working, visible toast when this render
+    // is wrapped in a real `<App>` (see render() above); outside one it
+    // throws instead of ever reaching the DOM.
+    expect(await screen.findByText('Could not open contract.pdf')).toBeInTheDocument()
   })
 })
 

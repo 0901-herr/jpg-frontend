@@ -177,7 +177,7 @@ function ProjectGroupHeader({
           placement="rightTop"
           transitionName=""
           destroyOnHidden
-          overlayClassName="docu-chat-options-menu"
+          classNames={{ root: 'docu-chat-options-menu' }}
         >
           <button
             type="button"
@@ -674,7 +674,7 @@ export default function Sidebar({
               transitionName=""
               destroyOnHidden
               arrow={false}
-              overlayClassName="docu-chat-options-menu"
+              classNames={{ root: 'docu-chat-options-menu' }}
             >
               <button
                 type="button"

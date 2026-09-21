@@ -1,4 +1,4 @@
-import { Alert, message, Select, Skeleton, Spin, Tooltip, Tree } from 'antd'
+import { Alert, App, Select, Skeleton, Spin, Tooltip, Tree } from 'antd'
 import {
   ChatAppsIcon,
   ChatAppsSuffixIcon,
@@ -56,7 +56,25 @@ function switcherIcon({ expanded, isLeaf }: AntTreeNodeProps) {
   )
 }
 
+// P2-3 (UI polish pass): a folder row's title has no built-in truncation
+// tooltip the way buildDocLeaf's file row does above — a long folder name
+// just elides under the antd Tree's own CSS with no way to read the rest.
+// Same fix, minus the file row's ready/open-in-LogicalDOC affordances
+// (a folder has neither): truncate visually, show the full name on hover.
+function buildFolderTitle(name: string) {
+  return (
+    <Tooltip title={name} mouseEnterDelay={0.2}>
+      <span className="block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
+        {name}
+      </span>
+    </Tooltip>
+  )
+}
+
 export default function FolderSidebar({ browse, selection, disabled = false }: FolderSidebarProps) {
+  // `App.useApp()` rather than the static `message` import from 'antd' —
+  // see App.tsx's comment on the `<AntApp>` provider this reads from.
+  const { message } = App.useApp()
   const [viewMode, setViewMode] = useState<BrowseViewMode>('folder')
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
 
@@ -337,7 +355,7 @@ export default function FolderSidebar({ browse, selection, disabled = false }: F
       if (!entry) return undefined
       const subfolders: DataNode[] = entry.contents.folders.map((folder) => ({
         key: `${FOLDER_KEY_PREFIX}${folder.folder_id}`,
-        title: folder.name,
+        title: buildFolderTitle(folder.name),
         // Every listed child folder is reported has_children: true (its
         // own children aren't known without a fetch) — always expandable
         // via loadData, same as the previous folder picker.
@@ -359,7 +377,7 @@ export default function FolderSidebar({ browse, selection, disabled = false }: F
     return [
       {
         key: `${FOLDER_KEY_PREFIX}${rootFolderId}`,
-        title: rootMeta?.name ?? 'All documents',
+        title: buildFolderTitle(rootMeta?.name ?? 'All documents'),
         isLeaf: rootMeta ? !rootMeta.has_children : false,
         disableCheckbox: emptyFolderIds.has(rootFolderId),
         children: buildFolderChildren(rootFolderId),
@@ -524,7 +542,7 @@ export default function FolderSidebar({ browse, selection, disabled = false }: F
       <Alert
         type="error"
         showIcon
-        message="Session expired"
+        title="Session expired"
         description="Reopen Arche AI from LogicalDOC to continue."
         className="!text-xs !m-0"
       />
@@ -536,7 +554,7 @@ export default function FolderSidebar({ browse, selection, disabled = false }: F
       <Alert
         type="warning"
         showIcon
-        message={initError.title}
+        title={initError.title}
         description={initError.body}
         className="!text-xs !m-0"
       />

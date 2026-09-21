@@ -1,6 +1,14 @@
-import { Drawer, Layout, Skeleton, message } from 'antd'
+import { App, Drawer, Layout, Skeleton } from 'antd'
 import { ChatBubbleIconLg, ChatCloseIcon, ChatMenuIcon } from '../icons/chat'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react'
 import {
   categorizeDocument,
   extractMetadata,
@@ -18,6 +26,7 @@ import { useChatStore, createEmptySession } from '../hooks/useChatStore'
 import { useDocumentSelection } from '../hooks/useDocumentSelection'
 import { useResizableWidth } from '../hooks/useResizableWidth'
 import { useMediaQuery } from '../hooks/useMediaQuery'
+import { NARROW_LAYOUT_QUERY } from '../config/layout'
 import { useVisualViewportHeight } from '../hooks/useVisualViewportHeight'
 import { type, typeColor } from '../styles/typography'
 import { citationsToSources, mergeCitations } from '../utils/citations'
@@ -116,6 +125,16 @@ function queryErrorRawMessage(err: unknown): string | undefined {
 function createInitialSession(): ChatSession {
   if (isCitationLoadingDemoEnabled()) return createCitationLoadingDemoSession()
   if (isShareDemoEnabled()) return createShareDemoSession()
+  // P2-1 (UI polish pass): `/chat/demo/composer` previews the full layout
+  // with the composer's controls enabled, reusing the citation demo's own
+  // content to have something realistic on screen — but `isCitationDemoEnabled()`
+  // (below) is true for this route too (it treats the composer demo as a
+  // citation-demo variant), so without this branch first the session kept
+  // `createCitationDemoSession()`'s own title, "Citation demo", which reads
+  // as a copy/paste leftover on a route that isn't about citations at all.
+  // Checked before the plain citation-demo branch so this route gets its
+  // own, honest title instead.
+  if (isComposerDemoEnabled()) return createCitationDemoSession('Composer demo')
   if (isCitationDemoEnabled()) return createCitationDemoSession()
   return createEmptySession()
 }
@@ -139,13 +158,14 @@ function getShareTokenFromLocation(): string | null {
 // Below 768px the resizable desktop sidebar is replaced by a slim top bar
 // (hamburger + "Arche AI" + current session title) and the sidebar itself
 // moves into an antd Drawer opened from that hamburger — see the Task 5
-// brief. 767.98px (not 768) so a device reporting exactly 768px CSS pixels
-// lands on the desktop side of the breakpoint, matching a `max-width: 767px`
-// media query's usual `.98px` convention for avoiding 1px gaps against a
-// paired `min-width: 768px` rule.
-const NARROW_LAYOUT_QUERY = '(max-width: 767.98px)'
+// brief. `NARROW_LAYOUT_QUERY` (config/layout.ts) is shared with the admin
+// console's own mobile nav (P0-1, UI polish pass), which collapses the same
+// way at the same breakpoint.
 
 export default function AppLayout() {
+  // `App.useApp()` rather than the static `message` import from 'antd' —
+  // see App.tsx's comment on the `<AntApp>` provider this reads from.
+  const { message } = App.useApp()
   const { session: authSession, isLoading: authLoading } = useAuth()
   const layoutDemo = isComposerDemoEnabled() || isShareDemoEnabled()
   const shareDemo = isShareDemoEnabled()
@@ -433,6 +453,30 @@ export default function AppLayout() {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const shouldStickToBottomRef = useRef(true)
+  // P0-2 (UI polish pass): the composer's own rendered height varies — a
+  // multi-line textarea, the mobile two-row toolbar, the host-of-query-share
+  // banner, and the disabled-reason line above it can all make it taller
+  // than the fixed guess `docu-chat-last-turn`'s min-height calc used to
+  // hardcode (13rem) — so the scroll area under-reserved space for it and
+  // the last message ended up hard-clipped behind/under the composer.
+  // Measured live via ResizeObserver and published as `--docu-composer-height`
+  // (below), consumed by both the scroll container's own bottom padding and
+  // that min-height calc, so there's always exactly enough room to scroll
+  // the last turn fully clear of the composer, however tall it currently is.
+  const composerRef = useRef<HTMLDivElement>(null)
+  const [composerHeight, setComposerHeight] = useState<number | null>(null)
+
+  useEffect(() => {
+    const el = composerRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0]
+      if (!entry) return
+      setComposerHeight(entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height)
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
 
   const lastTurnScrollKey = useMemo(() => {
     const msgs = activeSession?.messages ?? []
@@ -474,10 +518,31 @@ export default function AppLayout() {
     return () => container.removeEventListener('scroll', onScroll)
   }, [])
 
+  // P0-2 (UI polish pass) root cause: while `isActiveChatMessagesLoading` is
+  // true, the render below shows the skeleton instead of the message list,
+  // so `messagesEndRef` isn't mounted yet and `scrollToBottom` here is a
+  // silent no-op. `messagePairs`/`lastTurnScrollKey` are computed from
+  // `activeSession.messages` regardless of that loading flag, so for a
+  // session whose messages don't change again once loading flips to false
+  // (every demo route's static mock session; in principle any chat whose
+  // very first paint happens to race the skeleton this way) neither
+  // dependency changes on the loading→loaded transition, and without
+  // `isActiveChatMessagesLoading` itself in the dependency array this
+  // effect never re-ran to scroll the now-mounted real content — leaving
+  // the page sitting at scrollTop 0, wherever the initial layout happened
+  // to land, with the last turn only partially (or not at all) visible
+  // above the composer. Including it here re-fires the scroll exactly once
+  // more, right as the real content replaces the skeleton.
   useLayoutEffect(() => {
     if (!shouldStickToBottomRef.current) return
     scrollToBottom(messagePairs.length <= 1 ? 'auto' : 'smooth')
-  }, [lastTurnScrollKey, activeChatId, messagePairs.length, scrollToBottom])
+  }, [
+    lastTurnScrollKey,
+    activeChatId,
+    messagePairs.length,
+    isActiveChatMessagesLoading,
+    scrollToBottom,
+  ])
 
   // UX P0-3: switching away from a chat that's still streaming must not
   // leave the new chat's composer stuck on "Stop" waiting for the OLD
@@ -1375,7 +1440,12 @@ export default function AppLayout() {
   return (
     <div
       className="docu-app-shell flex flex-col min-h-0"
-      style={visualViewportHeight != null ? { height: `${visualViewportHeight}px` } : undefined}
+      style={{
+        ...(visualViewportHeight != null ? { height: `${visualViewportHeight}px` } : undefined),
+        ...(composerHeight != null
+          ? ({ '--docu-composer-height': `${composerHeight}px` } as CSSProperties)
+          : undefined),
+      }}
     >
       {isNarrowLayout && (
         <div
@@ -1435,7 +1505,7 @@ export default function AppLayout() {
           <Content className="flex flex-col h-full min-h-0">
             <div
               ref={scrollContainerRef}
-              className="docu-chat-scroll flex-1 overflow-y-auto px-4 sm:px-6 pt-6 pb-6 min-h-0 scroll-smooth flex flex-col"
+              className="docu-chat-scroll flex-1 overflow-y-auto px-4 sm:px-6 pt-6 min-h-0 scroll-smooth flex flex-col"
             >
               {/* max-w-3xl (48rem) — the conversation column width of a
                   mainstream AI-chat layout (client feedback: UI polish
@@ -1471,7 +1541,7 @@ export default function AppLayout() {
                     return (
                       <div
                         key={pair.user.id}
-                        className={`min-w-0 ${isLastTurn ? 'docu-chat-last-turn min-h-[min(72vh,calc(100dvh-13rem))]' : ''}`}
+                        className={`min-w-0 ${isLastTurn ? 'docu-chat-last-turn min-h-[min(72vh,calc(100dvh-var(--docu-composer-height,13rem)))]' : ''}`}
                       >
                         <ChatMessageItem message={pair.user} currentUsername={currentUsername} />
                         {pair.assistant && <ChatMessageItem message={pair.assistant} />}
@@ -1482,57 +1552,66 @@ export default function AppLayout() {
                 <div ref={messagesEndRef} className="h-px shrink-0" aria-hidden />
               </div>
             </div>
-            <ChatInput
-              // A leftover selection from the viewer's own chat must never
-              // apply to a shared one (owner decision, 2026-09-16) — the
-              // Files pane is disabled for it anyway, but the selection
-              // itself is global state that outlives switching chats.
-              // Composer demo still uses the real tree selection for the
-              // files pill (count + tooltip list); only send/actions are stubbed.
-              selectedCount={isSharedChat ? 0 : selection.selectedCount}
-              selectedFiles={
-                isSharedChat
-                  ? []
-                  : [...selection.selectedIds].map((documentId) => ({
-                      documentId,
-                      filename:
-                        selection.documentMeta.get(documentId)?.filename ??
-                        `Document ${documentId}`,
-                    }))
-              }
-              onClearSelection={selection.clearSelection}
-              onSend={layoutDemo ? () => undefined : handleSend}
-              onSummarize={layoutDemo ? () => undefined : handleSummarize}
-              onCategorize={layoutDemo ? () => undefined : handleCategorize}
-              onExtractMetadata={layoutDemo ? () => undefined : handleExtractMetadata}
-              onStop={handleStop}
-              onComposerFocus={handleComposerFocus}
-              isResponding={layoutDemo ? false : sendQuery.isPending}
-              disabled={
-                layoutDemo
-                  ? false
-                  : browse.sessionExpired || isActiveChatMessagesLoading || isActiveChatBeingCreated
-              }
-              disabledReason={
-                layoutDemo
-                  ? undefined
-                  : (inputBlockedReason ??
-                    (isActiveChatBeingCreated ? 'Setting up this chat' : undefined))
-              }
-              summarizeDisabledReason={layoutDemo ? null : summarizeDisabledReason}
-              categorizeDisabledReason={layoutDemo ? null : categorizeDisabledReason}
-              extractMetadataDisabledReason={layoutDemo ? null : extractMetadataDisabledReason}
-              queryTier={queryTier}
-              onQueryTierChange={setQueryTier}
-              viewOnly={isSharedViewOnly}
-              viewOnlyPlaceholder="View only — the owner has not allowed questions here"
-              allowEmptySelection={isSharedQueryable && sharedScopeIds.length > 0}
-              emptySelectionPlaceholder="Ask about the shared files"
-              sharedScopeFiles={isSharedQueryable ? sharedScopeDocuments : undefined}
-              sharedScopeEmpty={isSharedQueryable && sharedScopeIds.length === 0}
-              isSharedChat={isSharedChat}
-              isHostOfQueryShare={isHostOfQueryShare}
-            />
+            {/* Fade strip (P0-2, UI polish pass): a thin gradient sitting
+                just above the composer, painted over the scroll area's own
+                bottom edge via a negative top margin (same stacking-order
+                trick as any "fade the content that's about to be occluded"
+                overlay — a later sibling paints over an earlier one with no
+                z-index needed). Purely decorative and inert. */}
+            <div className="docu-chat-fade shrink-0" aria-hidden />
+            <div ref={composerRef} className="shrink-0">
+              <ChatInput
+                // A leftover selection from the viewer's own chat must never
+                // apply to a shared one (owner decision, 2026-09-16) — the
+                // Files pane is disabled for it anyway, but the selection
+                // itself is global state that outlives switching chats.
+                // Layout demos still use the real tree selection for the
+                // files pill (count + tooltip list); only send/actions are stubbed.
+                selectedCount={isSharedChat ? 0 : selection.selectedCount}
+                selectedFiles={
+                  isSharedChat
+                    ? []
+                    : [...selection.selectedIds].map((documentId) => ({
+                        documentId,
+                        filename:
+                          selection.documentMeta.get(documentId)?.filename ??
+                          `Document ${documentId}`,
+                      }))
+                }
+                onClearSelection={selection.clearSelection}
+                onSend={layoutDemo ? () => undefined : handleSend}
+                onSummarize={layoutDemo ? () => undefined : handleSummarize}
+                onCategorize={layoutDemo ? () => undefined : handleCategorize}
+                onExtractMetadata={layoutDemo ? () => undefined : handleExtractMetadata}
+                onStop={handleStop}
+                onComposerFocus={handleComposerFocus}
+                isResponding={layoutDemo ? false : sendQuery.isPending}
+                disabled={
+                  layoutDemo
+                    ? false
+                    : browse.sessionExpired || isActiveChatMessagesLoading || isActiveChatBeingCreated
+                }
+                disabledReason={
+                  layoutDemo
+                    ? undefined
+                    : (inputBlockedReason ??
+                      (isActiveChatBeingCreated ? 'Setting up this chat' : undefined))
+                }
+                summarizeDisabledReason={layoutDemo ? null : summarizeDisabledReason}
+                categorizeDisabledReason={layoutDemo ? null : categorizeDisabledReason}
+                extractMetadataDisabledReason={layoutDemo ? null : extractMetadataDisabledReason}
+                queryTier={queryTier}
+                onQueryTierChange={setQueryTier}
+                viewOnly={isSharedViewOnly}
+                viewOnlyPlaceholder="View only — the owner has not allowed questions here"
+                allowEmptySelection={isSharedQueryable && sharedScopeIds.length > 0}
+                emptySelectionPlaceholder="Ask about the shared files"
+                sharedScopeFiles={isSharedQueryable ? sharedScopeDocuments : undefined}
+                sharedScopeEmpty={isSharedQueryable && sharedScopeIds.length === 0}
+                isSharedChat={isSharedChat}
+                isHostOfQueryShare={isHostOfQueryShare}
+              />
+            </div>
           </Content>
         </Layout>
       </Layout>

@@ -1,4 +1,4 @@
-import { Input, Tooltip, message } from 'antd'
+import { App, Input, Tooltip } from 'antd'
 import { useState } from 'react'
 import {
   ChatCategorizeIcon,
@@ -124,6 +124,7 @@ function SelectedFilesTooltip({
 }: {
   files: { documentId: string; filename: string }[]
 }) {
+  const { message } = App.useApp()
   const [openingId, setOpeningId] = useState<string | null>(null)
 
   if (files.length === 0) return null
@@ -235,7 +236,7 @@ export default function ChatInput({
           title={<SelectedFilesTooltip files={selectedFiles} />}
           placement="top"
           mouseEnterDelay={0.2}
-          overlayClassName="docu-selected-files-tooltip"
+          classNames={{ root: 'docu-selected-files-tooltip' }}
           // antd v6 caps the tooltip ROOT (`.ant-tooltip`, the
           // `tooltipMaxWidth` token) at 250px via CSS-in-JS. The old
           // `.docu-selected-files-tooltip .ant-tooltip-inner { max-width:
@@ -293,7 +294,7 @@ export default function ChatInput({
         }
         placement="top"
         mouseEnterDelay={0.2}
-        overlayClassName="docu-selected-files-tooltip"
+        classNames={{ root: 'docu-selected-files-tooltip' }}
         styles={{ root: { maxWidth: isCompactComposer ? 'calc(100vw - 32px)' : 440 } }}
       >
         <span

@@ -397,6 +397,55 @@ async function streamQuery(
             terminalEvent = true
             const obj = asRecord(data)
             durationMs = obj ? readNumber(obj, 'duration_ms') : undefined
+            // Mechanism B (the streaming post-generation absence-assertion
+            // check, `is_absence_assertion` in rag-engine) has no dedicated
+            // SSE event of its own — unlike Mechanism A's `abstention`
+            // event (handled above), it only learns the answer was a
+            // decline *after* every `citation`/`answer` segment has
+            // already streamed, so the engine flags it on the terminal
+            // `done` event instead (`abstained`/`abstain_reason`, additive
+            // fields — absent on an older engine that predates this).
+            // Applying the exact same treatment `case 'abstention'` uses
+            // (drop already-streamed citations, fire `onAbstention`) makes
+            // the rest of the pipeline — `AppLayout`'s `abstainedRef`,
+            // the cleared `sources`, the persisted `ChatMessage.abstained`
+            // — handle this path identically, with no new UI logic. The
+            // `!abstained` guard keeps this a no-op when an `abstention`
+            // event already fired for this stream (sticky, same as the
+            // 'citation' case's own guard above).
+            if (obj?.abstained === true && !abstained) {
+              abstained = true
+              citations = []
+              callbacks.onAbstention?.({
+                reason: readString(obj, 'abstain_reason'),
+              })
+            }
+            // `final_answer` (additive field, absent on an older engine):
+            // the engine's post-generation answer-normalisation pass can
+            // rewrite the streamed text — e.g. trimming a duplicated
+            // trailing sentence or fixing spacing — after every `answer`
+            // segment has already streamed and been shown live via
+            // `onAnswer`. `content` (not a callback) is what actually
+            // becomes the message once this stream finishes: `sendMessage`
+            // returns it as `content`, and the caller builds the final,
+            // persisted `ChatMessage` straight from that return value
+            // rather than from the accumulated `onAnswer` deltas — so
+            // swapping it in here, once, is what "replaces the rendered
+            // message content" for every caller, with no per-caller
+            // wiring. Only applied when it's a real, different answer;
+            // an empty string or a value matching what was already
+            // assembled is left alone (nothing to replace). Compared and
+            // gated on the *trimmed* value (review fix): an untrimmed
+            // `finalAnswer` is truthy for a whitespace-only string
+            // ("   "), which would otherwise overwrite a perfectly good
+            // streamed answer with a blank bubble — `content` itself is
+            // still assigned untrimmed (a real answer's own meaningful
+            // leading/trailing whitespace, if any, is preserved).
+            const finalAnswer = obj ? readString(obj, 'final_answer') : undefined
+            const trimmedFinalAnswer = finalAnswer?.trim()
+            if (trimmedFinalAnswer && trimmedFinalAnswer !== content.trim()) {
+              content = finalAnswer as string
+            }
             callbacks.onDone?.({ duration_ms: durationMs })
             break
           }

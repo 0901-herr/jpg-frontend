@@ -361,6 +361,31 @@ function collapseCitationRuns(segments: AnswerSegment[]): AnswerSegment[] {
   return result
 }
 
+/** Matches leading whitespace directly followed by a sentence/clause mark —
+ * only that whitespace is captured (group 1 is the mark itself, kept). */
+const LEADING_SPACE_BEFORE_PUNCTUATION_RE = /^\s+([.,!?;:])/
+
+/** Closes the stray gap a space in the model's own text leaves between a
+ * citation pill and punctuation that immediately follows it — "subscriptions
+ * [Doc1] ." renders as "subscriptions ①  ." otherwise, the pill visually
+ * detached from the period it ends the sentence with (client feedback: UI
+ * polish pass). `collapseCitationRuns` above already moves punctuation
+ * for a *run* of 2+ markers, but leaves a lone marker's trailing text
+ * untouched — this covers that remaining case (and is a harmless no-op
+ * for the run case, since that branch never leaves a leading space on the
+ * segment right after the run's own last pill). Only the leading
+ * whitespace is stripped; any further text in the segment renders
+ * unchanged. */
+function tightenPillPunctuation(segments: AnswerSegment[]): AnswerSegment[] {
+  return segments.map((segment, i) => {
+    if (segment.type !== 'text') return segment
+    if (segments[i - 1]?.type !== 'ref') return segment
+    const match = LEADING_SPACE_BEFORE_PUNCTUATION_RE.exec(segment.value)
+    if (!match) return segment
+    return { type: 'text', value: segment.value.slice(match[0].length - match[1].length) }
+  })
+}
+
 /** Split answer text into segments, marking doc_ref tokens for linking. */
 export function splitAnswerByDocRefs(
   content: string,
@@ -388,7 +413,7 @@ export function splitAnswerByDocRefs(
       if (source) return { type: 'ref' as const, value: part, source }
       return { type: 'text' as const, value: part }
     })
-  return collapseCitationRuns(spaceAdjacentRefs(segments))
+  return tightenPillPunctuation(collapseCitationRuns(spaceAdjacentRefs(segments)))
 }
 
 /** True iff `content` quotes at least one of `sources` inline — i.e.
@@ -399,6 +424,32 @@ export function splitAnswerByDocRefs(
  * shouldn't claim to quote documents it never actually cited. */
 export function answerHasInlineCitation(content: string, sources: Source[]): boolean {
   return splitAnswerByDocRefs(content, sources).some((segment) => segment.type === 'ref')
+}
+
+/** Deterministically deletes every `[DocN]`-shaped marker (reusing
+ * `BRACKET_DOC_GROUP_RE`, the same pattern `expandBracketDocGroups` already
+ * matches) from an abstained message's text — call only when
+ * `message.abstained` is true.
+ *
+ * Citations are already cleared for an abstained message (`AppLayout`'s
+ * `onAbstention` handler, `streamQuery`'s own `abstained` handling), so a
+ * leftover marker the model wrote into its decline sentence — despite the
+ * prompt asking it not to cite a refusal — would otherwise reach the
+ * screen as a bare, meaningless "[Doc1]" (no source resolves for
+ * `splitAnswerByDocRefs` to turn it into a pill once `sources` is empty).
+ * This is a pure, fixed-pattern deletion of unambiguous marker syntax —
+ * never a rewrite or splice of the surrounding text — the same safety
+ * class as the other anchored strips in this codebase (see the F54
+ * lesson: a rewrite that invents replacement text is fragile against the
+ * common case it wasn't designed for; a deletion of a token that has
+ * exactly one meaning is not). */
+export function stripAbstainedCitationMarkers(content: string): string {
+  return content
+    .replace(BRACKET_DOC_GROUP_RE, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/[ \t]+([.,;:!?])/g, '$1')
+    .replace(/^[ \t]+/gm, '')
+    .trim()
 }
 
 /** Assigns a stable, 1-based number to each distinct `(document_id, page)`

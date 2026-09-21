@@ -184,7 +184,12 @@ function failedDocs(): AdminDocumentDetail[] {
 function inFlightDocs(): AdminDocumentDetail[] {
   return [
     buildDoc({
-      source_document_id: '4901',
+      // P1-2 (UI polish pass): must not collide with `readyDocs()`'s own
+      // `4900 + i` range (4900-4907 for 8 sample filenames) — a shared id
+      // renders as two rows with the same React `key` (Documents/Activity
+      // tables key off `source_document_id`), which React warns about and
+      // can duplicate/drop either row.
+      source_document_id: '4911',
       filename: 'New_Hire_Onboarding_Guide.pdf',
       lifecycle_status: 'INDEXING',
       db_status: 'INDEXING',
@@ -195,7 +200,7 @@ function inFlightDocs(): AdminDocumentDetail[] {
       queued_at: minutesAgo(5),
     }),
     buildDoc({
-      source_document_id: '4902',
+      source_document_id: '4912',
       filename: 'Campus_Map_2026.pdf',
       lifecycle_status: 'DISCOVERED',
       db_status: 'PENDING',

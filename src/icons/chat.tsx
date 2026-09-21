@@ -10,7 +10,6 @@ import CallMadeIcon from '@mui/icons-material/CallMade'
 import CategoryOutlinedIcon from '@mui/icons-material/CategoryOutlined'
 import ChatIcon from '@mui/icons-material/Chat'
 import CheckCircleOutlinedIcon from '@mui/icons-material/CheckCircleOutlined'
-import CheckOutlinedIcon from '@mui/icons-material/CheckOutlined'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import CloseIcon from '@mui/icons-material/Close'
 import CreateNewFolderOutlinedIcon from '@mui/icons-material/CreateNewFolderOutlined'
@@ -33,6 +32,7 @@ import RefreshOutlinedIcon from '@mui/icons-material/RefreshOutlined'
 import RemoveCircleOutlinedIcon from '@mui/icons-material/RemoveCircleOutlined'
 import ScheduleOutlinedIcon from '@mui/icons-material/ScheduleOutlined'
 import ShareOutlinedIcon from '@mui/icons-material/ShareOutlined'
+import TrackChangesOutlinedIcon from '@mui/icons-material/TrackChangesOutlined'
 import { appIcon } from './AppIcon'
 
 export const ChatBubbleIcon = appIcon(ChatIcon, 20)
@@ -78,11 +78,15 @@ export const ChatAppsSuffixIcon = appIcon(AppsIcon, 'inherit')
 export const ChatRefreshIcon = appIcon(RefreshOutlinedIcon, 14)
 
 /** Query-tier menu (Fast / Normal / Accurate). Fast keeps the bolt; the
- * other two stay as simple stroke icons (clock + check) rather than the
- * heavier scales / verified-seal glyphs. */
+ * other two stay as simple stroke icons (clock + target) rather than the
+ * heavier scales / verified-seal glyphs. P2-2 (UI polish pass): Accurate
+ * used to reuse the checkmark glyph, which reads as "this is the selected
+ * option" regardless of which tier is actually selected (the dropdown's
+ * own highlighted-row background is what marks the real selection) — a
+ * bullseye/target reads as "precision" without implying a checked state. */
 export const QueryTierFastIcon = appIcon(BoltOutlinedIcon, 18)
 export const QueryTierNormalIcon = appIcon(ScheduleOutlinedIcon, 18)
-export const QueryTierAccurateIcon = appIcon(CheckOutlinedIcon, 18)
+export const QueryTierAccurateIcon = appIcon(TrackChangesOutlinedIcon, 18)
 
 export const StatusReadyIcon = appIcon(CheckCircleOutlinedIcon, 12)
 export const StatusIndexingIcon = appIcon(ScheduleOutlinedIcon, 12)

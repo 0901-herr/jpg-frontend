@@ -56,7 +56,7 @@ export default function DocumentDetailsPanel({ docId, open, onClose }: DocumentD
       title={data?.filename ?? `Document ${docId}`}
       open={open}
       onClose={onClose}
-      width={560}
+      size={560}
       extra={
         data?.lifecycle_status === 'FAILED' ? (
           <AdminRetryButton

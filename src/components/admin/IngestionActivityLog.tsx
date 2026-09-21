@@ -85,7 +85,7 @@ export default function IngestionActivityLog({
         <Alert
           type="error"
           showIcon
-          message="Bulk crawl failed"
+          title="Bulk crawl failed"
           description={bulkError ?? 'Check the activity log below for details.'}
         />
       )}
@@ -116,7 +116,7 @@ export default function IngestionActivityLog({
                   className="admin-activity-day-timeline"
                   items={group.entries.map((entry) => ({
                     color: timelineColor(entry.level),
-                    children: (
+                    content: (
                       <div className="min-w-0 pr-2">
                         <div className="admin-activity-entry-header">
                           <Text className={`${ADMIN_TEXT_MUTED} admin-activity-time`}>

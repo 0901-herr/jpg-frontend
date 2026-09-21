@@ -65,7 +65,7 @@ export default function QueryTierDropdown({
       transitionName=""
       destroyOnHidden
       disabled={disabled}
-      overlayClassName="docu-query-tier-menu"
+      classNames={{ root: 'docu-query-tier-menu' }}
     >
       <button
         type="button"

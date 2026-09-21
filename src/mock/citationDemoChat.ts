@@ -58,11 +58,16 @@ const Q3_BREAKDOWN_ANSWER = `Here is the Q3 expense breakdown from the financial
 
 *These figures are mock data for testing formatted chat responses.*`
 
-/** Sample chat with citations and rich Markdown formatting. */
-export function createCitationDemoSession(): ChatSession {
+/** Sample chat with citations and rich Markdown formatting. `title`
+ * defaults to "Citation demo" (the `?demo=citations` route) — `/chat/demo/composer`
+ * (P2-1, UI polish pass) reuses this same content for something realistic
+ * to preview the composer against, but passes its own title rather than
+ * inheriting "Citation demo", which reads as a copy/paste leftover on a
+ * route that isn't about citations. */
+export function createCitationDemoSession(title = 'Citation demo'): ChatSession {
   return {
     id: 'demo-citations-chat',
-    title: 'Citation demo',
+    title,
     messages: [
       {
         id: 'demo-user-1',

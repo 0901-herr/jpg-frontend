@@ -1,9 +1,10 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render as rtlRender, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { message } from 'antd'
+import { App } from 'antd'
+import type { MessageInstance } from 'antd/es/message/interface'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import React, { useState } from 'react'
+import React, { type ReactElement, useState } from 'react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../api/http'
 import type {
@@ -12,6 +13,32 @@ import type {
   QueryScopeResponse,
 } from '../api/types/browse'
 import type { SendMessageRequest, SendMessageResponse } from '../api/types/query'
+
+// AppLayout.tsx reads `message` via `App.useApp()` (P1-4, UI polish pass)
+// instead of the static antd import this file used to spy on — outside a
+// real `<App>` provider that resolves to the context default `{}`, and
+// `{}.error(...)` throws. Every `render(<AppLayout />)` in this file wraps
+// it in a real `<App>` so those calls resolve to working functions.
+// `capturedMessageApi` is that same real instance, captured for the one
+// test below that asserts a warning toast fired — spying on the static
+// `antd` import (as this file used to) spies on a different object than
+// the one AppLayout actually calls through App.useApp().
+let capturedMessageApi: MessageInstance | undefined
+
+function MessageCapture() {
+  const { message } = App.useApp()
+  capturedMessageApi = message
+  return null
+}
+
+function render(ui: ReactElement) {
+  return rtlRender(
+    <App>
+      <MessageCapture />
+      {ui}
+    </App>,
+  )
+}
 
 const validateQueryScope = vi.fn<
   (documents: string[], signal?: AbortSignal) => Promise<QueryScopeResponse>
@@ -2052,13 +2079,17 @@ describe('AppLayout — chat deleted from another device is checked before query
 
   it('blocks the send, warns, and switches to a fresh chat instead of silently losing the query', async () => {
     const user = userEvent.setup()
-    const warnSpy = vi.spyOn(message, 'warning')
 
     render(<AppLayout />)
 
     // Let hydration's own "never end up with zero chats" replacement finish
     // being created (and persisted) before this test's own scenario starts.
     await waitFor(() => expect(createChatSession).toHaveBeenCalledTimes(1))
+    // Spied only after `render()` mounts under the `<App>`/`MessageCapture`
+    // wrapper above — `capturedMessageApi` is the real App.useApp()
+    // instance AppLayout reads `message` from, set the same render pass
+    // MessageCapture mounts.
+    const warnSpy = vi.spyOn(capturedMessageApi!, 'warning')
     const staleChatId = screen.getByTestId('active-chat-id').textContent
 
     // The chat was deleted from another device/tab since this one last
@@ -2085,9 +2116,14 @@ describe('AppLayout — chat deleted from another device is checked before query
 
 describe('AppLayout shell (Item B — mobile viewport overlap)', () => {
   it('the shell root carries the dvh-fallback sizing class instead of a bare h-screen', () => {
+    // `container.firstChild` used to be AppLayout's own root div directly;
+    // it's now antd's own `<App>` wrapper div (P1-4, UI polish pass — see
+    // this file's `render()` helper above), so the shell has to be found
+    // by its own class instead of by DOM position.
     const { container } = render(<AppLayout />)
-    const shell = container.firstChild as HTMLElement
+    const shell = container.querySelector('.docu-app-shell') as HTMLElement
 
+    expect(shell).not.toBeNull()
     expect(shell.className).toMatch(/\bdocu-app-shell\b/)
     expect(shell.className).not.toMatch(/\bh-screen\b/)
   })

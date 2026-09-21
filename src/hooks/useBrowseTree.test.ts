@@ -1,6 +1,35 @@
-import { act, renderHook } from '@testing-library/react'
+import { act, renderHook as rtlRenderHook } from '@testing-library/react'
+import { App } from 'antd'
+import type { MessageInstance } from 'antd/es/message/interface'
+import { createElement, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BrowseFolderContentsResponse, BrowseRootResponse } from '../api/types/browse'
+
+// useBrowseTree.ts reads `message` via `App.useApp()` (P1-4, UI polish
+// pass) instead of the static antd import — outside a real `<App>`
+// provider that resolves to the context default `{}`, and `{}.error(...)`
+// throws. Every renderHook in this file wraps the hook in a real `<App>`
+// (via createElement — this is a .ts file, no JSX) so those calls resolve
+// to working, no-op-in-tests functions instead. `capturedMessageApi` is
+// that same real instance, captured for the one test below that asserts
+// an error toast fired — spying on the static `antd` import (as this file
+// used to) spies on a different object than the one the hook actually
+// calls through App.useApp().
+let capturedMessageApi: MessageInstance | undefined
+
+function MessageCapture() {
+  const { message } = App.useApp()
+  capturedMessageApi = message
+  return null
+}
+
+function AppWrapper({ children }: { children: ReactNode }) {
+  return createElement(App, null, createElement(MessageCapture), children)
+}
+
+function renderHook<TResult, TProps>(callback: (props: TProps) => TResult) {
+  return rtlRenderHook(callback, { wrapper: AppWrapper })
+}
 
 const { fetchBrowseRoot, fetchFolderContents, fetchBrowseStatus } = vi.hoisted(() => ({
   fetchBrowseRoot: vi.fn(),
@@ -467,12 +496,13 @@ describe('useBrowseTree — switching to a folder that no longer exists', () => 
   })
 
   it('stays on the current folder and warns, without throwing, when switching to a folder that 404s', async () => {
-    const { message } = await import('antd')
-    const errorSpy = vi.spyOn(message, 'error').mockImplementation(() => '' as never)
-
     fetchFolderContents.mockResolvedValueOnce(rootContents('READY'))
     const result = await initHook()
     expect(result.current.activeFolderId).toBe(1)
+    // Spied only after `initHook()` renders the hook under `AppWrapper` —
+    // `capturedMessageApi` is the real App.useApp() instance the hook
+    // reads `message` from, set the same render pass MessageCapture mounts.
+    const errorSpy = vi.spyOn(capturedMessageApi!, 'error').mockImplementation(() => '' as never)
 
     const ApiError = await importApiError()
     fetchFolderContents.mockRejectedValueOnce(new ApiError('Folder not found', 404))

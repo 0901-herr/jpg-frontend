@@ -592,6 +592,64 @@ describe('splitAnswerByDocRefs — citation runs (Item B)', () => {
   })
 })
 
+// P1-1 (UI polish pass, client feedback): a lone citation pill directly
+// before sentence punctuation with a stray space in between — the model's
+// own text, e.g. "subscriptions [Doc1] ." — used to render with a visible
+// gap before the period ("subscriptions ①  ."). The run-collapsing logic
+// above (Item B) only ever moves punctuation for a run of 2+ markers, so a
+// single marker's own trailing text needs its own, narrower fix.
+describe('splitAnswerByDocRefs — pill hugs trailing punctuation (P1-1)', () => {
+  const renderedText = (content: string, sources: Source[]) =>
+    splitAnswerByDocRefs(content, sources)
+      .map((s) => s.value)
+      .join('')
+
+  it('drops a stray space between a single citation pill and the period right after it', () => {
+    const sources = [docSource(1)]
+    const segments = splitAnswerByDocRefs('led by enterprise subscriptions [Doc1] .', sources)
+
+    expect(segments).toEqual([
+      { type: 'text', value: 'led by enterprise subscriptions ' },
+      { type: 'ref', value: '[Doc1]', source: sources[0] },
+      { type: 'text', value: '.' },
+    ])
+  })
+
+  it('does the same for other sentence/clause marks (comma, exclamation, question mark, semicolon, colon)', () => {
+    for (const mark of ['.', ',', '!', '?', ';', ':']) {
+      const sources = [docSource(1)]
+      expect(renderedText(`done [Doc1] ${mark} more`, sources)).toBe(`done [Doc1]${mark} more`)
+    }
+  })
+
+  it('only strips the leading space, leaving the rest of the trailing text untouched', () => {
+    const sources = [docSource(1)]
+    expect(renderedText('as noted [Doc1] . Also see the appendix.', sources)).toBe(
+      'as noted [Doc1]. Also see the appendix.',
+    )
+  })
+
+  it('a marker with no space before its trailing punctuation is unaffected (existing behavior, unchanged)', () => {
+    const sources = [docSource(1)]
+    expect(renderedText('as stated [Doc1].', sources)).toBe('as stated [Doc1].')
+  })
+
+  it('never fires on prose text that only coincidentally starts with a space+mark-like shape but is not directly after a ref', () => {
+    const sources = [docSource(1)]
+    // The leading space before "when" is plain text, not attached to a ref.
+    expect(renderedText('[Doc1] when ready.', sources)).toBe('[Doc1] when ready.')
+  })
+
+  it('still tightens the gap after a larger citation run whose trailing comma was left untouched by the run-collapse step (that step only moves `.!?`, not `,`)', () => {
+    // Two markers with no connector between them and a comma (not
+    // sentence-ending punctuation, so collapseCitationRuns's own
+    // punctuation move never triggers) right after — the tightening pass
+    // is what closes this gap instead.
+    const sources = [docSource(1), docSource(2)]
+    expect(renderedText('see [Doc1][Doc2] , noted', sources)).toBe('see [Doc1] [Doc2], noted')
+  })
+})
+
 describe('answerHasInlineCitation', () => {
   it('is true when the content has a marker matching a source', () => {
     const sources = [source({ index: 1, docRef: '[Doc1]' })]

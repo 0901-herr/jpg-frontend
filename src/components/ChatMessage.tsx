@@ -11,7 +11,7 @@ import { progressTickerLabel } from '../utils/queryProgress'
 import { ChatInfoIcon } from '../icons/chat'
 import type { ChatMessage, CoverageInfo, Source } from '../types'
 import CitationList from './CitationList'
-import { answerHasInlineCitation } from '../utils/citations'
+import { answerHasInlineCitation, stripAbstainedCitationMarkers } from '../utils/citations'
 
 const { Text } = Typography
 
@@ -166,7 +166,17 @@ function InterruptedNote() {
  * answers (`src/api/query.ts`) ever set `sources`, so summary and
  * categorize chat messages are unaffected by either gate. */
 function AbstainedCaption() {
-  return <p className={`${type.caption} ${typeColor.muted}`}>No matching content</p>
+  // P2-4 (UI polish pass): was plain muted caption text (#8e8e8e) with no
+  // icon — easy to miss next to the answer text it's explaining. A small
+  // info icon plus the slightly darker `secondary` tone (still muted, not
+  // an alert) makes it clearly visible without treating an honest "found
+  // nothing to answer from" the way ErrorMessage treats a real failure.
+  return (
+    <p className={`flex items-center gap-1.5 ${type.caption} ${typeColor.secondary}`}>
+      <ChatInfoIcon className="shrink-0" aria-hidden />
+      No matching content
+    </p>
+  )
 }
 
 function CoverageNotice({ coverage }: { coverage?: CoverageInfo }) {
@@ -229,6 +239,13 @@ export function MarkdownAnswer({
 function AnswerContent({ message }: { message: ChatMessage }) {
   const sources = message.sources ?? []
   const isStreaming = message.status === 'streaming'
+  // `sources` is already cleared for an abstained message (see
+  // `AbstainedCaption`'s own doc comment), so a leftover `[DocN]` marker
+  // the model wrote into its decline sentence can never resolve to a
+  // `CitationLink` pill — but without this strip it would still render as
+  // bare, meaningless bracket text. Deterministic deletion only, gated on
+  // `abstained`, never applied to a normal answer's real citation markers.
+  const content = message.abstained ? stripAbstainedCitationMarkers(message.content) : message.content
 
   return (
     <div
@@ -239,7 +256,7 @@ function AnswerContent({ message }: { message: ChatMessage }) {
       className={`docu-answer ${type.body} ${typeColor.body} leading-relaxed min-w-0 break-words [overflow-wrap:anywhere]`}
     >
       <MarkdownAnswer
-        content={message.content}
+        content={content}
         sources={sources}
         liveText={isStreaming ? (message.liveText ?? '') : undefined}
       />
