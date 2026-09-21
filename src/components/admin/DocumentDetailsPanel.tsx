@@ -149,7 +149,11 @@ export default function DocumentDetailsPanel({ docId, open, onClose }: DocumentD
           >
             <Descriptions.Item label="RAG item ID">{data.rag_document_id ?? ADMIN_EMPTY}</Descriptions.Item>
             <Descriptions.Item label="Indexed">
-              {data.lifecycle_status === 'READY' ? 'Yes' : 'No'}
+              {data.lifecycle_status === 'READY'
+                ? 'Yes'
+                : data.lifecycle_status === 'PARTIAL'
+                  ? 'Partial'
+                  : 'No'}
             </Descriptions.Item>
           </Descriptions>
 

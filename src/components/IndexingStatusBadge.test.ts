@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import IndexingStatusBadge, {
   describeStatus,
   getDocumentSelectionHint,
+  getReadinessTooltipExplanation,
   getSelectableDocumentIds,
   getStatusLabel,
   isDocumentSelectable,
@@ -28,6 +29,27 @@ function doc(
     queryable,
   }
 }
+
+describe('getReadinessTooltipExplanation', () => {
+  it('explains Ready, Partial, and Not ready in plain language', () => {
+    expect(getReadinessTooltipExplanation('READY')).toBe(
+      'Fully indexed and ready for questions.',
+    )
+    expect(getReadinessTooltipExplanation('PARTIAL')).toBe(
+      'Searchable, but not fully indexed — answers may be less accurate.',
+    )
+    expect(getReadinessTooltipExplanation('INDEXING')).toBe('Not ready for questions yet.')
+  })
+
+  it('prefers adapter status_reason for Partial and Not ready', () => {
+    expect(
+      getReadinessTooltipExplanation('PARTIAL', 'Text search only for now.'),
+    ).toBe('Text search only for now.')
+    expect(getReadinessTooltipExplanation('FAILED', 'Unsupported file format.')).toBe(
+      'Unsupported file format.',
+    )
+  })
+})
 
 describe('getDocumentSelectionHint', () => {
   it('prefers adapter status_reason over local fallback copy', () => {

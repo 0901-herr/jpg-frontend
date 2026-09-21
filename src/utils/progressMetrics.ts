@@ -59,6 +59,13 @@ export function buildProgressMetrics(ctx: ProgressMetricContext): ProgressMetric
       valueStyle: { color: '#389e0d' },
     },
     {
+      key: 'partial',
+      title: 'Partial',
+      value: counts.partial,
+      hint: `${counts.partial.toLocaleString()} searchable with incomplete indexing — answers may be less accurate.`,
+      valueStyle: { color: counts.partial ? '#0284c7' : undefined },
+    },
+    {
       key: 'failed',
       title: 'Failed',
       value: counts.failed,

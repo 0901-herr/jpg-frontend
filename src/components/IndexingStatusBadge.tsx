@@ -158,6 +158,23 @@ export function getSelectionWarning(status: IndexingStatus | string): string | n
   return null
 }
 
+/** Short plain-language line for the Files-tree Ready / Partial / Not ready
+ * tooltip — kept separate from the status chip so the header stays a single
+ * word while the sentence explains what it means for asking questions. */
+export function getReadinessTooltipExplanation(
+  status: IndexingStatus | string,
+  statusReason?: string | null,
+): string {
+  if (status === 'READY') return 'Fully indexed and ready for questions.'
+  if (status === 'PARTIAL') {
+    return (
+      statusReason?.trim() ||
+      'Searchable, but not fully indexed — answers may be less accurate.'
+    )
+  }
+  return statusReason?.trim() || 'Not ready for questions yet.'
+}
+
 /** Prefer adapter status_reason; fall back to local indexing-status copy. */
 export function getDocumentSelectionHint(doc: BrowseDocumentItem): string | null {
   const reason = doc.status_reason?.trim()

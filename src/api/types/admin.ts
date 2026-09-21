@@ -8,6 +8,7 @@ export type LifecycleStatus =
   | 'STAGED'
   | 'SUBMITTED'
   | 'INDEXING'
+  | 'PARTIAL'
   | 'READY'
   | 'FAILED'
   | 'DELETING'
@@ -101,6 +102,7 @@ export interface IngestionOverview {
     preparing: number
     indexing: number
     ready: number
+    partial: number
     failed: number
     deleted: number
   }

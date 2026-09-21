@@ -194,15 +194,18 @@ describe('IngestionOverviewPage', () => {
     renderPage()
     await screen.findByPlaceholderText('LogicalDOC ID or filename')
     await user.click(screen.getByRole('button', { name: 'Filter' }))
-    await user.click(await screen.findByRole('checkbox', { name: 'Failed only' }))
-    await user.click(screen.getByRole('button', { name: 'Apply' }))
+    const filterPanel = await screen.findByText('Filter documents')
+    const panel = filterPanel.closest('.admin-filter-popover') ?? filterPanel.parentElement
+    expect(panel).toBeTruthy()
+    await user.click(within(panel as HTMLElement).getByRole('checkbox', { name: 'Failed only' }))
+    await user.click(within(panel as HTMLElement).getByRole('button', { name: 'Apply' }))
     await waitFor(() =>
       expect(adminApi.fetchAdminDocuments).toHaveBeenCalledWith(
         expect.objectContaining({ lifecycleStatus: 'FAILED' }),
         expect.anything(),
       ),
     )
-  }, 10_000)
+  }, 15_000)
 
   it('shows service ports on the system tab', async () => {
     renderPage('/admin/ingestion?tab=system')

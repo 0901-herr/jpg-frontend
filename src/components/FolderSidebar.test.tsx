@@ -528,11 +528,84 @@ describe('FolderSidebar file row status', () => {
 
     const tooltip = await screen.findByRole('tooltip')
     expect(tooltip).toHaveTextContent('Not ready')
+    expect(tooltip).toHaveTextContent('Unsupported file format.')
     expect(
       within(tooltip).getByRole('button', { name: 'Open contract.pdf in LogicalDOC' }),
     ).toBeInTheDocument()
     expect(tooltip.querySelector('.docu-file-row-tooltip-status--not-ready')).not.toBeNull()
     expect(screen.queryByRole('img')).not.toBeInTheDocument()
+  })
+
+  it('shows Partial (not Not ready) for a PARTIAL document in the row tooltip', async () => {
+    const partialDoc: BrowseDocumentItem = {
+      ...folderDocuments[0],
+      indexing_status: 'PARTIAL',
+      queryable: true,
+      status_reason: 'Text search only; full vector indexing is still in progress.',
+    }
+    render(
+      <FolderSidebar
+        browse={createBrowseFixture({
+          cache: new Map([
+            [
+              1,
+              {
+                contents: {
+                  folder: { folder_id: 1, name: 'Root', parent_id: null, has_children: false },
+                  folders: [],
+                  documents: [partialDoc],
+                  page: 0,
+                  has_more_documents: false,
+                },
+                loadedPages: new Set([0]),
+              },
+            ],
+          ]),
+        })}
+        selection={createSelectionFixture()}
+      />,
+    )
+
+    const user = userEvent.setup()
+    await user.hover(await screen.findByText('contract.pdf'))
+
+    const tooltip = await screen.findByRole('tooltip')
+    expect(tooltip).toHaveTextContent('Partial')
+    expect(tooltip).toHaveTextContent('Text search only; full vector indexing is still in progress.')
+    expect(tooltip).not.toHaveTextContent('Not ready')
+    expect(tooltip.querySelector('.docu-file-row-tooltip-status--partial')).not.toBeNull()
+  })
+
+  it('explains Ready when there is no adapter status_reason', async () => {
+    render(
+      <FolderSidebar
+        browse={createBrowseFixture({
+          cache: new Map([
+            [
+              1,
+              {
+                contents: {
+                  folder: { folder_id: 1, name: 'Root', parent_id: null, has_children: false },
+                  folders: [],
+                  documents: [folderDocuments[0]],
+                  page: 0,
+                  has_more_documents: false,
+                },
+                loadedPages: new Set([0]),
+              },
+            ],
+          ]),
+        })}
+        selection={createSelectionFixture()}
+      />,
+    )
+
+    const user = userEvent.setup()
+    await user.hover(await screen.findByText('contract.pdf'))
+
+    const tooltip = await screen.findByRole('tooltip')
+    expect(tooltip).toHaveTextContent('Ready')
+    expect(tooltip).toHaveTextContent('Fully indexed and ready for questions.')
   })
 
   it('shows an error toast when opening a document in LogicalDOC fails (App.useApp() coverage)', async () => {
@@ -590,22 +663,43 @@ describe('FolderSidebar initial loading', () => {
 })
 
 describe('FolderSidebar disabled (shared chat, follower view)', () => {
-  it('renders a dimmed, non-interactive note instead of the file tree', () => {
+  it('renders a read-only list of ACL-visible shared files instead of the file tree', () => {
     render(
       <FolderSidebar
         browse={createBrowseFixture()}
         selection={createSelectionFixture()}
         disabled
+        sharedScopeDocuments={[
+          { documentId: 'doc-b', filename: 'shared.pdf' },
+          { documentId: 'doc-c', filename: null },
+        ]}
       />,
     )
 
+    expect(screen.getByTestId('shared-scope-files')).toBeInTheDocument()
     expect(
-      screen.getByText(
-        'Files are chosen by the chat owner. In a shared chat you can only ask about the files they picked.',
-      ),
+      screen.getByText(/Files chosen by the chat owner that you can access/),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open shared.pdf in LogicalDOC' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Open Document doc-c in LogicalDOC' }),
     ).toBeInTheDocument()
     expect(screen.queryByRole('tree')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Refresh document status' })).not.toBeInTheDocument()
+  })
+
+  it('explains when no shared files are available to the follower', () => {
+    render(
+      <FolderSidebar
+        browse={createBrowseFixture()}
+        selection={createSelectionFixture()}
+        disabled
+        sharedScopeDocuments={[]}
+      />,
+    )
+
+    expect(screen.getByText('No shared files are available to you yet.')).toBeInTheDocument()
+    expect(screen.queryByRole('tree')).not.toBeInTheDocument()
   })
 
   it('takes priority over every other state (session expired, loading, etc.)', () => {
@@ -617,7 +711,7 @@ describe('FolderSidebar disabled (shared chat, follower view)', () => {
       />,
     )
 
-    expect(screen.getByText('Files are chosen by the chat owner.', { exact: false })).toBeInTheDocument()
+    expect(screen.getByTestId('shared-scope-files')).toBeInTheDocument()
     expect(screen.queryByText('Session expired')).not.toBeInTheDocument()
   })
 })

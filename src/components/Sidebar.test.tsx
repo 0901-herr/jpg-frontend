@@ -18,8 +18,18 @@ vi.mock('../config/features', () => ({ FEATURES: { categoryView: false, chatShar
 // `disabled` prop as a data attribute so Sidebar's own wiring of that prop
 // (based on whether the active chat is shared) can be asserted here.
 vi.mock('./FolderSidebar', () => ({
-  default: ({ disabled }: { disabled?: boolean }) => (
-    <div data-testid="folder-sidebar-stub" data-disabled={String(Boolean(disabled))} />
+  default: ({
+    disabled,
+    sharedScopeDocuments,
+  }: {
+    disabled?: boolean
+    sharedScopeDocuments?: { documentId: string; filename: string | null }[]
+  }) => (
+    <div
+      data-testid="folder-sidebar-stub"
+      data-disabled={String(Boolean(disabled))}
+      data-shared-scope-count={String(sharedScopeDocuments?.length ?? 0)}
+    />
   ),
 }))
 
@@ -555,6 +565,36 @@ describe('Sidebar — Files pane disabled for a shared chat', () => {
   it('disables FolderSidebar when isSharedChat is true', async () => {
     await renderSidebar('s1', true)
     expect(screen.getByTestId('folder-sidebar-stub')).toHaveAttribute('data-disabled', 'true')
+  })
+
+  it('passes sharedScopeDocuments through to FolderSidebar', async () => {
+    render(
+      <MemoryRouter>
+        <Sidebar
+          width={280}
+          sessions={[]}
+          sharedSessions={[
+            { id: 's1', title: 'Shared chat', messages: [], isOwner: false, ownerUsername: 'alice' },
+          ]}
+          activeChatId="s1"
+          isSharedChat
+          sharedScopeDocuments={[
+            { documentId: 'doc-b', filename: 'shared.pdf' },
+            { documentId: 'doc-c', filename: null },
+          ]}
+          browse={browseFixture()}
+          selection={selectionFixture()}
+          onSelectChat={vi.fn()}
+          onRenameChat={vi.fn()}
+          onDeleteChat={vi.fn()}
+          onNewChat={vi.fn()}
+        />
+      </MemoryRouter>,
+    )
+    expect(screen.getByTestId('folder-sidebar-stub')).toHaveAttribute(
+      'data-shared-scope-count',
+      '2',
+    )
   })
 
   it('leaves FolderSidebar enabled when isSharedChat is false', async () => {

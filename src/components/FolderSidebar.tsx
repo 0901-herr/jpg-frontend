@@ -25,6 +25,7 @@ import BrowseViewToggle, { type BrowseViewMode } from './BrowseViewToggle'
 import CategoryTag from './CategoryTag'
 import DocumentChecklist from './DocumentChecklist'
 import {
+  getReadinessTooltipExplanation,
   getSelectableDocumentIds,
   isDocumentSelectable,
 } from './IndexingStatusBadge'
@@ -33,11 +34,13 @@ interface FolderSidebarProps {
   browse: BrowseTreeState
   selection: DocumentSelection
   /** True for a shared chat the viewer doesn't own (owner decision,
-   * 2026-09-16): a follower can't choose documents at all, so the whole
-   * pane renders as a dimmed, non-interactive note instead of the file
-   * tree — takes priority over every other state (session-expired,
-   * loading, etc.). */
+   * 2026-09-16): a follower can't choose documents at all, so the pane
+   * shows a read-only list of the host's scope (ACL-filtered for this
+   * viewer) instead of the full browse tree. */
   disabled?: boolean
+  /** Host-chosen files the follower may see — already ACL-filtered by the
+   * adapter for non-owners (`scope_documents` on session detail). */
+  sharedScopeDocuments?: { documentId: string; filename: string | null }[]
 }
 
 const FOLDER_KEY_PREFIX = 'folder-'
@@ -71,7 +74,12 @@ function buildFolderTitle(name: string) {
   )
 }
 
-export default function FolderSidebar({ browse, selection, disabled = false }: FolderSidebarProps) {
+export default function FolderSidebar({
+  browse,
+  selection,
+  disabled = false,
+  sharedScopeDocuments = [],
+}: FolderSidebarProps) {
   // `App.useApp()` rather than the static `message` import from 'antd' —
   // see App.tsx's comment on the `<AntApp>` provider this reads from.
   const { message } = App.useApp()
@@ -281,11 +289,24 @@ export default function FolderSidebar({ browse, selection, disabled = false }: F
   }, [folderCheckStates])
 
   // Building a doc's tree row: the filename fills the line and elides under
-  // a long name. Hover shows Ready / Not ready (with a status dot) above
-  // the full name; the tooltip filename underlines and opens LogicalDOC.
+  // a long name. Hover shows Ready / Partial / Not ready (with a status
+  // dot) above the full name; the tooltip filename underlines and opens
+  // LogicalDOC. PARTIAL stays distinct from Ready — the file is queryable
+  // but not fully indexed.
   const buildDocLeaf = useCallback((doc: BrowseDocumentItem): DataNode => {
     const selectable = isDocumentSelectable(doc.indexing_status, doc.queryable)
-    const isReady = doc.indexing_status === 'READY'
+    const readiness =
+      doc.indexing_status === 'READY'
+        ? 'ready'
+        : doc.indexing_status === 'PARTIAL'
+          ? 'partial'
+          : 'not-ready'
+    const readinessLabel =
+      readiness === 'ready' ? 'Ready' : readiness === 'partial' ? 'Partial' : 'Not ready'
+    const readinessExplanation = getReadinessTooltipExplanation(
+      doc.indexing_status,
+      doc.status_reason,
+    )
     const openFile = async (event: MouseEvent) => {
       event.preventDefault()
       event.stopPropagation()
@@ -317,15 +338,12 @@ export default function FolderSidebar({ browse, selection, disabled = false }: F
           title={
             <div className="docu-file-row-tooltip">
               <div
-                className={`docu-file-row-tooltip-status ${
-                  isReady
-                    ? 'docu-file-row-tooltip-status--ready'
-                    : 'docu-file-row-tooltip-status--not-ready'
-                }`}
+                className={`docu-file-row-tooltip-status docu-file-row-tooltip-status--${readiness}`}
               >
                 <span className="docu-file-row-tooltip-dot" aria-hidden />
-                {isReady ? 'Ready' : 'Not ready'}
+                {readinessLabel}
               </div>
+              <p className="docu-file-row-tooltip-explanation">{readinessExplanation}</p>
               <button
                 type="button"
                 className="docu-file-row-tooltip-name"
@@ -526,13 +544,47 @@ export default function FolderSidebar({ browse, selection, disabled = false }: F
   const isTreeBusy = pendingFolderIds.size > 0
 
   if (disabled) {
+    const openSharedFile = async (documentId: string, filename: string) => {
+      try {
+        const url = await fetchDocumentViewUrl(documentId)
+        window.open(url, '_blank', 'noopener,noreferrer')
+      } catch {
+        message.error(`Could not open ${filename}`)
+      }
+    }
+
     return (
-      <div className="flex flex-col gap-2 opacity-50 pointer-events-none select-none" aria-disabled="true">
+      <div className="flex flex-col gap-2" data-testid="shared-scope-files">
         <span className={sectionLabel}>Files</span>
         <p className={`${sidebar.caption} ${typeColor.muted} m-0 px-1`}>
-          Files are chosen by the chat owner. In a shared chat you can only ask about the files
-          they picked.
+          Files chosen by the chat owner that you can access. You can only ask
+          about these — you cannot change the selection.
         </p>
+        {sharedScopeDocuments.length === 0 ? (
+          <p className={`${sidebar.caption} ${typeColor.muted} m-0 px-1`}>
+            No shared files are available to you yet.
+          </p>
+        ) : (
+          <ul className="m-0 list-none space-y-1 px-1 p-0">
+            {sharedScopeDocuments.map((file) => {
+              const name = file.filename?.trim() || `Document ${file.documentId}`
+              return (
+                <li key={file.documentId} className="min-w-0">
+                  <button
+                    type="button"
+                    className={`docu-shared-scope-file block w-full min-w-0 truncate text-left ${sidebar.body} ${typeColor.primary}`}
+                    aria-label={`Open ${name} in LogicalDOC`}
+                    onClick={() => {
+                      void openSharedFile(file.documentId, name)
+                    }}
+                  >
+                    {name}
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        )}
       </div>
     )
   }
