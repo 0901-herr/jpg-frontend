@@ -11,7 +11,7 @@ import { progressTickerLabel } from '../utils/queryProgress'
 import { ChatInfoIcon } from '../icons/chat'
 import type { ChatMessage, CoverageInfo, Source } from '../types'
 import CitationList from './CitationList'
-import { answerHasInlineCitation } from '../utils/citations'
+import { answerHasInlineCitation, stripAbstainedCitationMarkers } from '../utils/citations'
 
 const { Text } = Typography
 
@@ -229,6 +229,13 @@ export function MarkdownAnswer({
 function AnswerContent({ message }: { message: ChatMessage }) {
   const sources = message.sources ?? []
   const isStreaming = message.status === 'streaming'
+  // `sources` is already cleared for an abstained message (see
+  // `AbstainedCaption`'s own doc comment), so a leftover `[DocN]` marker
+  // the model wrote into its decline sentence can never resolve to a
+  // `CitationLink` pill — but without this strip it would still render as
+  // bare, meaningless bracket text. Deterministic deletion only, gated on
+  // `abstained`, never applied to a normal answer's real citation markers.
+  const content = message.abstained ? stripAbstainedCitationMarkers(message.content) : message.content
 
   return (
     <div
@@ -239,7 +246,7 @@ function AnswerContent({ message }: { message: ChatMessage }) {
       className={`docu-answer ${type.body} ${typeColor.body} leading-relaxed min-w-0 break-words [overflow-wrap:anywhere]`}
     >
       <MarkdownAnswer
-        content={message.content}
+        content={content}
         sources={sources}
         liveText={isStreaming ? (message.liveText ?? '') : undefined}
       />

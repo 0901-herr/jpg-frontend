@@ -401,6 +401,32 @@ export function answerHasInlineCitation(content: string, sources: Source[]): boo
   return splitAnswerByDocRefs(content, sources).some((segment) => segment.type === 'ref')
 }
 
+/** Deterministically deletes every `[DocN]`-shaped marker (reusing
+ * `BRACKET_DOC_GROUP_RE`, the same pattern `expandBracketDocGroups` already
+ * matches) from an abstained message's text — call only when
+ * `message.abstained` is true.
+ *
+ * Citations are already cleared for an abstained message (`AppLayout`'s
+ * `onAbstention` handler, `streamQuery`'s own `abstained` handling), so a
+ * leftover marker the model wrote into its decline sentence — despite the
+ * prompt asking it not to cite a refusal — would otherwise reach the
+ * screen as a bare, meaningless "[Doc1]" (no source resolves for
+ * `splitAnswerByDocRefs` to turn it into a pill once `sources` is empty).
+ * This is a pure, fixed-pattern deletion of unambiguous marker syntax —
+ * never a rewrite or splice of the surrounding text — the same safety
+ * class as the other anchored strips in this codebase (see the F54
+ * lesson: a rewrite that invents replacement text is fragile against the
+ * common case it wasn't designed for; a deletion of a token that has
+ * exactly one meaning is not). */
+export function stripAbstainedCitationMarkers(content: string): string {
+  return content
+    .replace(BRACKET_DOC_GROUP_RE, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/[ \t]+([.,;:!?])/g, '$1')
+    .replace(/^[ \t]+/gm, '')
+    .trim()
+}
+
 /** Assigns a stable, 1-based number to each distinct `(document_id, page)`
  * pair *as it is first cited in the answer text itself* — i.e. walking
  * `content` left to right via `splitAnswerByDocRefs` (which already

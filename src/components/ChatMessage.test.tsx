@@ -258,6 +258,44 @@ describe('abstained answer', () => {
 
     expect(screen.queryByText('No matching content')).not.toBeInTheDocument()
   })
+
+  it('renders no citation pill and no raw "[DocN]" text for a stray marker left in the decline sentence', () => {
+    const source: Source = { index: 1, filename: 'Report.pdf', docRef: '[Doc1]', documentId: 'd1' }
+    render(
+      <ChatMessageItem
+        message={assistantMessage({
+          content: '[Doc1] does not specify the certification date requested.',
+          status: 'complete',
+          abstained: true,
+          // Defensive: sources should already be cleared for an abstained
+          // message (see AppLayout's onAbstention handler), but the strip
+          // must hold even if a leftover source array slips through.
+          sources: [source],
+        })}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: /Report\.pdf/ })).not.toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/\[Doc1\]/)
+    expect(
+      screen.getByText(/does not specify the certification date requested\./),
+    ).toBeInTheDocument()
+  })
+
+  it('strips a "[Doc N]" (spaced) marker the same way', () => {
+    render(
+      <ChatMessageItem
+        message={assistantMessage({
+          content: '[Doc 1] does not mention that.',
+          status: 'complete',
+          abstained: true,
+        })}
+      />,
+    )
+
+    expect(document.body.textContent).not.toMatch(/\[Doc 1\]/)
+    expect(screen.getByText(/does not mention that\./)).toBeInTheDocument()
+  })
 })
 
 describe('marker-less refusal', () => {

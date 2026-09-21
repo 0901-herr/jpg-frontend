@@ -757,4 +757,86 @@ describe('sendMessage abstention handling', () => {
     expect(onCitations).not.toHaveBeenCalled()
     expect(result.sources).toBeUndefined()
   })
+
+  it('drops already-streamed citations and calls onAbstention when only the done event flags abstained (streaming absence-assertion path, no abstention event)', async () => {
+    scriptedEvents = [
+      { event: 'citation', data: { citations: [{ document_id: 'doc-1', filename: 'A.pdf', page: 2 }] } },
+      { event: 'answer', data: { text: 'The provided documents do not mention that.' } },
+      { event: 'done', data: { duration_ms: 5, abstained: true, abstain_reason: 'absence_assertion' } },
+    ]
+
+    const onAbstention = vi.fn()
+    const onCitations = vi.fn()
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'Unrelated question',
+      documents: ['doc1'],
+      callbacks: { onAbstention, onCitations },
+    })
+
+    expect(onAbstention).toHaveBeenCalledWith({ reason: 'absence_assertion' })
+    expect(onCitations).toHaveBeenCalledTimes(1)
+    expect(result.sources).toBeUndefined()
+    expect(result.fileTags).toBeUndefined()
+  })
+
+  it('does not call onAbstention a second time when both an abstention event and a done.abstained=true arrive', async () => {
+    scriptedEvents = [
+      { event: 'abstention', data: { reason: 'no_relevant_content' } },
+      { event: 'answer', data: { text: "I couldn't find relevant content." } },
+      { event: 'done', data: { duration_ms: 5, abstained: true, abstain_reason: 'no_relevant_content' } },
+    ]
+
+    const onAbstention = vi.fn()
+
+    await sendMessage({
+      chatId: 'c1',
+      message: 'Unrelated question',
+      documents: ['doc1'],
+      callbacks: { onAbstention },
+    })
+
+    expect(onAbstention).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaves citations and sources untouched when the done event has no abstained field (older engine, backward compatible)', async () => {
+    scriptedEvents = [
+      { event: 'citation', data: { citations: [{ document_id: 'doc-1', filename: 'A.pdf', page: 2 }] } },
+      { event: 'answer', data: { text: 'The answer is [Doc1].' } },
+      { event: 'done', data: { duration_ms: 5 } },
+    ]
+
+    const onAbstention = vi.fn()
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'A question',
+      documents: ['doc1'],
+      callbacks: { onAbstention },
+    })
+
+    expect(onAbstention).not.toHaveBeenCalled()
+    expect(result.sources).toHaveLength(1)
+  })
+
+  it('leaves citations untouched when done.abstained is explicitly false', async () => {
+    scriptedEvents = [
+      { event: 'citation', data: { citations: [{ document_id: 'doc-1', filename: 'A.pdf', page: 2 }] } },
+      { event: 'answer', data: { text: 'The answer is [Doc1].' } },
+      { event: 'done', data: { duration_ms: 5, abstained: false, abstain_reason: null } },
+    ]
+
+    const onAbstention = vi.fn()
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'A question',
+      documents: ['doc1'],
+      callbacks: { onAbstention },
+    })
+
+    expect(onAbstention).not.toHaveBeenCalled()
+    expect(result.sources).toHaveLength(1)
+  })
 })

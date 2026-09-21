@@ -397,6 +397,29 @@ async function streamQuery(
             terminalEvent = true
             const obj = asRecord(data)
             durationMs = obj ? readNumber(obj, 'duration_ms') : undefined
+            // Mechanism B (the streaming post-generation absence-assertion
+            // check, `is_absence_assertion` in rag-engine) has no dedicated
+            // SSE event of its own — unlike Mechanism A's `abstention`
+            // event (handled above), it only learns the answer was a
+            // decline *after* every `citation`/`answer` segment has
+            // already streamed, so the engine flags it on the terminal
+            // `done` event instead (`abstained`/`abstain_reason`, additive
+            // fields — absent on an older engine that predates this).
+            // Applying the exact same treatment `case 'abstention'` uses
+            // (drop already-streamed citations, fire `onAbstention`) makes
+            // the rest of the pipeline — `AppLayout`'s `abstainedRef`,
+            // the cleared `sources`, the persisted `ChatMessage.abstained`
+            // — handle this path identically, with no new UI logic. The
+            // `!abstained` guard keeps this a no-op when an `abstention`
+            // event already fired for this stream (sticky, same as the
+            // 'citation' case's own guard above).
+            if (obj?.abstained === true && !abstained) {
+              abstained = true
+              citations = []
+              callbacks.onAbstention?.({
+                reason: readString(obj, 'abstain_reason'),
+              })
+            }
             callbacks.onDone?.({ duration_ms: durationMs })
             break
           }
