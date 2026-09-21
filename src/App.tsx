@@ -34,6 +34,9 @@ export default function App() {
           lineHeightLG: 1.6,
           controlHeight: 40,
           controlHeightLG: 44,
+          // Instant open/close for Dropdown/Modal/etc. — matches the
+          // query-tier menu feel (no slide/fade on menus).
+          motion: false,
         },
         components: {
           Button: {

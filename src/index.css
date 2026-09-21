@@ -706,6 +706,56 @@ button.docu-citation-pill:hover {
   overflow: hidden;
 }
 
+/* Related-documents row (CitationList DocumentRow): file icon vertically
+   centered; citation number + page as separate gray chips. */
+.docu-citation-row {
+  min-height: 3.5rem;
+}
+
+.docu-citation-row-icon {
+  align-self: center;
+}
+
+.docu-citation-num-chip,
+.docu-citation-page-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #f0f0f0;
+  color: #3f3f3f;
+  font-size: 0.75rem;
+  line-height: 1;
+  font-weight: 500;
+}
+
+.docu-citation-num-chip {
+  width: 1.375rem;
+  height: 1.375rem;
+  border-radius: 9999px;
+}
+
+.docu-citation-page-chip {
+  height: 1.375rem;
+  padding: 0 0.5rem;
+  border-radius: 9999px;
+  white-space: nowrap;
+}
+
+button.docu-citation-page-chips {
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+button.docu-citation-page-chips:hover .docu-citation-num-chip,
+button.docu-citation-page-chips:hover .docu-citation-page-chip {
+  background: #e4e4e4;
+}
+
 /* Answer Markdown — tables and lists (ChatMessage.tsx / markdownRenderers.tsx).
    Scoped to `.docu-answer` (the assistant-answer container) so it can
    never leak into the sidebar or any other plain table/list in the app.
@@ -1284,44 +1334,80 @@ button.docu-citation-pill:hover {
   color: #000 !important;
 }
 
+/* Profile menu reuses `.docu-chat-options-menu` (same ChatGPT-like shell).
+   Keep these rules as a no-op alias only if something still targets the
+   old class name in tests/docs — prefer the shared class for new work. */
 .docu-profile-menu .ant-dropdown-menu {
-  border-radius: 12px !important;
+  border-radius: 16px !important;
   padding: 6px !important;
-  min-width: 180px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12) !important;
-  border: 1px solid var(--docu-border) !important;
+  min-width: 220px;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.04),
+    0 8px 24px rgba(0, 0, 0, 0.1) !important;
+  border: none !important;
+  background: #fff !important;
 }
 
 .docu-profile-menu .ant-dropdown-menu-item {
-  border-radius: 8px !important;
-  padding: 8px 12px !important;
-  font-size: var(--docu-sidebar-text) !important;
-  color: var(--docu-text-primary) !important;
+  display: flex !important;
+  align-items: center !important;
+  border-radius: 10px !important;
+  padding: 10px 12px !important;
+  font-size: 0.875rem !important;
+  line-height: 1.25 !important;
+  color: #0d0d0d !important;
 }
 
 .docu-profile-menu .ant-dropdown-menu-item-icon {
-  font-size: 14px !important;
-  color: var(--docu-text-primary) !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 1.125rem !important;
+  min-width: 1.125rem !important;
+  height: 1.125rem !important;
+  margin-inline-end: 12px !important;
+  font-size: 16px !important;
+  line-height: 0 !important;
+  color: inherit !important;
 }
 
-.docu-chat-options-menu.ant-dropdown,
-.docu-chat-options-menu {
+.docu-profile-menu .ant-dropdown-menu-item-icon > svg {
+  width: 16px !important;
+  height: 16px !important;
+  display: block;
+}
+
+/* Kill leftover dropdown enter/leave CSS for every overlay class we use.
+   Theme `motion: false` turns antd motion off; this covers classed leave
+   states that still briefly apply opacity transforms. */
+.ant-dropdown,
+.docu-chat-options-menu,
+.docu-query-tier-menu,
+.docu-profile-menu,
+.docu-doc-status-menu {
   animation: none !important;
-  transition: none !important;
 }
 
+.ant-dropdown.ant-slide-up-enter,
+.ant-dropdown.ant-slide-up-appear,
+.ant-dropdown.ant-slide-up-enter-active,
+.ant-dropdown.ant-slide-up-appear-active,
+.ant-dropdown.ant-zoom-big-enter,
+.ant-dropdown.ant-zoom-big-appear,
+.ant-dropdown.ant-zoom-big-enter-active,
+.ant-dropdown.ant-zoom-big-appear-active,
 .docu-chat-options-menu.ant-slide-up-enter,
 .docu-chat-options-menu.ant-slide-up-appear,
-.docu-chat-options-menu.ant-slide-up-leave,
 .docu-chat-options-menu.ant-slide-up-enter-active,
 .docu-chat-options-menu.ant-slide-up-appear-active,
-.docu-chat-options-menu.ant-slide-up-leave-active,
 .docu-chat-options-menu.ant-zoom-big-enter,
 .docu-chat-options-menu.ant-zoom-big-appear,
-.docu-chat-options-menu.ant-zoom-big-leave,
 .docu-chat-options-menu.ant-zoom-big-enter-active,
 .docu-chat-options-menu.ant-zoom-big-appear-active,
-.docu-chat-options-menu.ant-zoom-big-leave-active {
+.docu-query-tier-menu.ant-slide-up-enter,
+.docu-query-tier-menu.ant-slide-up-appear,
+.docu-query-tier-menu.ant-slide-up-enter-active,
+.docu-query-tier-menu.ant-slide-up-appear-active {
   animation: none !important;
   transition: none !important;
   animation-duration: 0s !important;
@@ -1329,8 +1415,29 @@ button.docu-citation-pill:hover {
   transform: none !important;
 }
 
-/* ChatGPT-like chat/project options menu: roomier padding, soft radius,
-   no enter motion (also `transitionName=""` on the Dropdown). */
+.ant-dropdown.ant-slide-up-leave,
+.ant-dropdown.ant-slide-up-leave-active,
+.ant-dropdown.ant-zoom-big-leave,
+.ant-dropdown.ant-zoom-big-leave-active,
+.docu-chat-options-menu.ant-slide-up-leave,
+.docu-chat-options-menu.ant-slide-up-leave-active,
+.docu-chat-options-menu.ant-zoom-big-leave,
+.docu-chat-options-menu.ant-zoom-big-leave-active,
+.docu-query-tier-menu.ant-slide-up-leave,
+.docu-query-tier-menu.ant-slide-up-leave-active {
+  animation: none !important;
+  transition: none !important;
+  animation-duration: 0s !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
+}
+
+.docu-chat-options-menu .ant-dropdown-arrow {
+  display: none !important;
+}
+
+/* ChatGPT-like chat/project options menu: roomier padding, soft radius. */
 .docu-chat-options-menu .ant-dropdown-menu {
   border-radius: 16px !important;
   padding: 6px !important;
@@ -1383,9 +1490,28 @@ button.docu-citation-pill:hover {
   display: block;
 }
 
-.docu-chat-options-menu .ant-dropdown-menu-submenu-expand-icon {
+/* Move-to expand chevron — flex end, not antd's absolute caret. */
+.docu-chat-options-menu .ant-dropdown-menu-submenu-expand-icon,
+.docu-chat-options-menu .docu-chat-options-expand {
+  position: static !important;
+  inset: unset !important;
+  margin-inline-start: auto !important;
+  margin-inline-end: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 14px !important;
+  height: 14px !important;
   color: #8e8e8e !important;
-  inset-inline-end: 12px !important;
+  line-height: 0 !important;
+  transform: none !important;
+}
+
+.docu-chat-options-menu .docu-chat-options-expand svg,
+.docu-chat-options-menu .ant-dropdown-menu-submenu-expand-icon svg {
+  width: 14px !important;
+  height: 14px !important;
+  display: block;
 }
 
 .docu-chat-options-menu .ant-dropdown-menu-item-divider {

@@ -62,6 +62,8 @@ export default function QueryTierDropdown({
       }}
       trigger={['click']}
       placement="top"
+      transitionName=""
+      destroyOnHidden
       disabled={disabled}
       overlayClassName="docu-query-tier-menu"
     >
