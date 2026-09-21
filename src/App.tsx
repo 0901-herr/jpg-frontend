@@ -29,29 +29,35 @@ export default function App() {
           fontSize: 16,
           fontSizeSM: 14,
           fontSizeLG: 18,
-          fontSizeHeading4: 20,
-          lineHeight: 1.5,
-          lineHeightLG: 1.6,
           controlHeight: 40,
-          controlHeightLG: 44,
-          // Instant open/close for Dropdown/Modal/etc. — matches the
-          // query-tier menu feel (no slide/fade on menus).
+          controlHeightLG: 48,
+          controlHeightSM: 32,
           motion: false,
         },
         components: {
           Button: {
             borderRadius: 10,
+            controlHeight: 40,
             primaryShadow: 'none',
-            defaultShadow: 'none',
           },
           Input: {
             borderRadius: 10,
+            controlHeight: 40,
             activeShadow: 'none',
-            hoverBorderColor: '#ececec',
-            activeBorderColor: '#ececec',
+          },
+          Dropdown: {
+            borderRadiusLG: 12,
+            controlItemBgHover: '#f4f4f4',
+            paddingBlock: 6,
+          },
+          Menu: {
+            itemBorderRadius: 8,
+            itemHeight: 36,
+            iconMarginInlineEnd: 10,
           },
           Tree: {
-            borderRadius: 10,
+            directoryNodeSelectedBg: 'transparent',
+            directoryNodeSelectedColor: 'inherit',
             nodeSelectedBg: 'transparent',
             nodeHoverBg: 'transparent',
           },

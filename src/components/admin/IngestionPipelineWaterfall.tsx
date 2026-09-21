@@ -22,6 +22,8 @@ function nodeStyles(state: PipelineStageState, compact: boolean): string {
   switch (state) {
     case 'complete':
       return `${size} admin-pipeline-node--complete text-white`
+    case 'partial':
+      return `${size} admin-pipeline-node--partial text-white`
     case 'current':
       return `${size} admin-pipeline-node--current bg-white`
     case 'failed':
@@ -31,8 +33,11 @@ function nodeStyles(state: PipelineStageState, compact: boolean): string {
   }
 }
 
-function segmentTone(state: PipelineStageState): 'success' | 'active' | 'failed' | 'idle' {
+function segmentTone(
+  state: PipelineStageState,
+): 'success' | 'partial' | 'active' | 'failed' | 'idle' {
   if (state === 'complete') return 'success'
+  if (state === 'partial') return 'partial'
   if (state === 'current') return 'active'
   if (state === 'failed') return 'failed'
   return 'idle'
@@ -66,16 +71,31 @@ function stageTooltip(
   doc: IngestionPipelineWaterfallProps['doc'],
 ) {
   const date = stageDate(index, state, doc)
+  const label =
+    state === 'failed'
+      ? `${TOOLTIP_STAGE_LABELS[index]} failed`
+      : state === 'partial'
+        ? 'Partially indexed — searchable, full indexing incomplete'
+        : TOOLTIP_STAGE_LABELS[index]
   return (
     <div className="admin-pipeline-tooltip">
-      <div>
-        {state === 'failed'
-          ? `${TOOLTIP_STAGE_LABELS[index]} failed`
-          : TOOLTIP_STAGE_LABELS[index]}
-      </div>
+      <div>{label}</div>
       {date && <div className="admin-pipeline-tooltip-date">{formatDateTime(date)}</div>}
     </div>
   )
+}
+
+function stageShortLabel(index: number, state: PipelineStageState): string {
+  if (state === 'partial') return 'Partial'
+  return PIPELINE_STAGES[index]?.shortLabel ?? ''
+}
+
+function labelClass(state: PipelineStageState): string {
+  if (state === 'current') return 'admin-pipeline-label--active font-semibold'
+  if (state === 'failed') return 'admin-pipeline-label--failed font-semibold'
+  if (state === 'partial') return 'admin-pipeline-label--partial font-semibold'
+  if (state === 'complete') return 'admin-pipeline-label--complete font-medium'
+  return 'admin-pipeline-label--pending'
 }
 
 export default function IngestionPipelineWaterfall({
@@ -116,17 +136,9 @@ export default function IngestionPipelineWaterfall({
                   </div>
                   {!compact && (
                     <span
-                      className={`mt-1.5 max-w-[4.75rem] text-center text-xs leading-tight ${
-                        state === 'current'
-                          ? 'admin-pipeline-label--active font-semibold'
-                          : state === 'failed'
-                            ? 'admin-pipeline-label--failed font-semibold'
-                            : state === 'complete'
-                              ? 'admin-pipeline-label--complete font-medium'
-                              : 'admin-pipeline-label--pending'
-                      }`}
+                      className={`mt-1.5 max-w-[4.75rem] text-center text-xs leading-tight ${labelClass(state)}`}
                     >
-                      {stage.shortLabel}
+                      {stageShortLabel(index, state)}
                     </span>
                   )}
                 </div>

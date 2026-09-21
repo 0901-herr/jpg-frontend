@@ -35,6 +35,13 @@ describe('getPipelineProgress', () => {
     expect(states.every((s) => s === 'complete')).toBe(true)
   })
 
+  it('marks the final node as partial for PARTIAL (earlier stages stay complete)', () => {
+    const { states, summary } = getPipelineProgress('PARTIAL')
+    expect(states.slice(0, 6).every((s) => s === 'complete')).toBe(true)
+    expect(states[6]).toBe('partial')
+    expect(summary).toBe('Partially indexed — searchable, full indexing incomplete')
+  })
+
   it('infers failed stage from submitted_at', () => {
     const { states, summary } = getPipelineProgress('FAILED', {
       discovered_at: '2026-01-01T00:00:00Z',

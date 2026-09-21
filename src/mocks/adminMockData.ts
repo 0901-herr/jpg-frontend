@@ -24,6 +24,7 @@ export interface MockCounts {
   preparing: number
   indexing: number
   ready: number
+  partial: number
   failed: number
   deleted: number
 }
@@ -211,8 +212,44 @@ function inFlightDocs(): AdminDocumentDetail[] {
   ]
 }
 
+/** Searchable but not fully indexed — last waterfall node shows Partial. */
+function partialDocs(): AdminDocumentDetail[] {
+  return [
+    buildDoc({
+      source_document_id: '4921',
+      filename: 'Facilities_Handbook_OCR.pdf',
+      lifecycle_status: 'PARTIAL',
+      db_status: 'PARTIAL',
+      processing_stage: 'lexical_indexed',
+      classification_category: 'Policies',
+      checksum: 'sha1:partial4921',
+      rag_document_id: 'rag-4921',
+      discovered_at: hoursAgo(8),
+      submitted_at: hoursAgo(7.5),
+      ready_at: hoursAgo(7),
+      updated_at: hoursAgo(7),
+      last_success_at: hoursAgo(7),
+    }),
+    buildDoc({
+      source_document_id: '4922',
+      filename: 'Scanned_Contracts_Bundle.pdf',
+      lifecycle_status: 'PARTIAL',
+      db_status: 'PARTIAL',
+      processing_stage: 'lexical_indexed',
+      classification_category: 'Contracts',
+      checksum: 'sha1:partial4922',
+      rag_document_id: 'rag-4922',
+      discovered_at: hoursAgo(12),
+      submitted_at: hoursAgo(11),
+      ready_at: hoursAgo(10.5),
+      updated_at: hoursAgo(10.5),
+      last_success_at: hoursAgo(10.5),
+    }),
+  ]
+}
+
 export function buildInitialDocuments(): AdminDocumentDetail[] {
-  return [...readyDocs(), ...failedDocs(), ...inFlightDocs()]
+  return [...readyDocs(), ...partialDocs(), ...failedDocs(), ...inFlightDocs()]
 }
 
 export function buildInitialCounts(): MockCounts {
@@ -222,6 +259,7 @@ export function buildInitialCounts(): MockCounts {
     preparing: 0,
     indexing: 1,
     ready: 3128,
+    partial: 12,
     failed: 3,
     deleted: 4,
   }

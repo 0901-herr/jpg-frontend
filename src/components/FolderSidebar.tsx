@@ -25,6 +25,7 @@ import BrowseViewToggle, { type BrowseViewMode } from './BrowseViewToggle'
 import CategoryTag from './CategoryTag'
 import DocumentChecklist from './DocumentChecklist'
 import {
+  getReadinessTooltipExplanation,
   getSelectableDocumentIds,
   isDocumentSelectable,
 } from './IndexingStatusBadge'
@@ -71,7 +72,11 @@ function buildFolderTitle(name: string) {
   )
 }
 
-export default function FolderSidebar({ browse, selection, disabled = false }: FolderSidebarProps) {
+export default function FolderSidebar({
+  browse,
+  selection,
+  disabled = false,
+}: FolderSidebarProps) {
   // `App.useApp()` rather than the static `message` import from 'antd' —
   // see App.tsx's comment on the `<AntApp>` provider this reads from.
   const { message } = App.useApp()
@@ -281,11 +286,24 @@ export default function FolderSidebar({ browse, selection, disabled = false }: F
   }, [folderCheckStates])
 
   // Building a doc's tree row: the filename fills the line and elides under
-  // a long name. Hover shows Ready / Not ready (with a status dot) above
-  // the full name; the tooltip filename underlines and opens LogicalDOC.
+  // a long name. Hover shows Ready / Partial / Not ready (with a status
+  // dot) above the full name; the tooltip filename underlines and opens
+  // LogicalDOC. PARTIAL stays distinct from Ready — the file is queryable
+  // but not fully indexed.
   const buildDocLeaf = useCallback((doc: BrowseDocumentItem): DataNode => {
     const selectable = isDocumentSelectable(doc.indexing_status, doc.queryable)
-    const isReady = doc.indexing_status === 'READY'
+    const readiness =
+      doc.indexing_status === 'READY'
+        ? 'ready'
+        : doc.indexing_status === 'PARTIAL'
+          ? 'partial'
+          : 'not-ready'
+    const readinessLabel =
+      readiness === 'ready' ? 'Ready' : readiness === 'partial' ? 'Partial' : 'Not ready'
+    const readinessExplanation = getReadinessTooltipExplanation(
+      doc.indexing_status,
+      doc.status_reason,
+    )
     const openFile = async (event: MouseEvent) => {
       event.preventDefault()
       event.stopPropagation()
@@ -317,15 +335,12 @@ export default function FolderSidebar({ browse, selection, disabled = false }: F
           title={
             <div className="docu-file-row-tooltip">
               <div
-                className={`docu-file-row-tooltip-status ${
-                  isReady
-                    ? 'docu-file-row-tooltip-status--ready'
-                    : 'docu-file-row-tooltip-status--not-ready'
-                }`}
+                className={`docu-file-row-tooltip-status docu-file-row-tooltip-status--${readiness}`}
               >
                 <span className="docu-file-row-tooltip-dot" aria-hidden />
-                {isReady ? 'Ready' : 'Not ready'}
+                {readinessLabel}
               </div>
+              <p className="docu-file-row-tooltip-explanation">{readinessExplanation}</p>
               <button
                 type="button"
                 className="docu-file-row-tooltip-name"
@@ -527,11 +542,14 @@ export default function FolderSidebar({ browse, selection, disabled = false }: F
 
   if (disabled) {
     return (
-      <div className="flex flex-col gap-2 opacity-50 pointer-events-none select-none" aria-disabled="true">
+      <div
+        className="flex flex-col gap-2 opacity-50 pointer-events-none select-none"
+        aria-disabled="true"
+      >
         <span className={sectionLabel}>Files</span>
         <p className={`${sidebar.caption} ${typeColor.muted} m-0 px-1`}>
-          Files are chosen by the chat owner. In a shared chat you can only ask about the files
-          they picked.
+          Files are chosen by the chat owner. In a shared chat you can only ask
+          about the files they picked.
         </p>
       </div>
     )

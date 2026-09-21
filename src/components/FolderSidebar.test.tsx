@@ -528,11 +528,84 @@ describe('FolderSidebar file row status', () => {
 
     const tooltip = await screen.findByRole('tooltip')
     expect(tooltip).toHaveTextContent('Not ready')
+    expect(tooltip).toHaveTextContent('Unsupported file format.')
     expect(
       within(tooltip).getByRole('button', { name: 'Open contract.pdf in LogicalDOC' }),
     ).toBeInTheDocument()
     expect(tooltip.querySelector('.docu-file-row-tooltip-status--not-ready')).not.toBeNull()
     expect(screen.queryByRole('img')).not.toBeInTheDocument()
+  })
+
+  it('shows Partial (not Not ready) for a PARTIAL document in the row tooltip', async () => {
+    const partialDoc: BrowseDocumentItem = {
+      ...folderDocuments[0],
+      indexing_status: 'PARTIAL',
+      queryable: true,
+      status_reason: 'Text search only; full vector indexing is still in progress.',
+    }
+    render(
+      <FolderSidebar
+        browse={createBrowseFixture({
+          cache: new Map([
+            [
+              1,
+              {
+                contents: {
+                  folder: { folder_id: 1, name: 'Root', parent_id: null, has_children: false },
+                  folders: [],
+                  documents: [partialDoc],
+                  page: 0,
+                  has_more_documents: false,
+                },
+                loadedPages: new Set([0]),
+              },
+            ],
+          ]),
+        })}
+        selection={createSelectionFixture()}
+      />,
+    )
+
+    const user = userEvent.setup()
+    await user.hover(await screen.findByText('contract.pdf'))
+
+    const tooltip = await screen.findByRole('tooltip')
+    expect(tooltip).toHaveTextContent('Partial')
+    expect(tooltip).toHaveTextContent('Text search only; full vector indexing is still in progress.')
+    expect(tooltip).not.toHaveTextContent('Not ready')
+    expect(tooltip.querySelector('.docu-file-row-tooltip-status--partial')).not.toBeNull()
+  })
+
+  it('explains Ready when there is no adapter status_reason', async () => {
+    render(
+      <FolderSidebar
+        browse={createBrowseFixture({
+          cache: new Map([
+            [
+              1,
+              {
+                contents: {
+                  folder: { folder_id: 1, name: 'Root', parent_id: null, has_children: false },
+                  folders: [],
+                  documents: [folderDocuments[0]],
+                  page: 0,
+                  has_more_documents: false,
+                },
+                loadedPages: new Set([0]),
+              },
+            ],
+          ]),
+        })}
+        selection={createSelectionFixture()}
+      />,
+    )
+
+    const user = userEvent.setup()
+    await user.hover(await screen.findByText('contract.pdf'))
+
+    const tooltip = await screen.findByRole('tooltip')
+    expect(tooltip).toHaveTextContent('Ready')
+    expect(tooltip).toHaveTextContent('Fully indexed and ready for questions.')
   })
 
   it('shows an error toast when opening a document in LogicalDOC fails (App.useApp() coverage)', async () => {

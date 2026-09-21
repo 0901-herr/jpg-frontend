@@ -7,6 +7,7 @@ export const LIFECYCLE_LABELS: Record<LifecycleStatus, string> = {
   STAGED: 'Staged',
   SUBMITTED: 'Submitted',
   INDEXING: 'Indexing',
+  PARTIAL: 'Partial',
   READY: 'Ready',
   FAILED: 'Failed',
   DELETING: 'Deleting',
@@ -20,6 +21,7 @@ export const LIFECYCLE_HINTS: Record<LifecycleStatus, string> = {
   STAGED: 'Staged in MinIO, waiting for batch submit to RAG',
   SUBMITTED: 'Accepted by RAG, waiting to start indexing',
   INDEXING: 'RAG Engine is currently processing this document',
+  PARTIAL: 'Queryable, but full indexing did not complete — answers may be less accurate',
   READY: 'Successfully indexed and searchable',
   FAILED: 'Ingestion failed',
   DELETING: 'Being removed from RAG and storage',
@@ -33,6 +35,7 @@ export const LIFECYCLE_COLORS: Record<LifecycleStatus, string> = {
   STAGED: 'processing',
   SUBMITTED: 'processing',
   INDEXING: 'warning',
+  PARTIAL: 'cyan',
   READY: 'success',
   FAILED: 'error',
   DELETING: 'warning',
@@ -40,6 +43,8 @@ export const LIFECYCLE_COLORS: Record<LifecycleStatus, string> = {
 }
 
 export function isTerminalLifecycle(status: LifecycleStatus): boolean {
+  // PARTIAL can still be upgraded to READY by the completion recheck, so
+  // keep polling document detail while it is Partial.
   return status === 'READY' || status === 'FAILED' || status === 'DELETED'
 }
 
@@ -54,7 +59,7 @@ export const PIPELINE_STAGES = [
   { id: 'ready', shortLabel: 'Ready', label: 'Searchable in RAG' },
 ] as const
 
-export type PipelineStageState = 'pending' | 'complete' | 'current' | 'failed' | 'skipped'
+export type PipelineStageState = 'pending' | 'complete' | 'current' | 'failed' | 'partial' | 'skipped'
 
 const STATUS_STAGE_INDEX: Record<LifecycleStatus, number> = {
   DISCOVERED: 0,
@@ -63,6 +68,7 @@ const STATUS_STAGE_INDEX: Record<LifecycleStatus, number> = {
   STAGED: 3,
   SUBMITTED: 4,
   INDEXING: 5,
+  PARTIAL: 6,
   READY: 6,
   FAILED: -1,
   DELETING: 6,
@@ -106,6 +112,12 @@ export function getPipelineProgress(
       if (index === activeIndex) return 'failed'
       return 'pending'
     }
+    // PARTIAL is an indexing outcome, not a separate stage — earlier
+    // stages stay complete; the final "Ready" node renders as Partial.
+    if (status === 'PARTIAL') {
+      if (index < stageCount - 1) return 'complete'
+      return 'partial'
+    }
     if (status === 'READY' || status === 'DELETED') return 'complete'
     if (status === 'DELETING' && index === stageCount - 1) return 'current'
     if (index < activeIndex) return 'complete'
@@ -118,9 +130,11 @@ export function getPipelineProgress(
       ? `Failed at ${PIPELINE_STAGES[activeIndex]?.label ?? 'unknown stage'}`
       : status === 'READY'
         ? 'Fully indexed and searchable'
-        : status === 'DELETED'
-          ? 'Removed from corpus'
-          : `${PIPELINE_STAGES[activeIndex]?.label ?? status} (in progress)`
+        : status === 'PARTIAL'
+          ? 'Partially indexed — searchable, full indexing incomplete'
+          : status === 'DELETED'
+            ? 'Removed from corpus'
+            : `${PIPELINE_STAGES[activeIndex]?.label ?? status} (in progress)`
 
   return { states, summary }
 }

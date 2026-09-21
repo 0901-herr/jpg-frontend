@@ -12,6 +12,7 @@ import type {
   BrowseSubtreeDocumentsResponse,
   DocumentCategorizeResponse,
   DocumentSummaryResponse,
+  IndexingStatus,
   MetadataExtractionResponse,
   QueryScopeRequest,
   QueryScopeResponse,
@@ -33,42 +34,65 @@ function demoDocument(
   filename: string,
   folder_id: number,
   classification_category: string,
+  indexing_status: IndexingStatus = 'READY',
 ): BrowseDocumentItem {
+  const queryable = indexing_status === 'READY' || indexing_status === 'PARTIAL'
+  const status_reason =
+    indexing_status === 'PARTIAL'
+      ? 'Text search only; full vector indexing did not complete. Answers may be less accurate.'
+      : indexing_status === 'INDEXING'
+        ? 'Still being prepared for search.'
+        : indexing_status === 'FAILED'
+          ? 'Indexing failed for this file.'
+          : indexing_status === 'NOT_INDEXED'
+            ? 'Not ingested yet.'
+            : null
   return {
     document_id,
     filename,
     file_type: filename.split('.').pop() ?? 'pdf',
     updated_at: '2026-09-10T10:28:00Z',
     folder_id,
-    indexing_status: 'READY',
-    rag_document_id: `demo-rag-${document_id}`,
+    indexing_status,
+    rag_document_id: queryable ? `demo-rag-${document_id}` : null,
     classification_category,
-    summary_status: 'READY',
-    status_reason: null,
-    queryable: true,
+    summary_status: queryable ? 'READY' : indexing_status === 'FAILED' ? 'FAILED' : 'PENDING',
+    status_reason,
+    queryable,
   }
 }
 
+/** Mixed statuses so the composer/share demos can show Ready / Partial /
+ * Preparing / Failed / Queued tooltips in the Files tree. */
 const COMPOSER_DEMO_DOCUMENTS: Record<number, BrowseDocumentItem[]> = {
-  1: [demoDocument('demo-handbook', 'Company_Handbook_2026.pdf', 1, 'General')],
+  1: [
+    demoDocument('demo-handbook', 'Company_Handbook_2026.pdf', 1, 'General', 'READY'),
+    demoDocument('demo-handbook-draft', 'Company_Handbook_Draft.pdf', 1, 'General', 'INDEXING'),
+  ],
   2: [
-    demoDocument('demo-workplace-policy', 'Workplace_Policy_2026.pdf', 2, 'Policies'),
-    demoDocument('demo-security-policy', 'Information_Security_Policy.pdf', 2, 'Policies'),
-    demoDocument('demo-leave-policy', 'Leave_and_Benefits_Guide.pdf', 2, 'Policies'),
+    demoDocument('demo-workplace-policy', 'Workplace_Policy_2026.pdf', 2, 'Policies', 'READY'),
+    demoDocument('demo-security-policy', 'Information_Security_Policy.pdf', 2, 'Policies', 'PARTIAL'),
+    demoDocument('demo-leave-policy', 'Leave_and_Benefits_Guide.pdf', 2, 'Policies', 'INDEXING'),
   ],
   3: [
-    demoDocument('demo-q3-report', 'Q3_Financial_Report.pdf', 3, 'Finance'),
-    demoDocument('demo-budget', 'FY2027_Budget.xlsx', 3, 'Finance'),
+    demoDocument('demo-q3-report', 'Q3_Financial_Report.pdf', 3, 'Finance', 'READY'),
+    demoDocument('demo-budget', 'FY2027_Budget.xlsx', 3, 'Finance', 'PARTIAL'),
   ],
   4: [
-    demoDocument('demo-onboarding', 'New_Starter_Onboarding.docx', 4, 'People'),
-    demoDocument('demo-org-chart', 'Organisation_Chart.pdf', 4, 'People'),
+    demoDocument('demo-onboarding', 'New_Starter_Onboarding.docx', 4, 'People', 'FAILED'),
+    demoDocument('demo-org-chart', 'Organisation_Chart.pdf', 4, 'People', 'NOT_INDEXED'),
   ],
   5: [
-    demoDocument('demo-project-atlas', 'Project_Atlas_Brief.pdf', 5, 'Projects'),
-    demoDocument('demo-project-nova', 'Project_Nova_Status.docx', 5, 'Projects'),
+    demoDocument('demo-project-atlas', 'Project_Atlas_Brief.pdf', 5, 'Projects', 'READY'),
+    demoDocument('demo-project-nova', 'Project_Nova_Status.docx', 5, 'Projects', 'INDEXING'),
   ],
 }
+
+const COMPOSER_DEMO_DOC_BY_ID = new Map(
+  Object.values(COMPOSER_DEMO_DOCUMENTS)
+    .flat()
+    .map((doc) => [doc.document_id, doc]),
+)
 
 export async function fetchBrowseRoot(): Promise<BrowseRootResponse> {
   if (isLayoutDemoEnabled()) return { root_folder_id: 1, username: 'Demo user' }
@@ -153,15 +177,21 @@ export async function fetchBrowseStatus(
   if (documentIds.length === 0) return { documents: [] }
   if (isLayoutDemoEnabled()) {
     return {
-      documents: documentIds.map((document_id) => ({
-        document_id,
-        indexing_status: 'READY',
-        status_reason: null,
-        queryable: true,
-        summary_status: 'READY',
-        classification_category: 'Policies',
-        rag_document_id: `demo-rag-${document_id}`,
-      })),
+      documents: documentIds.flatMap((document_id) => {
+        const doc = COMPOSER_DEMO_DOC_BY_ID.get(document_id)
+        if (!doc) return []
+        return [
+          {
+            document_id: doc.document_id,
+            indexing_status: doc.indexing_status,
+            status_reason: doc.status_reason ?? null,
+            queryable: doc.queryable,
+            summary_status: doc.summary_status ?? null,
+            classification_category: doc.classification_category ?? null,
+            rag_document_id: doc.rag_document_id,
+          },
+        ]
+      }),
     }
   }
 

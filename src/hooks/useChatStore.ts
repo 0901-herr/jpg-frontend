@@ -1,4 +1,4 @@
-import { App } from 'antd'
+import { message } from 'antd'
 import type { Dispatch, SetStateAction } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
@@ -18,11 +18,6 @@ import {
 import type { ChatMessageDto, ChatSessionDetailDto, ChatSessionSummaryDto } from '../api/types/chat'
 import { ApiError } from '../api/http'
 import type { ChatMessage, ChatProject, ChatSession, ChatVisibility, CoverageInfo, Source } from '../types'
-import {
-  clearUnreachableToastDismiss,
-  registerUnreachableToastDismiss,
-  shouldShowUnreachableToast,
-} from '../utils/backendUnreachableNotice'
 
 const SESSION_TITLE_MONTHS = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
@@ -262,11 +257,6 @@ export function useChatStore({
   initialSession,
   hasPendingShare = false,
 }: UseChatStoreParams): UseChatStoreResult {
-  // `App.useApp()` rather than the static `message` import from 'antd' —
-  // the static functions "can not consume context like dynamic theme"
-  // (antd's own deprecation warning); this hook is only ever called from
-  // AppLayout, which now renders under the `<App>` provider (App.tsx).
-  const { message } = App.useApp()
   const [sessions, setSessions] = useState<ChatSession[]>([initialSession])
   const [sharedSessions, setSharedSessions] = useState<ChatSession[]>([])
   const [projects, setProjects] = useState<ChatProject[]>([])
@@ -408,22 +398,7 @@ export function useChatStore({
         const fresh = spawnEmptySession()
         setSessions([fresh])
         setActiveChatId(fresh.id)
-        // P1-3 (UI polish pass): this failure and the sidebar's own
-        // persistent "Could not load folders" card (useBrowseTree.ts) fire
-        // from the same root cause (the backend is unreachable) on the
-        // same app load — showing both at once duplicated the message. The
-        // card is persistent, so it wins: skip the toast if it's already
-        // showing, and register this toast's own close handle so a card
-        // that appears a moment later can dismiss it retroactively
-        // (`backendUnreachableNotice.ts`).
-        if (shouldShowUnreachableToast()) {
-          const hide = message.error(
-            'Could not load your chats. Please refresh and try again.',
-            undefined,
-            clearUnreachableToastDismiss,
-          )
-          registerUnreachableToastDismiss(hide)
-        }
+        message.error('Could not load your chats. Please refresh and try again.')
       } finally {
         setHydrated(true)
       }
