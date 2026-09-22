@@ -158,6 +158,15 @@ export function formatProgressStage(
     case 'verifying':
       return 'Double-checking the answer'
 
+    case 'queued': {
+      // The engine admitted the question but every generation slot is busy;
+      // say so honestly (and how many are ahead) instead of a silent wait.
+      const position = readNumber(p, 'position')
+      return position != null && position > 0
+        ? `Waiting for a free slot (${position} ${plural(position, 'question')} ahead)`
+        : 'Waiting for a free slot'
+    }
+
     default:
       return legacyFallback(stage)
   }

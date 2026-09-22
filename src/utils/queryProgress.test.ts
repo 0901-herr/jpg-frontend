@@ -25,6 +25,16 @@ describe('formatProgressStage', () => {
     // `tier_escalated` or `postprocessing` must never reach the user, even
     // humanized — a fixed generic line stands in for all of them.
     expect(formatProgressStage('custom_stage')).toBe('Working on it')
+  })
+
+  it('explains a queued wait honestly, with the number of questions ahead', () => {
+    expect(formatProgressStage('queued')).toBe('Waiting for a free slot')
+    expect(formatProgressStage('queued', { position: 1 })).toBe(
+      'Waiting for a free slot (1 question ahead)',
+    )
+    expect(formatProgressStage('queued', { position: 3 })).toBe(
+      'Waiting for a free slot (3 questions ahead)',
+    )
     expect(formatProgressStage('tier_escalated')).toBe('Working on it')
   })
 
