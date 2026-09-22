@@ -267,7 +267,7 @@ function simTick(): void {
 
   b.total_preparing = s.counts.preparing
   b.total_staged_for_rag = s.counts.staged
-  b.current_inflight = s.counts.indexing
+  b.current_inflight = s.counts.indexing + (s.counts.retrying ?? 0)
   b.current_folder_id = 4951
   b.current_page = Math.floor(s.simRunDiscovered / 5)
   b.discovery_backpressured =
@@ -279,7 +279,12 @@ function simTick(): void {
   b.total_known = null
 
   const stillMoving =
-    s.counts.discovered + s.counts.preparing + s.counts.staged + s.counts.indexing > 0
+    s.counts.discovered +
+      s.counts.preparing +
+      s.counts.staged +
+      s.counts.indexing +
+      (s.counts.retrying ?? 0) >
+    0
   const stillDiscovering = s.simRunDiscovered < SIM_RUN_TARGET
 
   if (readyNow > 0 || settled > 0) {
@@ -289,6 +294,7 @@ function simTick(): void {
       s.counts.preparing +
       s.counts.staged +
       s.counts.indexing +
+      (s.counts.retrying ?? 0) +
       Math.max(SIM_RUN_TARGET - s.simRunDiscovered, 0)
     b.estimated_seconds_remaining = b.documents_per_second
       ? remaining / b.documents_per_second

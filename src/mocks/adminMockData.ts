@@ -23,6 +23,7 @@ export interface MockCounts {
   staged: number
   preparing: number
   indexing: number
+  retrying: number
   ready: number
   partial: number
   failed: number
@@ -258,6 +259,7 @@ export function buildInitialCounts(): MockCounts {
     staged: 0,
     preparing: 0,
     indexing: 1,
+    retrying: 2,
     ready: 3128,
     partial: 12,
     failed: 3,
@@ -377,6 +379,13 @@ export function buildInitialActivity(): IngestionActivityItem[] {
       'ingest_failed',
       'Alumni_Directory_Draft.docx failed to ingest',
       ERROR_PRESETS[1].message,
+    ),
+    makeActivityItem(
+      'warning',
+      'pipeline',
+      'ingest_retry_pending',
+      'Q1_Budget.xlsx will be retried',
+      'RAG Engine returned HTTP 503',
     ),
     makeActivityItem(
       'warning',

@@ -346,7 +346,7 @@ describe('progress label elapsed-time ticker', () => {
     vi.useRealTimers()
   })
 
-  it('appends " · {n}s" to the thinking headline once the generating stage has been reached', () => {
+  it('appends " {n}s" to the thinking headline once the generating stage has been reached', () => {
     const startedAt = Date.now()
     render(
       <ChatMessageItem
@@ -359,12 +359,12 @@ describe('progress label elapsed-time ticker', () => {
       />,
     )
 
-    expect(screen.getByText('Putting the answer together · 0s')).toBeInTheDocument()
+    expect(screen.getByText('Putting the answer together 0s')).toBeInTheDocument()
 
     act(() => {
       vi.advanceTimersByTime(2000)
     })
-    expect(screen.getByText('Putting the answer together · 2s')).toBeInTheDocument()
+    expect(screen.getByText('Putting the answer together 2s')).toBeInTheDocument()
   })
 
   it('shows the elapsed count exactly once — no separate standalone "{n}s" caption alongside the ticked headline', () => {
@@ -387,7 +387,7 @@ describe('progress label elapsed-time ticker', () => {
     // Only the compound headline carries the elapsed count — no standalone
     // "2s" caption below it duplicating the same number in a different
     // format (the MAJOR-2 regression: both used to render at once).
-    expect(screen.getByText('Putting the answer together · 2s')).toBeInTheDocument()
+    expect(screen.getByText('Putting the answer together 2s')).toBeInTheDocument()
     expect(screen.queryByText('2s')).not.toBeInTheDocument()
     expect(screen.getAllByText(/2s/)).toHaveLength(1)
   })
@@ -406,12 +406,12 @@ describe('progress label elapsed-time ticker', () => {
     )
 
     expect(screen.getByText('Understanding your question')).toBeInTheDocument()
-    expect(screen.queryByText(/Understanding your question ·/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Understanding your question \d+s/)).not.toBeInTheDocument()
 
     act(() => {
       vi.advanceTimersByTime(4000)
     })
-    expect(screen.getByText('Understanding your question · 4s')).toBeInTheDocument()
+    expect(screen.getByText('Understanding your question 4s')).toBeInTheDocument()
   })
 
   it('ticks the streaming progress label the same way while no content has arrived yet', () => {
@@ -428,12 +428,12 @@ describe('progress label elapsed-time ticker', () => {
       />,
     )
 
-    expect(screen.getByText('Putting the answer together · 0s')).toBeInTheDocument()
+    expect(screen.getByText('Putting the answer together 0s')).toBeInTheDocument()
 
     act(() => {
       vi.advanceTimersByTime(3000)
     })
-    expect(screen.getByText('Putting the answer together · 3s')).toBeInTheDocument()
+    expect(screen.getByText('Putting the answer together 3s')).toBeInTheDocument()
   })
 
   it('does not append the ticker suffix to the streaming label once content has arrived', () => {
@@ -453,7 +453,7 @@ describe('progress label elapsed-time ticker', () => {
     // arrives, in AppLayout), but the elapsed-time ticker only applies to
     // the silent, content-free phase.
     expect(screen.getByText('Putting the answer together')).toBeInTheDocument()
-    expect(screen.queryByText(/Putting the answer together ·/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Putting the answer together \d+s/)).not.toBeInTheDocument()
   })
 })
 
