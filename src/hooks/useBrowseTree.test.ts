@@ -723,3 +723,67 @@ describe('useBrowseTree — getFolderNode', () => {
     expect(result.current.getFolderNode(999)).toBeUndefined()
   })
 })
+
+// Item 6: expanding a folder with many files shows a loading state, and a
+// second expand click while that fetch is still outstanding must not fire
+// a duplicate request — this is what FolderSidebar's Tree `loadData` calls
+// through (ensureFolderLoaded -> loadFolder), possibly more than once for
+// the same folder id before the first resolves (a second click, or a
+// checkbox click racing the tree's own loadData for the same folder).
+describe('useBrowseTree — ensureFolderLoaded de-duplicates concurrent loads', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    fetchBrowseRoot.mockResolvedValue(root)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.doUnmock('../config/browse')
+  })
+
+  it('a second ensureFolderLoaded call for the same folder while the first is still in flight shares the one fetch', async () => {
+    fetchFolderContents.mockResolvedValueOnce(rootContents('READY'))
+    const result = await initHook()
+    expect(fetchFolderContents).toHaveBeenCalledTimes(1) // the initial root load
+
+    const slow = deferred<ReturnType<typeof rootContents>>()
+    fetchFolderContents.mockReturnValueOnce(slow.promise)
+
+    let firstCall!: Promise<unknown>
+    let secondCall!: Promise<unknown>
+    await act(async () => {
+      firstCall = result.current.ensureFolderLoaded(2)
+      secondCall = result.current.ensureFolderLoaded(2)
+    })
+
+    // Both calls saw folder 2 as not yet cached and want to load it, but
+    // only one actual network request should be outstanding for it.
+    expect(fetchFolderContents).toHaveBeenCalledTimes(2)
+    expect(result.current.loadingFolderIds.has(2)).toBe(true)
+
+    slow.resolve({
+      folder: { folder_id: 2, name: 'Sub', parent_id: 1, has_children: false },
+      folders: [],
+      documents: [],
+      page: 0,
+      has_more_documents: false,
+    })
+    await act(async () => {
+      await Promise.all([firstCall, secondCall])
+    })
+
+    // Still exactly one fetch for folder 2 (plus the one for root) — the
+    // second ensureFolderLoaded call reused the first's in-flight promise
+    // instead of starting a second request.
+    expect(fetchFolderContents).toHaveBeenCalledTimes(2)
+    expect(result.current.loadingFolderIds.has(2)).toBe(false)
+    expect(result.current.getFolderNode(2)).toEqual({
+      folder_id: 2,
+      name: 'Sub',
+      parent_id: 1,
+      has_children: false,
+    })
+  })
+})
