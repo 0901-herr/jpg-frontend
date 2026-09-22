@@ -100,9 +100,12 @@ async function importApiError() {
   return ApiError
 }
 
-async function initHook() {
+async function initHook(
+  onDocumentsLoaded?: (event: { folderId: number; documents: unknown[]; page: number }) => void,
+  onDocumentsRemoved?: (documentIds: string[]) => void,
+) {
   const { useBrowseTree } = await import('./useBrowseTree')
-  const { result } = renderHook(() => useBrowseTree())
+  const { result } = renderHook(() => useBrowseTree(onDocumentsLoaded, onDocumentsRemoved))
   await act(async () => {
     await vi.advanceTimersByTimeAsync(0)
   })
@@ -150,6 +153,26 @@ describe('useBrowseTree auto-refresh', () => {
     expect(result.current.activeFolderContents?.folders).toHaveLength(1)
   })
 
+  it('fast cadence re-registers the changed document via onDocumentsLoaded, so selection state stays live too', async () => {
+    fetchFolderContents.mockResolvedValueOnce(rootContents('INDEXING'))
+    const onDocumentsLoaded = vi.fn()
+    await initHook(onDocumentsLoaded)
+    onDocumentsLoaded.mockClear() // drop the initial-load registration call
+
+    fetchBrowseStatus.mockResolvedValueOnce(statusResponse('READY'))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000)
+    })
+
+    expect(onDocumentsLoaded).toHaveBeenCalledTimes(1)
+    const event = onDocumentsLoaded.mock.calls[0][0] as {
+      documents: { document_id: string; indexing_status: string }[]
+    }
+    expect(event.documents).toHaveLength(1)
+    expect(event.documents[0].document_id).toBe('doc-1')
+    expect(event.documents[0].indexing_status).toBe('READY')
+  })
+
   it('idle cadence performs the full folder re-fetch once every document has settled', async () => {
     fetchFolderContents.mockResolvedValueOnce(rootContents('READY'))
     const result = await initHook()
@@ -169,6 +192,101 @@ describe('useBrowseTree auto-refresh', () => {
     expect(fetchFolderContents).toHaveBeenCalledTimes(2)
     expect(fetchFolderContents).toHaveBeenLastCalledWith(1, 0)
     expect(fetchBrowseStatus).not.toHaveBeenCalled()
+  })
+
+  it('idle cadence re-registers a changed document via onDocumentsLoaded, so selection state stays live too', async () => {
+    fetchFolderContents.mockResolvedValueOnce(rootContents('READY'))
+    const onDocumentsLoaded = vi.fn()
+    const result = await initHook(onDocumentsLoaded)
+    onDocumentsLoaded.mockClear() // drop the initial-load registration call
+
+    const updated = rootContents('READY')
+    updated.documents[0].classification_category = 'Policies'
+    fetchFolderContents.mockResolvedValueOnce(updated)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000)
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(45_000)
+    })
+
+    expect(result.current.activeFolderContents?.documents[0].classification_category).toBe(
+      'Policies',
+    )
+    expect(onDocumentsLoaded).toHaveBeenCalledTimes(1)
+    const event = onDocumentsLoaded.mock.calls[0][0] as {
+      documents: { document_id: string; classification_category?: string | null }[]
+    }
+    expect(event.documents).toHaveLength(1)
+    expect(event.documents[0].document_id).toBe('doc-1')
+    expect(event.documents[0].classification_category).toBe('Policies')
+  })
+
+  it('idle cadence full re-fetch removes a document missing from the listing, and reports it via onDocumentsRemoved', async () => {
+    fetchFolderContents.mockResolvedValueOnce(rootContents('READY'))
+    const onDocumentsRemoved = vi.fn()
+    const result = await initHook(undefined, onDocumentsRemoved)
+    expect(result.current.activeFolderContents?.documents).toHaveLength(1)
+
+    const emptied: BrowseFolderContentsResponse = { ...rootContents('READY'), documents: [] }
+    fetchFolderContents.mockResolvedValueOnce(emptied)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000)
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(45_000)
+    })
+
+    expect(result.current.activeFolderContents?.documents).toHaveLength(0)
+    expect(onDocumentsRemoved).toHaveBeenCalledWith(['doc-1'])
+  })
+
+  it('never treats a document on an already-loaded further page as removed by a page-0-only refresh', async () => {
+    fetchFolderContents.mockImplementation(async (folderId: number, page = 0) => {
+      if (page === 0) return { ...rootContents('READY'), has_more_documents: true }
+      return {
+        folder: { folder_id: 1, name: 'Root', parent_id: null, has_children: true },
+        folders: [],
+        documents: [
+          {
+            document_id: 'doc-2',
+            filename: 'b.pdf',
+            file_type: 'pdf',
+            updated_at: '2026-09-14T00:00:00Z',
+            folder_id: 1,
+            indexing_status: 'READY' as const,
+            rag_document_id: 'rag-2',
+            queryable: true,
+          },
+        ],
+        page: 1,
+        has_more_documents: false,
+      }
+    })
+    const onDocumentsRemoved = vi.fn()
+    const result = await initHook(undefined, onDocumentsRemoved)
+    expect(result.current.activeFolderContents?.documents).toHaveLength(1)
+
+    await act(async () => {
+      await result.current.handleLoadMoreDocuments()
+    })
+    expect(result.current.activeFolderContents?.documents).toHaveLength(2)
+
+    // The idle-cadence refresh only ever re-fetches page 0, which of course
+    // won't include doc-2 (it lives on the "load more" page) — that must
+    // never be mistaken for doc-2 having been deleted.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000)
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(45_000)
+    })
+
+    expect(result.current.activeFolderContents?.documents.map((d) => d.document_id)).toEqual([
+      'doc-1',
+      'doc-2',
+    ])
+    expect(onDocumentsRemoved).not.toHaveBeenCalled()
   })
 
   it('pauses polling while the document is hidden and resumes on visibilitychange', async () => {

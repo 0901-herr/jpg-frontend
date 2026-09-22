@@ -41,6 +41,17 @@ describe('summaryGate', () => {
       }),
     ).toBe('Select only one document')
 
+    // Selected, but its metadata hasn't synced yet — never blame the user
+    // for "not selecting" a file they did select.
+    expect(
+      getSummarizeDisabledReason({
+        selectedCount: 1,
+        document: undefined,
+        isResponding: false,
+        disabled: false,
+      }),
+    ).toBe('File not ready yet')
+
     expect(
       getSummarizeDisabledReason({
         selectedCount: 1,
@@ -58,5 +69,44 @@ describe('summaryGate', () => {
         disabled: false,
       }),
     ).toBeNull()
+  })
+
+  it('reports the file itself as not ready while it is still ingesting, distinct from a lagging summary', () => {
+    expect(
+      getSummarizeDisabledReason({
+        selectedCount: 1,
+        document: doc({
+          indexing_status: 'NOT_INDEXED',
+          queryable: false,
+          summary_status: 'PENDING',
+        }),
+        isResponding: false,
+        disabled: false,
+      }),
+    ).toBe('File not ready yet')
+
+    expect(
+      getSummarizeDisabledReason({
+        selectedCount: 1,
+        document: doc({ indexing_status: 'INDEXING', queryable: false, summary_status: null }),
+        isResponding: false,
+        disabled: false,
+      }),
+    ).toBe('File not ready yet')
+
+    // Fully indexed and queryable, but the summary itself hasn't been
+    // generated yet — the file is ready, only the summary is pending.
+    expect(
+      getSummarizeDisabledReason({
+        selectedCount: 1,
+        document: doc({
+          indexing_status: 'READY',
+          queryable: true,
+          summary_status: 'PENDING',
+        }),
+        isResponding: false,
+        disabled: false,
+      }),
+    ).toBe('Summary not ready yet')
   })
 })

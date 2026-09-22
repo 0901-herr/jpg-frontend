@@ -21,7 +21,10 @@ export function getExtractMetadataDisabledReason(options: {
   if (disabled) return 'Sign in to continue'
   if (selectedCount === 0) return 'Select one document'
   if (selectedCount > 1) return 'Select only one document'
-  if (!document) return 'Select one document'
+  // Selected but its metadata hasn't synced yet (e.g. just after selection,
+  // before the next status refresh) — the file IS selected, so this must
+  // never read as "you forgot to select something".
+  if (!document) return 'File not ready yet'
   if (isMetadataExtractionReady(document)) return null
   return getDocumentSelectionHint(document) ?? 'Document not ready yet'
 }

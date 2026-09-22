@@ -140,6 +140,7 @@ vi.mock('../hooks/useDocumentSelection', () => ({
       toggleDocument: vi.fn(),
       setSelection: vi.fn(),
       mergeSelection: vi.fn(),
+      removeSelection: vi.fn(),
       selectAllSelectable: vi.fn(),
       deselectAllInView: vi.fn(),
       clearSelection: vi.fn(),

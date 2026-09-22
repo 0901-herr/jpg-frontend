@@ -96,7 +96,10 @@ export interface DocumentsLoadedEvent {
   page: number
 }
 
-export function useBrowseTree(onDocumentsLoaded?: (event: DocumentsLoadedEvent) => void) {
+export function useBrowseTree(
+  onDocumentsLoaded?: (event: DocumentsLoadedEvent) => void,
+  onDocumentsRemoved?: (documentIds: string[]) => void,
+) {
   // `App.useApp()` rather than the static `message` import from 'antd' —
   // the static functions "can not consume context like dynamic theme"
   // (antd's own deprecation warning); this hook is only ever called from
@@ -170,42 +173,83 @@ export function useBrowseTree(onDocumentsLoaded?: (event: DocumentsLoadedEvent) 
    * drop pages loaded via "load more") or touching its subfolder/pagination
    * metadata. Used by both the auto-refresh poll and the manual refresh
    * button so neither collapses the tree or clears the user's selection.
+   *
+   * Also re-registers whatever changed via `onDocumentsLoaded` — otherwise
+   * `selection.documentMeta` (what the Summarize/Extract Metadata buttons
+   * read) goes stale the moment a document's status changes here, even
+   * though the file tree itself is showing the fresh status live.
+   *
+   * And prunes documents this fresh listing no longer contains — e.g.
+   * deleted in LogicalDOC — via `onDocumentsRemoved`, so a gone document
+   * stops lingering in the tree (and in the user's selection) forever.
+   * Only trustworthy when this folder has no page beyond 0 loaded: this
+   * refresh only ever re-fetches page 0, so a "load more" page's documents
+   * would otherwise look deleted just for not being in that page.
    */
   const mergeStatusUpdates = useCallback(
     (folderId: number, response: BrowseFolderContentsResponse) => {
-      setCache((prev) => {
-        const existing = prev.get(folderId)
-        if (!existing) return prev
+      // Computed up front from the current `cache` (not inside the setCache
+      // updater below): a functional updater's body isn't guaranteed to run
+      // synchronously, so anything the callbacks after this need must be
+      // worked out before calling setCache, not read back out afterward.
+      const existing = cache.get(folderId)
+      if (!existing) return
 
-        const freshById = new Map(response.documents.map((doc) => [doc.document_id, doc]))
-        let changed = false
+      const canDetectRemovals = existing.loadedPages.size === 1 && existing.loadedPages.has(0)
+      const freshById = new Map(response.documents.map((doc) => [doc.document_id, doc]))
+      let changed = false
+      const changedDocs: BrowseDocumentItem[] = []
+      const removedIds: string[] = []
 
-        const mergedDocs = existing.contents.documents.map((doc) => {
-          const fresh = freshById.get(doc.document_id)
-          if (!fresh) return doc
-          freshById.delete(doc.document_id)
+      const mergedDocs: BrowseDocumentItem[] = []
+      for (const doc of existing.contents.documents) {
+        const fresh = freshById.get(doc.document_id)
+        if (!fresh) {
+          if (canDetectRemovals) {
+            removedIds.push(doc.document_id)
+            changed = true
+          } else {
+            mergedDocs.push(doc)
+          }
+          continue
+        }
+        freshById.delete(doc.document_id)
 
-          const result = patchDocumentStatus(doc, fresh)
-          if (result.changed) changed = true
-          return result.doc
+        const result = patchDocumentStatus(doc, fresh)
+        if (result.changed) {
+          changed = true
+          changedDocs.push(result.doc)
+        }
+        mergedDocs.push(result.doc)
+      }
+
+      const newlySeen = [...freshById.values()]
+      if (newlySeen.length > 0) {
+        changed = true
+        changedDocs.push(...newlySeen)
+      }
+
+      if (changed) {
+        setCache((prev) => {
+          const prevEntry = prev.get(folderId)
+          if (!prevEntry) return prev
+          const next = new Map(prev)
+          next.set(folderId, {
+            ...prevEntry,
+            contents: { ...prevEntry.contents, documents: [...mergedDocs, ...newlySeen] },
+          })
+          return next
         })
+      }
 
-        const newlySeen = [...freshById.values()]
-        if (newlySeen.length > 0) changed = true
-        if (!changed) return prev
-
-        const next = new Map(prev)
-        next.set(folderId, {
-          ...existing,
-          contents: {
-            ...existing.contents,
-            documents: [...mergedDocs, ...newlySeen],
-          },
-        })
-        return next
-      })
+      if (changedDocs.length > 0) {
+        onDocumentsLoaded?.({ folderId, documents: changedDocs, page: 0 })
+      }
+      if (removedIds.length > 0) {
+        onDocumentsRemoved?.(removedIds)
+      }
     },
-    [],
+    [cache, onDocumentsLoaded, onDocumentsRemoved],
   )
 
   /**
@@ -216,37 +260,63 @@ export function useBrowseTree(onDocumentsLoaded?: (event: DocumentsLoadedEvent) 
    * scoped to a flat id-keyed patch list spanning every expanded folder
    * instead of one folder's full contents response. This is what the
    * cheap fast-cadence poll uses instead of a full per-folder re-fetch.
+   *
+   * Also re-registers whatever changed via `onDocumentsLoaded`, same as
+   * `mergeStatusUpdates` above, so the composer buttons stay in sync with
+   * the fast-cadence poll too. An id this batch has no patch for is simply
+   * left untouched here — never treated as deleted: unlike a full-folder
+   * listing, an id being missing from this targeted lookup is documented
+   * adapter behaviour for "no mapping right now", not proof the document is
+   * gone (see fetchBrowseStatus in api/browse.ts).
    */
-  const applyStatusPatches = useCallback((patches: BrowseStatusItem[]) => {
-    if (patches.length === 0) return
-    const patchById = new Map(patches.map((patch) => [patch.document_id, patch]))
-
-    setCache((prev) => {
+  const applyStatusPatches = useCallback(
+    (patches: BrowseStatusItem[]) => {
+      if (patches.length === 0) return
+      const patchById = new Map(patches.map((patch) => [patch.document_id, patch]))
+      // Computed up front from the current `cache`, same reasoning as
+      // mergeStatusUpdates above: a setCache updater's body isn't
+      // guaranteed to run synchronously, so this can't be read back out of
+      // one afterward.
+      const changedByFolder = new Map<number, BrowseDocumentItem[]>()
       let changedAny = false
-      const next = new Map(prev)
 
-      for (const [folderId, entry] of prev) {
-        let changed = false
-        const mergedDocs = entry.contents.documents.map((doc) => {
+      for (const [folderId, entry] of cache) {
+        for (const doc of entry.contents.documents) {
           const patch = patchById.get(doc.document_id)
-          if (!patch) return doc
+          if (!patch) continue
           const result = patchDocumentStatus(doc, patch)
-          if (result.changed) changed = true
-          return result.doc
-        })
-
-        if (changed) {
-          changedAny = true
-          next.set(folderId, {
-            ...entry,
-            contents: { ...entry.contents, documents: mergedDocs },
-          })
+          if (result.changed) {
+            changedAny = true
+            const list = changedByFolder.get(folderId) ?? []
+            list.push(result.doc)
+            changedByFolder.set(folderId, list)
+          }
         }
       }
 
-      return changedAny ? next : prev
-    })
-  }, [])
+      if (changedAny) {
+        setCache((prev) => {
+          const next = new Map(prev)
+          for (const [folderId, entry] of prev) {
+            const mergedDocs = entry.contents.documents.map((doc) => {
+              const patch = patchById.get(doc.document_id)
+              return patch ? patchDocumentStatus(doc, patch).doc : doc
+            })
+            next.set(folderId, {
+              ...entry,
+              contents: { ...entry.contents, documents: mergedDocs },
+            })
+          }
+          return next
+        })
+      }
+
+      for (const [folderId, documents] of changedByFolder) {
+        onDocumentsLoaded?.({ folderId, documents, page: 0 })
+      }
+    },
+    [cache, onDocumentsLoaded],
+  )
 
   const loadFolder = useCallback(
     async (folderId: number, page = 0) => {

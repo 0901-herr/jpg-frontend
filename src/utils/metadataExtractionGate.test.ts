@@ -39,6 +39,17 @@ describe('metadataExtractionGate', () => {
       }),
     ).toBe('Select one document')
 
+    // Selected, but its metadata hasn't synced yet — never blame the user
+    // for "not selecting" a file they did select.
+    expect(
+      getExtractMetadataDisabledReason({
+        selectedCount: 1,
+        document: undefined,
+        isResponding: false,
+        disabled: false,
+      }),
+    ).toBe('File not ready yet')
+
     expect(
       getExtractMetadataDisabledReason({
         selectedCount: 2,

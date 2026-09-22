@@ -267,7 +267,16 @@ export default function AppLayout() {
     [selection.registerDocuments],
   )
 
-  const browse = useBrowseTree(handleDocumentsLoaded)
+  const handleDocumentsRemoved = useCallback(
+    (documentIds: string[]) => {
+      // A document gone from the tree (e.g. deleted in LogicalDOC) must not
+      // linger as a disabled, unremovable row in the user's selection.
+      selection.removeSelection(documentIds)
+    },
+    [selection.removeSelection],
+  )
+
+  const browse = useBrowseTree(handleDocumentsLoaded, handleDocumentsRemoved)
   // Matches Sidebar's own display-name resolution (`browse.username` first
   // — the LogicalDOC root-folder payload — then the cookie session) so a
   // freshly sent message's author label agrees with whatever name the
