@@ -182,3 +182,62 @@ describe('consumeSseStream inactivity timeout', () => {
     expect(events).toEqual([])
   })
 })
+
+describe('consumeSseStream terminal events', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('stops reading and cancels the reader once the handler reports a terminal event, even when the server never closes the stream', async () => {
+    // Regression (live, 2026-09-22): the adapter delivered every `answer`
+    // segment and then — through a server-side stall — never closed the
+    // response. The UI waited for end-of-stream to finish the message, so
+    // the answer sat on screen with a blinking cursor and an active Stop
+    // button until a refresh. `done` is the contract's terminal event: the
+    // stream is over when it arrives, whatever the socket does afterwards.
+    const reader = scriptedReader([
+      { delayMs: 0, text: 'event: answer\ndata: {"answer":"hi"}\n\n' },
+      { delayMs: 0, text: 'event: done\ndata: {"duration_ms":5}\n\n' },
+      // A server that hangs after `done`: this read never resolves in time.
+      { delayMs: 10_000_000, text: ': never\n\n' },
+    ])
+    const cancel = vi.spyOn(reader, 'cancel')
+    const events: SseEvent[] = []
+
+    const promise = consumeSseStream(responseWithReader(reader), (event) => {
+      events.push(event)
+      return event.event === 'done'
+    })
+
+    // Runs every pending timer: if reading did NOT stop at `done`, the
+    // 120s inactivity timer fires first and this rejects with the stall
+    // message instead of resolving.
+    await vi.runAllTimersAsync()
+    await promise
+
+    expect(events.map((e) => e.event)).toEqual(['answer', 'done'])
+    expect(cancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps reading to end-of-stream when the handler never reports a terminal event', async () => {
+    const reader = scriptedReader([
+      { delayMs: 0, text: 'data: {"a":1}\n\n' },
+      { delayMs: 0, text: 'data: {"b":2}\n\n' },
+    ])
+    const cancel = vi.spyOn(reader, 'cancel')
+    const events: SseEvent[] = []
+
+    const promise = consumeSseStream(responseWithReader(reader), (event) => {
+      events.push(event)
+    })
+    await vi.runAllTimersAsync()
+    await promise
+
+    expect(events).toHaveLength(2)
+    expect(cancel).not.toHaveBeenCalled()
+  })
+})

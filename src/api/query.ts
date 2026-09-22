@@ -462,13 +462,15 @@ async function streamQuery(
               content = finalAnswer as string
             }
             callbacks.onDone?.({ duration_ms: durationMs })
-            break
+            // Terminal: tell consumeSseStream to stop reading here rather
+            // than wait for the server to close the socket.
+            return true
           }
           case 'error': {
             terminalEvent = true
             streamError = extractErrorMessage(data)
             callbacks.onError?.(streamError)
-            break
+            return true
           }
           default:
             dispatchNestedMessageEvent(data, callbacks)

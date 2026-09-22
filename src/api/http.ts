@@ -218,10 +218,18 @@ const SSE_INACTIVITY_TIMEOUT_MS = 120_000
 
 const SSE_STALLED_MESSAGE = 'The answer is taking longer than expected. Please try again.'
 
-/** Parse SSE stream from a fetch Response body. */
+/** Parse SSE stream from a fetch Response body.
+ *
+ * `onEvent` may return `true` to declare the event terminal (the query
+ * contract's `done`/`error`): reading stops there and the reader is
+ * cancelled, without waiting for the server to close the socket. A stream
+ * whose terminal frame has arrived is over whatever happens on the wire
+ * afterwards — waiting for end-of-stream on top of it is what left the UI
+ * "stuck" on a finished answer when the server stalled after `done`
+ * (live, 2026-09-22). */
 export async function consumeSseStream(
   response: Response,
-  onEvent: (event: SseEvent) => void,
+  onEvent: (event: SseEvent) => boolean | void,
   signal?: AbortSignal,
 ): Promise<void> {
   const reader = response.body?.getReader()
@@ -249,7 +257,7 @@ export async function consumeSseStream(
         })
     })
 
-  const dispatchBlock = (block: string) => {
+  const dispatchBlock = (block: string): boolean => {
     const lines = block.split('\n')
     let eventType = currentEvent
     const dataLines: string[] = []
@@ -262,7 +270,7 @@ export async function consumeSseStream(
       }
     }
 
-    if (dataLines.length === 0) return
+    if (dataLines.length === 0) return false
 
     const raw = dataLines.join('\n')
     let parsed: unknown = raw
@@ -272,8 +280,9 @@ export async function consumeSseStream(
       // keep as string
     }
 
-    onEvent({ event: eventType, data: parsed })
+    const terminal = onEvent({ event: eventType, data: parsed }) === true
     currentEvent = 'message'
+    return terminal
   }
 
   while (true) {
@@ -290,7 +299,10 @@ export async function consumeSseStream(
     buffer = blocks.pop() ?? ''
 
     for (const block of blocks) {
-      if (block.trim()) dispatchBlock(block)
+      if (block.trim() && dispatchBlock(block)) {
+        await reader.cancel().catch(() => {})
+        return
+      }
     }
   }
 
