@@ -646,6 +646,32 @@ describe('chat CRUD', () => {
     expect(settled).toBe(true)
   })
 
+  it('PATCHes the new title to the server when renaming', async () => {
+    const result = await hydrated()
+    vi.mocked(chatApi.patchChatSession).mockResolvedValue({} as never)
+
+    await act(async () => {
+      await result.current.renameChat('s1', 'Refund notes')
+    })
+
+    expect(chatApi.patchChatSession).toHaveBeenCalledWith('s1', { title: 'Refund notes' })
+    expect(result.current.sessions[0].title).toBe('Refund notes')
+  })
+
+  it('rolls the title back when the rename PATCH fails', async () => {
+    const result = await hydrated()
+    const errorSpy = vi.spyOn(capturedMessageApi!, 'error')
+    const original = result.current.sessions[0].title
+    vi.mocked(chatApi.patchChatSession).mockRejectedValueOnce(new Error('network error'))
+
+    await act(async () => {
+      await result.current.renameChat('s1', 'Should not stick')
+    })
+
+    expect(result.current.sessions[0].title).toBe(original)
+    expect(errorSpy).toHaveBeenCalledWith('Could not save the new chat name.')
+  })
+
   it('returns a promise from deleteChat that resolves once the DELETE settles', async () => {
     const result = await hydrated()
     let resolveDelete: () => void

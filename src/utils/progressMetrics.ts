@@ -18,6 +18,7 @@ export interface ProgressMetric {
 export function buildProgressMetrics(ctx: ProgressMetricContext): ProgressMetric[] {
   const { discoveredSoFar, queued } = ctx
   const { counts } = ctx.overview
+  const retrying = counts.retrying ?? 0
 
   return [
     {
@@ -52,6 +53,13 @@ export function buildProgressMetrics(ctx: ProgressMetricContext): ProgressMetric
       valueStyle: { color: '#d48806' },
     },
     {
+      key: 'retrying',
+      title: 'Retrying',
+      value: retrying,
+      hint: `${retrying.toLocaleString()} hit a temporary error and will be tried again.`,
+      valueStyle: { color: retrying ? '#d48806' : undefined },
+    },
+    {
       key: 'ready',
       title: 'Ready',
       value: counts.ready,
@@ -69,7 +77,7 @@ export function buildProgressMetrics(ctx: ProgressMetricContext): ProgressMetric
       key: 'failed',
       title: 'Failed',
       value: counts.failed,
-      hint: `${counts.failed.toLocaleString()} could not be indexed. Retry from Maintenance below.`,
+      hint: `${counts.failed.toLocaleString()} could not be indexed. Retry from the Failures tab.`,
       valueStyle: { color: counts.failed ? '#cf1322' : undefined },
     },
     {

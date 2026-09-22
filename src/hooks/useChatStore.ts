@@ -593,15 +593,24 @@ export function useChatStore({
 
   const renameChat = useCallback(
     async (chatId: string, title: string) => {
+      const previousTitle = sessionsRef.current.find((s) => s.id === chatId)?.title
       setSessions((prev) => prev.map((s) => (s.id === chatId ? { ...s, title } : s)))
       if (!enabled) return
       try {
+        // Brand-new chats POST asynchronously in `spawnEmptySession` — wait
+        // so this PATCH can't 404 against an id that isn't committed yet.
+        await ensureSessionCreated(chatId)
         await patchChatSession(chatId, { title })
       } catch {
+        if (previousTitle != null) {
+          setSessions((prev) =>
+            prev.map((s) => (s.id === chatId ? { ...s, title: previousTitle } : s)),
+          )
+        }
         message.error('Could not save the new chat name.')
       }
     },
-    [enabled],
+    [enabled, ensureSessionCreated],
   )
 
   const deleteChat = useCallback(

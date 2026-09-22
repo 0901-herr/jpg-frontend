@@ -9,11 +9,20 @@ export interface PipelineStatus {
   isActive: boolean
 }
 
+function pipelineInFlight(counts: IngestionOverview['counts']): number {
+  return (
+    counts.discovered +
+    counts.staged +
+    counts.preparing +
+    counts.indexing +
+    (counts.retrying ?? 0)
+  )
+}
+
 export function derivePipelineStatus(overview: IngestionOverview): PipelineStatus {
   const bulk = overview.bulk_progress
   const counts = overview.counts
-  const inFlight =
-    counts.discovered + counts.staged + counts.preparing + counts.indexing
+  const inFlight = pipelineInFlight(counts)
 
   if (bulk?.job_state === 'running') {
     const discovered = bulk.total_discovered ?? 0
@@ -48,6 +57,7 @@ export function derivePipelineStatus(overview: IngestionOverview): PipelineStatu
     if (counts.preparing > 0) parts.push(`${counts.preparing} preparing`)
     if (counts.staged > 0) parts.push(`${counts.staged} staged`)
     if (counts.indexing > 0) parts.push(`${counts.indexing} indexing`)
+    if ((counts.retrying ?? 0) > 0) parts.push(`${counts.retrying} retrying`)
     if (counts.discovered > 0) parts.push(`${counts.discovered} queued`)
     return {
       phase: 'ingesting',
@@ -78,9 +88,7 @@ export function overviewShouldPollFast(overview: IngestionOverview | undefined):
   if (!overview) return false
   if (overview.bulk_progress?.job_state === 'running') return true
   const counts = overview.counts
-  const inFlight =
-    counts.discovered + counts.staged + counts.preparing + counts.indexing
-  if (inFlight > 0) return true
+  if (pipelineInFlight(counts) > 0) return true
   if (overview.overall_state === 'RUNNING') return true
   return false
 }
@@ -120,6 +128,7 @@ export function pipelineCorpusTotal(overview: IngestionOverview): number {
     counts.staged +
     counts.preparing +
     counts.indexing +
+    (counts.retrying ?? 0) +
     counts.ready
   if (bulk?.job_state === 'running') {
     return Math.max(bulk.total_discovered ?? 0, fromCounts)

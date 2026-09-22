@@ -10,6 +10,20 @@ import type { ChatProject, ChatSession } from '../types'
 
 const NO_PROJECT_KEY = '__no_project__'
 
+/** Default auto-title from `useChatStore` / the adapter (`Session 15 Sep 2026 (1)`).
+ * While the title still matches this, the row prefers the first user question as
+ * its label; once the user renames (or the title is otherwise customized), the
+ * stored title wins so Rename actually changes what the sidebar shows. */
+const DEFAULT_SESSION_TITLE = /^Session \d{1,2} [A-Z][a-z]{2} \d{4} \(\d+\)$/
+
+export function chatRowLabel(chat: Pick<ChatSession, 'title' | 'messages'>): string {
+  const firstUser = chat.messages.find((m) => m.role === 'user')?.content?.trim()
+  if (!DEFAULT_SESSION_TITLE.test(chat.title.trim())) {
+    return chat.title
+  }
+  return firstUser || chat.title
+}
+
 /** The row's "..." trigger — shared by the owned-row and read-only-row
  * `Dropdown`s below (they were previously two copies of the same
  * oversized-padding button). `px-2 py-1.5` matches `ProjectGroupHeader`'s
@@ -109,13 +123,13 @@ export default function ChatListItem({
   const [isEditing, setIsEditing] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
-  const [draftTitle, setDraftTitle] = useState(chat.title)
+  const [draftTitle, setDraftTitle] = useState(() => chatRowLabel(chat))
   const [renaming, setRenaming] = useState(false)
   const inputRef = useRef<InputRef>(null)
 
   useEffect(() => {
-    if (!isEditing) setDraftTitle(chat.title)
-  }, [chat.title, isEditing])
+    if (!isEditing) setDraftTitle(chatRowLabel(chat))
+  }, [chat.title, chat.messages, isEditing])
 
   useEffect(() => {
     if (isEditing) {
@@ -141,13 +155,17 @@ export default function ChatListItem({
       // `createProject`/`deleteProject`.
       void Promise.resolve(onRename(chat.id, trimmed)).finally(() => setRenaming(false))
     } else {
-      setDraftTitle(chat.title)
+      setDraftTitle(chatRowLabel(chat))
     }
   }
 
   const handleMenuClick: MenuProps['onClick'] = ({ key, domEvent }) => {
     domEvent.stopPropagation()
     if (key === 'rename') {
+      // Seed the input with whatever the row currently shows (first question
+      // or title), so Rename edits the visible name rather than a hidden
+      // default "Session …" title the user may never have seen.
+      setDraftTitle(chatRowLabel(chat))
       setIsEditing(true)
       return
     }
@@ -225,11 +243,10 @@ export default function ChatListItem({
     },
   ]
 
-  // Single-line row label: first user question when we have one, otherwise
-  // the session title (empty / newly created chats). Shared rows keep the
-  // title and append "by <owner>" on the same line.
-  const content = chat.messages.find((m) => m.role === 'user')?.content
-  const label = content ?? chat.title
+  // Single-line row label: first user question while the session still has
+  // its default auto-title, otherwise the (possibly renamed) session title.
+  // Shared rows append "by <owner>" on the same line via `subtitle`.
+  const label = chatRowLabel(chat)
   const fullLabel = subtitle ? `${label} · ${subtitle}` : label
 
   const labelSpan = (
@@ -262,7 +279,7 @@ export default function ChatListItem({
           onKeyDown={(e) => {
             if (e.key === 'Enter') commitRename()
             if (e.key === 'Escape') {
-              setDraftTitle(chat.title)
+              setDraftTitle(chatRowLabel(chat))
               setIsEditing(false)
             }
           }}

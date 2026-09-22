@@ -71,8 +71,62 @@ function latestTimestamp(docs: AdminDocumentSummary[]): string {
   return latest || new Date().toISOString()
 }
 
-function formatCount(count: number, singular: string, plural = `${singular}s`): string {
-  return `${count.toLocaleString()} ${count === 1 ? singular : plural}`
+function joinSentences(sentences: string[]): string {
+  return sentences.filter(Boolean).join(' ')
+}
+
+function folderStatusDetail(
+  ready: number,
+  failed: number,
+  inFlight: number,
+  total: number,
+  retrying: number,
+  failedReasons: string[],
+): string {
+  const sentences: string[] = []
+  if (ready > 0) {
+    sentences.push(
+      ready === 1
+        ? '1 file in this folder is ready to search.'
+        : `${ready.toLocaleString()} files in this folder are ready to search.`,
+    )
+  }
+  if (failed > 0) {
+    sentences.push(
+      failed === 1
+        ? '1 file in this folder failed to index.'
+        : `${failed.toLocaleString()} files in this folder failed to index.`,
+    )
+    if (failedReasons.length === 1) {
+      sentences.push(`Reason: ${failedReasons[0]}.`)
+    } else if (failedReasons.length > 1) {
+      const shown = failedReasons.slice(0, 2)
+      const more = failedReasons.length - shown.length
+      sentences.push(
+        more > 0
+          ? `Reasons include: ${shown.join('; ')} (+${more} more).`
+          : `Reasons include: ${shown.join('; ')}.`,
+      )
+    }
+  }
+  if (retrying > 0) {
+    sentences.push(
+      retrying === 1
+        ? '1 file in this folder is waiting to be retried.'
+        : `${retrying.toLocaleString()} files in this folder are waiting to be retried.`,
+    )
+  }
+  if (inFlight > 0) {
+    sentences.push(
+      inFlight === 1
+        ? '1 file in this folder is still being indexed.'
+        : `${inFlight.toLocaleString()} files in this folder are still being indexed.`,
+    )
+  }
+  if (sentences.length === 0 && total > 0) {
+    sentences.push(`${total.toLocaleString()} files in this folder are tracked.`)
+  }
+  return joinSentences(sentences)
 }
 
 /** One Activity line per folder instead of one line per file. */
@@ -89,38 +143,48 @@ export function buildFolderActivityEvents(documents: AdminDocumentSummary[]): Ac
   for (const [key, docs] of byFolder) {
     const label = folderLabel(docs[0]!)
     const ready = docs.filter((doc) => doc.lifecycle_status === 'READY').length
-    const failed = docs.filter((doc) => doc.lifecycle_status === 'FAILED').length
-    const inFlight = docs.filter((doc) => !isTerminalLifecycle(doc.lifecycle_status)).length
+    const failedDocs = docs.filter((doc) => doc.lifecycle_status === 'FAILED')
+    const failed = failedDocs.length
+    const retrying = docs.filter((doc) => doc.lifecycle_status === 'RETRYING').length
+    const inFlight = docs.filter(
+      (doc) =>
+        !isTerminalLifecycle(doc.lifecycle_status) && doc.lifecycle_status !== 'RETRYING',
+    ).length
     const total = docs.length
     const done = ready + failed
     const at = latestTimestamp(docs)
 
-    const detailParts = [
-      formatCount(ready, 'ready'),
-      failed > 0 ? formatCount(failed, 'failed') : null,
-      inFlight > 0 ? `${inFlight.toLocaleString()} still processing` : null,
-    ].filter(Boolean)
+    const failedReasons = [
+      ...new Set(
+        failedDocs
+          .map((doc) => (doc.last_error || doc.last_error_code || '').trim())
+          .filter(Boolean),
+      ),
+    ]
 
-    if (inFlight === 0 && done > 0) {
+    const detail = folderStatusDetail(ready, failed, inFlight, total, retrying, failedReasons)
+
+    if (inFlight === 0 && retrying === 0 && done > 0) {
       entries.push({
         id: `folder-${key}-done`,
         at,
         level: failed > 0 ? 'warning' : 'success',
         kind: failed > 0 ? 'failed' : 'completed',
-        headline: `Finished ingesting “${label}”`,
-        detail: detailParts.join(' · '),
+        headline:
+          failed > 0 ? `Folder “${label}” finished with errors` : `Folder “${label}” is fully indexed`,
+        detail,
       })
       continue
     }
 
-    if (done > 0 || inFlight > 0) {
+    if (done > 0 || inFlight > 0 || retrying > 0) {
       entries.push({
         id: `folder-${key}-progress`,
         at,
-        level: failed > 0 ? 'warning' : 'info',
-        kind: 'processing',
-        headline: `Ingesting “${label}” (${done.toLocaleString()}/${total.toLocaleString()})`,
-        detail: detailParts.join(' · '),
+        level: failed > 0 || retrying > 0 ? 'warning' : 'info',
+        kind: failed > 0 ? 'failed' : 'processing',
+        headline: `Folder “${label}” is being indexed (${done.toLocaleString()}/${total.toLocaleString()} complete)`,
+        detail,
       })
     }
   }
@@ -153,20 +217,98 @@ function systemActivityKind(event: SystemActivityEvent): ActivityKind {
   return event.level === 'warning' ? 'processing' : 'system'
 }
 
+function parseAuditPollMetrics(event: SystemActivityEvent): {
+  eventsRead: number
+  skipped: number
+  queued?: number
+  deletes?: number
+} | null {
+  const detail = event.detail?.trim()
+  if (!detail) return null
+  const match = detail.match(
+    /events_read=(\d+),\s*skipped=(\d+)(?:,\s*queued=(\d+))?(?:,\s*deletes=(\d+))?/i,
+  )
+  if (!match) return null
+  const headlineQueued = event.headline?.match(/queued (\d+) document/i)?.[1]
+  return {
+    eventsRead: Number(match[1]),
+    skipped: Number(match[2]),
+    queued: match[3] != null ? Number(match[3]) : headlineQueued != null ? Number(headlineQueued) : undefined,
+    deletes: match[4] != null ? Number(match[4]) : undefined,
+  }
+}
+
+/** Plain-language audit poll subtitle for Activity log rows. */
+export function formatAuditPollDetail(
+  eventsRead: number,
+  skipped: number,
+  queued?: number,
+  deletes?: number,
+): string {
+  const sentences: string[] = []
+
+  if (eventsRead === 0) {
+    sentences.push('No new LogicalDOC audit activity was found.')
+  } else if (eventsRead === 1) {
+    sentences.push('LogicalDOC reported 1 audit event.')
+  } else {
+    sentences.push(`LogicalDOC reported ${eventsRead.toLocaleString()} audit events.`)
+  }
+
+  if (skipped > 0) {
+    sentences.push(
+      skipped === 1
+        ? '1 event was ignored (for example an excluded folder or a schedule failure).'
+        : `${skipped.toLocaleString()} events were ignored (for example excluded folders or schedule failures).`,
+    )
+  }
+
+  const q = queued ?? 0
+  if (q > 0) {
+    sentences.push(
+      q === 1
+        ? '1 file was queued for re-indexing.'
+        : `${q.toLocaleString()} files were queued for re-indexing.`,
+    )
+  } else if (q === 0 && eventsRead > 0) {
+    sentences.push('No files were queued for re-indexing.')
+  }
+
+  const d = deletes ?? 0
+  if (d > 0) {
+    sentences.push(
+      d === 1 ? '1 file was removed from the index.' : `${d.toLocaleString()} files were removed from the index.`,
+    )
+  }
+
+  return joinSentences(sentences)
+}
+
 function userFriendlySystemHeadline(event: SystemActivityEvent): string {
   if (event.action === 'mock_mode') return 'Sample data is active'
   if (event.action === 'audit_poll_failed') {
     return event.headline?.trim() || 'LogicalDOC change check failed'
   }
   if (event.action === 'audit_poll') {
-    if (/restored/i.test(event.headline)) return 'LogicalDOC change check restored'
-    return 'LogicalDOC changes checked'
+    if (/restored/i.test(event.headline ?? '')) return 'LogicalDOC change check restored'
+    const metrics = parseAuditPollMetrics(event)
+    if (metrics?.queued === 1) return '1 file queued for re-indexing'
+    if (metrics?.queued != null && metrics.queued > 1) {
+      return `${metrics.queued.toLocaleString()} files queued for re-indexing`
+    }
+    if (metrics && metrics.eventsRead > 0) return 'LogicalDOC activity detected'
+    return 'LogicalDOC change check'
   }
   if (event.action === 'reconcile') return 'Document records checked'
   if (event.action === 'ingest_failed') {
     return event.headline
       .replace(/failed to ingest/gi, 'could not be indexed')
       .replace(/failed again/gi, 'could not be indexed')
+  }
+  if (event.action === 'ingest_retry_pending') {
+    return event.headline
+      .replace(/will be retried/gi, 'will be tried again')
+      .replace(/retry pending/gi, 'will be tried again')
   }
   return capitalizeHeadline(
     event.headline
@@ -181,9 +323,14 @@ function userFriendlySystemDetail(event: SystemActivityEvent): string | undefine
   if (detail.includes('VITE_ADMIN_MOCK')) {
     return 'This dashboard is using sample data, so no backend services are required.'
   }
-  const audit = detail.match(/events_read=(\d+),\s*skipped=(\d+)/i)
-  if (audit) {
-    return `Checked ${audit[1]} change(s); ${audit[2]} did not require an update.`
+  const metrics = parseAuditPollMetrics(event)
+  if (metrics) {
+    return formatAuditPollDetail(
+      metrics.eventsRead,
+      metrics.skipped,
+      metrics.queued,
+      metrics.deletes,
+    )
   }
   return detail
 }

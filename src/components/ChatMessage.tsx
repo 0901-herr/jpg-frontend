@@ -17,7 +17,7 @@ const { Text } = Typography
 
 /** The long, silent phase (mostly `generating`, on CPU) is when a bare
  * label starts looking stuck — this is when to start ticking a
- * " · {n}s" suffix onto it, driven by the message's own `startedAt` (via
+ * " {n}s" suffix onto it, driven by the message's own `startedAt` (via
  * `useElapsedSeconds`) rather than a per-component mount time, so the count
  * matches however long the whole answer has actually been in flight. */
 function shouldTickLabel(stage: string | undefined, elapsedSeconds: number): boolean {
@@ -72,7 +72,7 @@ function ThinkingIndicator({ message }: { message: ChatMessage }) {
 
   const headline = label
     ? shouldTickLabel(message.progressStage, elapsed)
-      ? `${label} · ${elapsed}s`
+      ? `${label} ${elapsed}s`
       : label
     : 'Getting started'
 
@@ -89,7 +89,7 @@ function ThinkingIndicator({ message }: { message: ChatMessage }) {
 
 /** The short progress label shown above the answer once streaming has
  * started but no content has arrived yet (between citation and generating
- * events, say). Ticks the same " · {n}s" suffix as `ThinkingIndicator` once
+ * events, say). Ticks the same " {n}s" suffix as `ThinkingIndicator` once
  * the silent phase has run long enough — using the same `startedAt` so the
  * two never disagree about how long the query has been running. */
 function StreamingProgressLabel({ message }: { message: ChatMessage }) {
@@ -99,7 +99,7 @@ function StreamingProgressLabel({ message }: { message: ChatMessage }) {
   if (!label) return null
 
   const text =
-    active && shouldTickLabel(message.progressStage, elapsed) ? `${label} · ${elapsed}s` : label
+    active && shouldTickLabel(message.progressStage, elapsed) ? `${label} ${elapsed}s` : label
 
   return <p className={`${type.caption} ${typeColor.muted} truncate`}>{text}</p>
 }

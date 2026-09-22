@@ -59,6 +59,29 @@ describe('ChatListItem', () => {
     expect(screen.queryByText('Session 15 Sep 2026 (1)')).not.toBeInTheDocument()
   })
 
+  it('shows a renamed title instead of the first user message', () => {
+    // Regression: rename used to PATCH `title` while the row kept rendering
+    // the first question (`content ?? chat.title`), so Rename looked broken.
+    render(
+      <ChatListItem
+        chat={session({
+          title: 'Refund policy notes',
+          messages: [
+            { id: 'u1', role: 'user', content: 'What is the refund policy?' },
+            { id: 'a1', role: 'assistant', content: 'It is 30 days.' },
+          ],
+        })}
+        isActive={false}
+        onSelect={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('Refund policy notes')).toBeInTheDocument()
+    expect(screen.queryByText('What is the refund policy?')).not.toBeInTheDocument()
+  })
+
   it('renders a single line when the session has no messages yet', () => {
     render(
       <ChatListItem
@@ -258,6 +281,30 @@ describe('ChatListItem', () => {
     )
 
     expect(screen.queryByLabelText(/shared/i)).not.toBeInTheDocument()
+  })
+
+  it('seeds rename from the visible first-question label and persists it as the title', async () => {
+    const user = userEvent.setup()
+    const onRename = vi.fn().mockResolvedValue(undefined)
+    render(
+      <ChatListItem
+        chat={session({
+          messages: [{ id: 'u1', role: 'user', content: 'What is the refund policy?' }],
+        })}
+        isActive={false}
+        onSelect={vi.fn()}
+        onRename={onRename}
+        onDelete={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Chat options' }))
+    await user.click(screen.getByText('Rename'))
+    const input = screen.getByDisplayValue('What is the refund policy?')
+    await user.clear(input)
+    await user.type(input, 'Refund notes{Enter}')
+
+    expect(onRename).toHaveBeenCalledWith('s1', 'Refund notes')
   })
 
   it('shows a spinner next to the title and disables the options button while a rename request is in flight', async () => {

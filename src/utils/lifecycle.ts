@@ -9,6 +9,7 @@ export const LIFECYCLE_LABELS: Record<LifecycleStatus, string> = {
   INDEXING: 'Indexing',
   PARTIAL: 'Partial',
   READY: 'Ready',
+  RETRYING: 'Retrying',
   FAILED: 'Failed',
   DELETING: 'Deleting',
   DELETED: 'Deleted',
@@ -23,6 +24,7 @@ export const LIFECYCLE_HINTS: Record<LifecycleStatus, string> = {
   INDEXING: 'RAG Engine is currently processing this document',
   PARTIAL: 'Queryable, but full indexing did not complete — answers may be less accurate',
   READY: 'Successfully indexed and searchable',
+  RETRYING: 'A temporary error occurred; waiting to try again',
   FAILED: 'Ingestion failed',
   DELETING: 'Being removed from RAG and storage',
   DELETED: 'Removed from the searchable corpus',
@@ -37,6 +39,7 @@ export const LIFECYCLE_COLORS: Record<LifecycleStatus, string> = {
   INDEXING: 'warning',
   PARTIAL: 'cyan',
   READY: 'success',
+  RETRYING: 'warning',
   FAILED: 'error',
   DELETING: 'warning',
   DELETED: 'default',
@@ -70,6 +73,7 @@ const STATUS_STAGE_INDEX: Record<LifecycleStatus, number> = {
   INDEXING: 5,
   PARTIAL: 6,
   READY: 6,
+  RETRYING: 1,
   FAILED: -1,
   DELETING: 6,
   DELETED: 6,
@@ -132,6 +136,8 @@ export function getPipelineProgress(
         ? 'Fully indexed and searchable'
         : status === 'PARTIAL'
           ? 'Partially indexed — searchable, full indexing incomplete'
+          : status === 'RETRYING'
+            ? 'Waiting to retry after a temporary error'
           : status === 'DELETED'
             ? 'Removed from corpus'
             : `${PIPELINE_STAGES[activeIndex]?.label ?? status} (in progress)`
