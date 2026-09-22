@@ -93,6 +93,7 @@ function createBrowseFixture(overrides: Partial<BrowseTreeState> = {}): BrowseTr
     initError: null,
     sessionExpired: false,
     isActiveFolderLoading: false,
+    loadingFolderIds: new Set(),
     loadingMoreFolderId: null,
     handleSelectFolder: vi.fn(),
     handleLoadTreeData: vi.fn(),
@@ -692,5 +693,164 @@ describe('FolderSidebar disabled (shared chat, follower view)', () => {
 
     expect(screen.getByText('Files are chosen by the chat owner.', { exact: false })).toBeInTheDocument()
     expect(screen.queryByText('Session expired')).not.toBeInTheDocument()
+  })
+})
+
+// Item 5: the row tooltip must read the same "latest known status" source
+// as the folder checkbox derivation (selection.documentMeta over the
+// cached copy) — otherwise a status change that reaches documentMeta one
+// render before it reaches `cache` (or vice versa) shows the checkbox and
+// the tooltip disagreeing about the same document.
+describe('FolderSidebar file row tooltip vs. checkbox status source (item 5)', () => {
+  beforeEach(() => {
+    vi.mocked(useBrowseCategoriesModule.useBrowseCategories).mockReturnValue({
+      serverCategories: null,
+      categoriesLoading: false,
+    })
+  })
+
+  it('reflects a documentMeta patch (fast status poll) in the tooltip immediately, even though the cached copy is still PARTIAL', async () => {
+    const partialDoc: BrowseDocumentItem = {
+      ...folderDocuments[0],
+      indexing_status: 'PARTIAL',
+      queryable: true,
+      status_reason: 'Text search only; full vector indexing is still in progress.',
+    }
+    // documentMeta already has the READY patch from the fast poll — the
+    // cached folder copy (`browse.cache`) hasn't re-rendered with it yet.
+    // Same tick, same poll: this is exactly what applyStatusPatches +
+    // onDocumentsLoaded produce together, whichever setState the row
+    // happens to read.
+    const readyDoc: BrowseDocumentItem = { ...partialDoc, indexing_status: 'READY' }
+
+    render(
+      <FolderSidebar
+        browse={createBrowseFixture({
+          cache: new Map([
+            [
+              1,
+              {
+                contents: {
+                  folder: { folder_id: 1, name: 'Root', parent_id: null, has_children: false },
+                  folders: [],
+                  documents: [partialDoc],
+                  page: 0,
+                  has_more_documents: false,
+                },
+                loadedPages: new Set([0]),
+              },
+            ],
+          ]),
+        })}
+        selection={createSelectionFixture({
+          documentMeta: new Map([[readyDoc.document_id, readyDoc]]),
+        })}
+      />,
+    )
+
+    const user = userEvent.setup()
+    await user.hover(await screen.findByText('contract.pdf'))
+
+    const tooltip = await screen.findByRole('tooltip')
+    expect(tooltip).toHaveTextContent('Ready')
+    expect(tooltip).not.toHaveTextContent('Partial')
+    expect(tooltip.querySelector('.docu-file-row-tooltip-status--ready')).not.toBeNull()
+  })
+
+  it('falls back to the cached copy when documentMeta has no entry for the document yet', async () => {
+    render(
+      <FolderSidebar
+        browse={createBrowseFixture()}
+        selection={createSelectionFixture({ documentMeta: new Map() })}
+      />,
+    )
+
+    const user = userEvent.setup()
+    await user.hover(await screen.findByText('contract.pdf'))
+
+    const tooltip = await screen.findByRole('tooltip')
+    expect(tooltip).toHaveTextContent('Ready')
+  })
+})
+
+// Item 6: expanding a folder with many files shows a visible loading state
+// instead of nothing until the fetch resolves.
+describe('FolderSidebar folder-expansion loading indicator (item 6)', () => {
+  beforeEach(() => {
+    vi.mocked(useBrowseCategoriesModule.useBrowseCategories).mockReturnValue({
+      serverCategories: null,
+      categoriesLoading: false,
+    })
+  })
+
+  const bigFolderBrowse = () =>
+    createBrowseFixture({
+      cache: new Map([
+        [
+          1,
+          {
+            contents: {
+              folder: { folder_id: 1, name: 'Root', parent_id: null, has_children: true },
+              folders: [{ folder_id: 2, name: 'Big folder', parent_id: 1, has_children: true }],
+              documents: [],
+              page: 0,
+              has_more_documents: false,
+            },
+            loadedPages: new Set([0]),
+          },
+        ],
+      ]),
+      folderMeta: new Map([
+        [1, { name: 'Root', has_children: true, parent_id: null }],
+        [2, { name: 'Big folder', has_children: true, parent_id: 1 }],
+      ]),
+    })
+
+  it('shows a spinner and a "Loading files" placeholder row while the folder is expanding, then the real rows once loaded', async () => {
+    const user = userEvent.setup()
+    const { rerender } = rtlRender(
+      <App>
+        <FolderSidebar browse={bigFolderBrowse()} selection={createSelectionFixture()} />
+      </App>,
+    )
+
+    const row = screen.getByText('Big folder').closest('.ant-tree-treenode') as HTMLElement
+    await user.click(row.querySelector('.ant-tree-switcher') as HTMLElement)
+
+    // The tree/hook layer would now have marked folder 2 as loading —
+    // simulate the next render that produces (same as useBrowseTree's
+    // loadingFolderIds updating synchronously before the fetch resolves).
+    rerender(
+      <App>
+        <FolderSidebar
+          browse={{ ...bigFolderBrowse(), loadingFolderIds: new Set([2]) }}
+          selection={createSelectionFixture()}
+        />
+      </App>,
+    )
+
+    expect(await screen.findByText('Loading files')).toBeInTheDocument()
+
+    // The fetch resolves: folder 2 is now cached with its documents, no
+    // longer loading.
+    const loadedBrowse = bigFolderBrowse()
+    loadedBrowse.cache.set(2, {
+      contents: {
+        folder: { folder_id: 2, name: 'Big folder', parent_id: 1, has_children: false },
+        folders: [],
+        documents: [{ ...folderDocuments[0], document_id: 'doc-big', filename: 'big.pdf' }],
+        page: 0,
+        has_more_documents: false,
+      },
+      loadedPages: new Set([0]),
+    })
+    rerender(
+      <App>
+        <FolderSidebar browse={loadedBrowse} selection={createSelectionFixture()} />
+      </App>,
+    )
+
+    expect(await screen.findByText('big.pdf')).toBeInTheDocument()
+    expect(screen.queryByText('Loading files')).not.toBeInTheDocument()
   })
 })
