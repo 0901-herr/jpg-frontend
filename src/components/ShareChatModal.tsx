@@ -47,7 +47,12 @@ export default function ShareChatModal({ chat, onClose, onChangeVisibility }: Sh
     if (next === visibility) return
     setUpdating(true)
     setCopied(false)
-    void onChangeVisibility(chat.id, next).finally(() => setUpdating(false))
+    // The owner callback reports the API failure itself. Swallow the
+    // rejection here so a failed visibility update does not become an
+    // unhandled promise rejection while still releasing the spinner.
+    void onChangeVisibility(chat.id, next)
+      .catch(() => undefined)
+      .finally(() => setUpdating(false))
   }
 
   const handleCopy = () => {

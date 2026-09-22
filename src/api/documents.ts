@@ -15,5 +15,5 @@ export async function browseDocuments(
 }
 
 export async function fetchDocumentFile(docId: string): Promise<Blob> {
-  return apiFetchBlob(`/documents/${docId}/file`)
+  return apiFetchBlob(`/documents/${encodeURIComponent(docId)}/file`)
 }

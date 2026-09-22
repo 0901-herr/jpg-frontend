@@ -137,6 +137,17 @@ describe('AnswerContent Markdown rendering', () => {
     expect((window as unknown as { __pwned?: boolean }).__pwned).toBeUndefined()
   })
 
+  it('renders prompt-authored unsafe Markdown links as inert text', () => {
+    render(
+      <ChatMessageItem
+        message={assistantMessage({ content: '[Ignore safeguards](javascript:alert(1))' })}
+      />,
+    )
+
+    expect(screen.getByText('Ignore safeguards')).toBeInTheDocument()
+    expect(screen.queryByRole('link')).toBeNull()
+  })
+
   it('keeps the streaming live-text preview as plain, pre-wrapped text', () => {
     const message = assistantMessage({
       content: 'Finished part.',

@@ -62,10 +62,16 @@ export function loadPersistedSelection(userId?: string | null): Set<string> | nu
 export function persistSelection(ids: Set<string>, userId?: string | null) {
   // There is no safe owner to write against until authentication resolves.
   if (userId === null) return
-  localStorage.setItem(
-    typeof userId === 'string' ? selectedDocumentsKey(userId) : SELECTED_DOCS_KEY,
-    JSON.stringify([...ids]),
-  )
+  try {
+    localStorage.setItem(
+      typeof userId === 'string' ? selectedDocumentsKey(userId) : SELECTED_DOCS_KEY,
+      JSON.stringify([...ids]),
+    )
+  } catch {
+    // Storage can be unavailable (private browsing) or full. Selection still
+    // lives in React state, so persistence is best effort and must never make
+    // checking a document crash the composer.
+  }
 }
 
 export function loadPersistedExpandedFolders(): Set<number> {
@@ -73,7 +79,11 @@ export function loadPersistedExpandedFolders(): Set<number> {
 }
 
 export function persistExpandedFolders(ids: Set<number>) {
-  localStorage.setItem(EXPANDED_FOLDERS_KEY, JSON.stringify([...ids].map(String)))
+  try {
+    localStorage.setItem(EXPANDED_FOLDERS_KEY, JSON.stringify([...ids].map(String)))
+  } catch {
+    // Best-effort preference only; a storage failure must not break browsing.
+  }
 }
 
 export function loadPersistedActiveFolder(): number | null {
@@ -81,15 +91,23 @@ export function loadPersistedActiveFolder(): number | null {
 }
 
 export function persistActiveFolder(folderId: number | null) {
-  if (folderId == null) {
-    localStorage.removeItem(ACTIVE_FOLDER_KEY)
-  } else {
-    localStorage.setItem(ACTIVE_FOLDER_KEY, String(folderId))
+  try {
+    if (folderId == null) {
+      localStorage.removeItem(ACTIVE_FOLDER_KEY)
+    } else {
+      localStorage.setItem(ACTIVE_FOLDER_KEY, String(folderId))
+    }
+  } catch {
+    // Best-effort preference only; a storage failure must not break browsing.
   }
 }
 
 export function clearBrowsePersistence() {
-  localStorage.removeItem(SELECTED_DOCS_KEY)
-  localStorage.removeItem(EXPANDED_FOLDERS_KEY)
-  localStorage.removeItem(ACTIVE_FOLDER_KEY)
+  try {
+    localStorage.removeItem(SELECTED_DOCS_KEY)
+    localStorage.removeItem(EXPANDED_FOLDERS_KEY)
+    localStorage.removeItem(ACTIVE_FOLDER_KEY)
+  } catch {
+    // Storage may be unavailable; there is nothing else to clear locally.
+  }
 }

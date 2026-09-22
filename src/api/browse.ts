@@ -266,7 +266,7 @@ export async function fetchDocumentViewUrl(documentId: string, page?: number): P
   }
   const query = page != null && page >= 1 ? `?page=${page}` : ''
   const response = await apiGet<{ url: string }>(
-    `/browse/documents/${documentId}/view-url${query}`,
+    `/browse/documents/${encodeURIComponent(documentId)}/view-url${query}`,
   )
   return response.url
 }
@@ -275,7 +275,11 @@ export async function fetchDocumentSummary(
   documentId: string,
   signal?: AbortSignal,
 ): Promise<DocumentSummaryResponse> {
-  return apiGet<DocumentSummaryResponse>(`/browse/documents/${documentId}/summary`, true, signal)
+  return apiGet<DocumentSummaryResponse>(
+    `/browse/documents/${encodeURIComponent(documentId)}/summary`,
+    true,
+    signal,
+  )
 }
 
 /** Runs Arche AI metadata extraction for a document and (best effort,
@@ -287,7 +291,7 @@ export async function extractMetadata(
   signal?: AbortSignal,
 ): Promise<MetadataExtractionResponse> {
   return apiPost<MetadataExtractionResponse>(
-    `/browse/documents/${documentId}/extract-metadata`,
+    `/browse/documents/${encodeURIComponent(documentId)}/extract-metadata`,
     {},
     true,
     signal,
@@ -303,7 +307,7 @@ export async function categorizeDocument(
   signal?: AbortSignal,
 ): Promise<DocumentCategorizeResponse> {
   return apiPost<DocumentCategorizeResponse>(
-    `/browse/documents/${documentId}/categorize`,
+    `/browse/documents/${encodeURIComponent(documentId)}/categorize`,
     {},
     true,
     signal,

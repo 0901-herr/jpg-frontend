@@ -21,6 +21,7 @@ import {
   getUncategorizedNote,
   resolveCategorySourceDocuments,
 } from '../utils/documentCategories'
+import { safeNewTabUrl } from '../utils/navigation'
 import BrowseViewToggle, { type BrowseViewMode } from './BrowseViewToggle'
 import CategoryTag from './CategoryTag'
 import DocumentChecklist from './DocumentChecklist'
@@ -359,7 +360,9 @@ export default function FolderSidebar({
       event.stopPropagation()
       try {
         const url = await fetchDocumentViewUrl(doc.document_id)
-        window.open(url, '_blank', 'noopener,noreferrer')
+        const safeUrl = safeNewTabUrl(url)
+        if (!safeUrl) throw new Error('Unsafe document URL')
+        window.open(safeUrl, '_blank', 'noopener,noreferrer')
       } catch {
         message.error(`Could not open ${doc.filename}`)
       }

@@ -23,11 +23,14 @@ export async function createChatProject(name: string): Promise<ChatProjectDto> {
 }
 
 export async function renameChatProject(id: string, name: string): Promise<ChatProjectDto> {
-  return apiPatch<ChatProjectDto>(`/chat/projects/${id}`, { name } satisfies PatchProjectRequest)
+  return apiPatch<ChatProjectDto>(
+    `/chat/projects/${encodeURIComponent(id)}`,
+    { name } satisfies PatchProjectRequest,
+  )
 }
 
 export async function deleteChatProject(id: string): Promise<void> {
-  await apiDelete<void>(`/chat/projects/${id}`)
+  await apiDelete<void>(`/chat/projects/${encodeURIComponent(id)}`)
 }
 
 export async function listChatSessions(): Promise<ListSessionsResponseDto> {
@@ -41,29 +44,32 @@ export async function createChatSession(
 }
 
 export async function getChatSession(id: string): Promise<ChatSessionDetailDto> {
-  return apiGet<ChatSessionDetailDto>(`/chat/sessions/${id}`)
+  return apiGet<ChatSessionDetailDto>(`/chat/sessions/${encodeURIComponent(id)}`)
 }
 
 export async function patchChatSession(
   id: string,
   body: PatchSessionRequest,
 ): Promise<ChatSessionSummaryDto> {
-  return apiPatch<ChatSessionSummaryDto>(`/chat/sessions/${id}`, body)
+  return apiPatch<ChatSessionSummaryDto>(`/chat/sessions/${encodeURIComponent(id)}`, body)
 }
 
 export async function deleteChatSession(id: string): Promise<void> {
-  await apiDelete<void>(`/chat/sessions/${id}`)
+  await apiDelete<void>(`/chat/sessions/${encodeURIComponent(id)}`)
 }
 
 export async function postChatMessage(
   sessionId: string,
   body: PostMessageRequest,
 ): Promise<ChatMessageDto> {
-  return apiPost<ChatMessageDto>(`/chat/sessions/${sessionId}/messages`, body)
+  return apiPost<ChatMessageDto>(
+    `/chat/sessions/${encodeURIComponent(sessionId)}/messages`,
+    body,
+  )
 }
 
 export async function getSharedChatSession(token: string): Promise<ChatSessionDetailDto> {
-  return apiGet<ChatSessionDetailDto>(`/chat/shared/${token}`)
+  return apiGet<ChatSessionDetailDto>(`/chat/shared/${encodeURIComponent(token)}`)
 }
 
 /** Recipient-side removal of a shared chat from the viewer's own "Shared"
@@ -71,5 +77,5 @@ export async function getSharedChatSession(token: string): Promise<ChatSessionDe
  * a 404 (already gone) is handled by the caller the same way as a normal
  * success (see `useChatStore.removeSharedChat`). */
 export async function deleteSharedChatSession(sessionId: string): Promise<void> {
-  await apiDelete<void>(`/chat/shared/${sessionId}`)
+  await apiDelete<void>(`/chat/shared/${encodeURIComponent(sessionId)}`)
 }

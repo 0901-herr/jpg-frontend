@@ -12,12 +12,13 @@ import {
   numberCitationsByAnswerOrder,
 } from '../utils/citations'
 import type { Source } from '../types'
+import { safeNewTabUrl } from '../utils/navigation'
 
 async function resolveSourceUrl(source: Source): Promise<string | null> {
-  if (source.url) return withPageHint(source.url, source.page)
+  if (source.url) return safeNewTabUrl(withPageHint(source.url, source.page))
   if (!source.documentId) return null
   try {
-    return await fetchDocumentViewUrl(source.documentId, source.page)
+    return safeNewTabUrl(await fetchDocumentViewUrl(source.documentId, source.page))
   } catch {
     return null
   }

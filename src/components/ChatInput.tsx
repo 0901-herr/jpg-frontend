@@ -11,6 +11,7 @@ import {
 import type { QueryTier } from '../api/types/query'
 import { fetchDocumentViewUrl } from '../api/browse'
 import { getSendDisabledReason } from '../utils/chatComposerGate'
+import { safeNewTabUrl } from '../utils/navigation'
 import { type, typeColor } from '../styles/typography'
 import { radius } from '../styles/theme'
 import { useMediaQuery } from '../hooks/useMediaQuery'
@@ -140,7 +141,9 @@ function SelectedFilesTooltip({
     setOpeningId(documentId)
     try {
       const url = await fetchDocumentViewUrl(documentId)
-      window.open(url, '_blank', 'noopener,noreferrer')
+      const safeUrl = safeNewTabUrl(url)
+      if (!safeUrl) throw new Error('Unsafe document URL')
+      window.open(safeUrl, '_blank', 'noopener,noreferrer')
     } catch {
       message.error(`Could not open ${filename}`)
     } finally {

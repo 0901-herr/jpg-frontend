@@ -118,4 +118,19 @@ describe('ShareChatModal', () => {
     )
     expect(screen.getByRole('radio', { name: 'Private' })).not.toBeDisabled()
   })
+
+  it('releases the spinner without an unhandled rejection when the update fails', async () => {
+    const user = userEvent.setup()
+    const onChangeVisibility = vi.fn().mockRejectedValue(new Error('network error'))
+    render(
+      <ShareChatModal
+        chat={chat({ visibility: 'private' })}
+        onClose={vi.fn()}
+        onChangeVisibility={onChangeVisibility}
+      />,
+    )
+
+    await user.click(screen.getByRole('radio', { name: 'Anyone with the link can view' }))
+    await waitFor(() => expect(screen.queryByTestId('visibility-spinner')).not.toBeInTheDocument())
+  })
 })

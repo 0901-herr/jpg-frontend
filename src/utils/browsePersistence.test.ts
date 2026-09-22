@@ -1,10 +1,14 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   loadPersistedExpandedFolders,
   loadPersistedSelection,
   persistExpandedFolders,
   persistSelection,
 } from './browsePersistence'
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
 
 describe('browsePersistence', () => {
   beforeEach(() => {
@@ -46,5 +50,14 @@ describe('browsePersistence', () => {
     localStorage.setItem('docu_expanded_folders', '{not json')
     expect(() => loadPersistedExpandedFolders()).not.toThrow()
     expect(loadPersistedExpandedFolders()).toEqual(new Set())
+  })
+
+  it('does not throw when browser storage rejects writes', () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('Storage unavailable', 'QuotaExceededError')
+    })
+
+    expect(() => persistSelection(new Set(['5012']))).not.toThrow()
+    expect(() => persistExpandedFolders(new Set([1]))).not.toThrow()
   })
 })

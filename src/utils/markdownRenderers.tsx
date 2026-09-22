@@ -142,6 +142,26 @@ const CELL_CLASS = 'border border-[#ececec] text-left align-top break-words [ove
 // consistency rule: radii are 8/12/16px only across the app.
 const INLINE_CODE_CLASS = 'rounded-lg bg-black/[0.05] px-1 py-0.5 font-mono text-[0.9em]'
 
+/** Keep model-authored Markdown links inert unless they use a protocol that
+ * is useful for a reader. `react-markdown` already applies its default URL
+ * transform, but this renderer owns the final `<a>` element; keeping the
+ * allow-list here makes that security boundary explicit and protects us if
+ * the library's defaults ever change. */
+function isSafeMarkdownHref(href: string | undefined): href is string {
+  if (!href) return false
+  const value = href.trim()
+  if (!value) return false
+  if (value.startsWith('#') || value.startsWith('/') || value.startsWith('./') || value.startsWith('../')) {
+    return true
+  }
+  try {
+    const protocol = new URL(value, 'https://arche-ai.invalid').protocol
+    return protocol === 'http:' || protocol === 'https:' || protocol === 'mailto:' || protocol === 'tel:'
+  } catch {
+    return false
+  }
+}
+
 /** Builds the react-markdown `components` map for one answer render —
  * `sources` closes over the citations available for this specific message,
  * since `[DocN]` markers only resolve against that message's own sources.
@@ -220,16 +240,20 @@ export function createAnswerMarkdownComponents(content: string, sources: Source[
         </pre>
       )
     },
-    a: ({ href, children }) => (
-      <a
-        href={href}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="underline decoration-[#c8c8c8] underline-offset-2 hover:decoration-[#6b6b6b]"
-      >
-        {linkifyNode(children, sources, numbers, 'a')}
-      </a>
-    ),
+    a: ({ href, children }) => {
+      const linkedChildren = linkifyNode(children, sources, numbers, 'a')
+      if (!isSafeMarkdownHref(href)) return <>{linkedChildren}</>
+      return (
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline decoration-[#c8c8c8] underline-offset-2 hover:decoration-[#6b6b6b]"
+        >
+          {linkedChildren}
+        </a>
+      )
+    },
   }
 }
 
