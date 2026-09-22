@@ -87,11 +87,19 @@ describe('AnswerContent Markdown rendering', () => {
     expect(otherPill).toHaveTextContent('2')
 
     await user.click(screen.getByRole('button', { name: /Related documents/ }))
-    expect(screen.getByText('page 2')).toBeInTheDocument()
-    expect(screen.getByText('page 5')).toBeInTheDocument()
-    const numChips = Array.from(document.querySelectorAll('.docu-citation-num-chip')).map(
+    // The combined pill nests a marker chip inside plain page text, so its
+    // full "N · p. M" reading isn't any single element's own text —
+    // queried directly rather than via getByText (which only matches a
+    // node's own text, not text split across element children).
+    const pillTexts = Array.from(document.querySelectorAll('.docu-citation-chip')).map(
       (el) => el.textContent,
     )
+    expect(pillTexts).toEqual(['1 · p. 2', '2 · p. 5'])
+    // Scoped to the pill row (not the "Cited for" list below it, which
+    // repeats the same marker chip next to its clause).
+    const numChips = Array.from(
+      document.querySelectorAll('.docu-citation-page-chips .docu-citation-chip-num'),
+    ).map((el) => el.textContent)
     expect(numChips).toEqual(['1', '2'])
   })
 
@@ -769,12 +777,12 @@ describe('chat pane never scrolls horizontally', () => {
     expect(bubble?.className).toContain('break-words')
   })
 
-  // Task 5 (responsive layout): the user bubble's max-width already caps
-  // at `min(36rem, 100%)` — the `100%` alone means it was never possible
-  // for the bubble to force itself wider than its own container even on a
-  // 390px phone, with no breakpoint-specific override needed. This is a
-  // regression guard for that existing behaviour, not new styling.
-  it('caps the user bubble width and right-aligns it like a ChatGPT-style turn', () => {
+  // Task 5 (responsive layout) + client feedback (bubble "squeezed to the
+  // right side" — root cause was a cyclic percentage max-width, see the
+  // doc comment in ChatMessage.tsx above the user-message JSX): the cap
+  // lives on the wrapper (resolved against the definite-width row), not
+  // repeated as a percentage on the bubble.
+  it('caps the user bubble width at about 75-80% of the message column and right-aligns it like a ChatGPT-style turn', () => {
     const { container } = render(
       <ChatMessageItem message={{ id: 'u1', role: 'user', content: 'Short question' }} />,
     )
@@ -782,7 +790,29 @@ describe('chat pane never scrolls horizontally', () => {
     const row = container.querySelector('.flex.justify-end')
     expect(row).not.toBeNull()
     const bubble = screen.getByText('Short question').closest('div')
-    expect(bubble?.className).toMatch(/max-w-\[min\(36rem,85%\)\]/)
+
+    // The percentage cap belongs on the WRAPPER only (its containing
+    // block — this `.flex.justify-end` row — is a plain block with a
+    // definite width). 36rem is exactly 75% of the 48rem (`max-w-3xl`)
+    // message column; 80% is the narrow-viewport fallback once that cap
+    // stops binding — both inside the "about 75-80%" the client asked
+    // for, not the old 85% (which overshot that band on a narrow screen).
+    expect(bubble?.parentElement?.className).toMatch(/max-w-\[min\(36rem,80%\)\]/)
+
+    // The bubble itself must NOT repeat a percentage max-width. Its
+    // containing block is the wrapper above, which is shrink-to-fit (no
+    // explicit width, `items-end` so no stretch) — a percentage there
+    // resolves against the wrapper's own shrink-to-fit result, which is
+    // itself derived from the bubble's content size, a cyclic dependency
+    // that silently reclamps the bubble to a *percentage of its own
+    // natural width* and forces a premature wrap (measured with
+    // Playwright against the built CSS: a one-line, ~382px-wide question
+    // wrapped into 2 lines at ~306px — see the doc comment above the JSX
+    // for the full measured before/after). `max-w-full` (100% of the
+    // wrapper's already-resolved width) is safe precisely because 100% of
+    // a value never shrinks it, unlike 80% of it.
+    expect(bubble?.className).not.toMatch(/max-w-\[min/)
+    expect(bubble?.className).toMatch(/\bmax-w-full\b/)
   })
 })
 
@@ -954,8 +984,9 @@ describe('answer-order citation numbering (client feedback: a second question us
 
     await user.click(screen.getByRole('button', { name: /Related documents/ }))
 
+    expect(screen.getByText('Cited for:')).toBeInTheDocument()
     expect(
-      screen.getByText('Cited for: "The students mentioned are listed here."'),
+      screen.getByText('"The students mentioned are listed here."'),
     ).toBeInTheDocument()
 
     const highlighted = screen.getByText('students')

@@ -373,10 +373,47 @@ export default function ChatMessageItem({
     <div className="min-w-0">
       {message.role === 'user' ? (
         <div className="mt-8 mb-6 flex justify-end">
-          <div className="inline-flex flex-col items-end max-w-[min(36rem,85%)] min-w-0">
+          {/* 36rem is exactly 75% of the 48rem message column (`max-w-3xl`
+              below in AppLayout) — a sensible ChatGPT-style cap that lets a
+              short question stay compact and a long one expand up to
+              roughly three-quarters of the column's width. `80%` is the
+              fallback once the column itself is narrower than that
+              (mobile), still inside the "about 75-80%" asked for.
+              Measured proof (Playwright, built CSS, 1200px viewport;
+              natural one-line width of the sample question ≈ 350px + 32px
+              padding ≈ 382px): this row (`flex justify-end`) is a plain
+              block in normal flow, so it has a DEFINITE width (it fills
+              the message column) — the percentage below resolves against
+              that. THIS wrapper is where the cap belongs.
+              The bubble div must NOT repeat the percentage. A percentage
+              max-width on the bubble resolves against ITS containing
+              block — this wrapper — which is itself shrink-to-fit (no
+              explicit width, only max-width, and `items-end` means no
+              stretch). Shrink-to-fit sizing computes the wrapper's width
+              from the bubble's own max-content contribution, and that
+              contribution is computed *ignoring* an indefinite percentage
+              — so the wrapper settles at the bubble's true ~382px natural
+              width, uncapped. Final layout then re-resolves the bubble's
+              own `min(36rem, 80%)` against that *already-settled* 382px,
+              landing at 80% of 382 ≈ 306px — narrower than the bubble's
+              own text, forcing a premature 2-line wrap (measured: 305.6px
+              / 2 lines, vs. 381.95px / 1 line once the bubble's percentage
+              was removed — client feedback: "squeezed to the right side").
+              A commit before this one ("keep the max-width cap on the
+              user bubble itself, not only on the new author-label
+              wrapper") re-added that percentage to fix an unrelated
+              build/test break and reintroduced exactly this cyclic case;
+              `max-w-full` here is the correct replacement, not a
+              reversion — 100% of the wrapper's own (already-clamped, non-
+              self-referential) resolved width never shrinks the bubble
+              below it, so a very long message still fills and wraps at
+              the wrapper's real cap (measured: exactly 576px = 36rem for
+              a 600-char message at 1200px; exactly 80% of the column at a
+              480px viewport). */}
+          <div className="inline-flex flex-col items-end max-w-[min(36rem,80%)] min-w-0">
             <UserLabel name={authorName} />
             <div
-              className={`inline-block bg-[#f4f4f4] ${radius.lg} px-4 py-3 min-w-0 max-w-[min(36rem,85%)] break-words [overflow-wrap:anywhere]`}
+              className={`inline-block bg-[#f4f4f4] ${radius.lg} px-4 py-3 min-w-0 max-w-full break-words [overflow-wrap:anywhere]`}
             >
               <Text className={`${type.body} ${typeColor.body}`}>{message.content}</Text>
             </div>
