@@ -672,3 +672,68 @@ describe('ChatInput — host rooftop banner for a query-shared chat', () => {
     ).not.toBeInTheDocument()
   })
 })
+
+// Fix round 1, Finding 1: `toolActionPending` (Summarize/Categorize/Extract
+// metadata busy, or a pending-answer poll — see AppLayout) must disable
+// Send without ever swapping it for a clickable-but-inert Stop button.
+// Only `isResponding` (this chat's own abortable stream) may show Stop.
+describe('ChatInput — toolActionPending disables Send without showing Stop', () => {
+  it('shows a disabled Send button (not Stop) while toolActionPending is true and the chat is not itself responding', async () => {
+    const user = userEvent.setup()
+    renderChatInput({ selectedCount: 1, toolActionPending: true })
+
+    const textarea = screen.getByPlaceholderText('Ask a question about the selected documents')
+    await user.type(textarea, 'What is in this document?')
+
+    const sendButton = screen.getByRole('button', { name: 'Send message' })
+    expect(sendButton).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Stop response' })).not.toBeInTheDocument()
+  })
+
+  it('never calls onSend when Enter is pressed while toolActionPending is true', async () => {
+    const user = userEvent.setup()
+    const onSend = vi.fn()
+    renderChatInput({ selectedCount: 1, toolActionPending: true, onSend })
+
+    const textarea = screen.getByPlaceholderText('Ask a question about the selected documents')
+    await user.type(textarea, 'What is in this document?{Enter}')
+
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it('shows Stop (not Send) while isResponding is true, even if toolActionPending is also true', () => {
+    renderChatInput({ selectedCount: 1, isResponding: true, toolActionPending: true })
+
+    const stopButton = screen.getByRole('button', { name: 'Stop response' })
+    expect(stopButton).not.toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Send message' })).not.toBeInTheDocument()
+  })
+
+  it('calls onStop, not onSend, when clicked while isResponding and toolActionPending are both true', async () => {
+    const user = userEvent.setup()
+    const onStop = vi.fn()
+    const onSend = vi.fn()
+    renderChatInput({
+      selectedCount: 1,
+      isResponding: true,
+      toolActionPending: true,
+      onStop,
+      onSend,
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Stop response' }))
+
+    expect(onStop).toHaveBeenCalledTimes(1)
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it('shows an enabled Send button when toolActionPending is false and a message is entered', async () => {
+    const user = userEvent.setup()
+    renderChatInput({ selectedCount: 1, toolActionPending: false })
+
+    const textarea = screen.getByPlaceholderText('Ask a question about the selected documents')
+    await user.type(textarea, 'What is in this document?')
+
+    expect(screen.getByRole('button', { name: 'Send message' })).not.toBeDisabled()
+  })
+})

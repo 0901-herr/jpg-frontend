@@ -218,6 +218,7 @@ export default function AppLayout() {
     setSharedSessions,
     messagesLoading,
     sessionsCreating,
+    pendingAnswerChatIds,
   } = chatStore
   const chatHydrated = chatStore.hydrated
 
@@ -1118,6 +1119,13 @@ export default function AppLayout() {
   // membership in `inFlightChatIds` is the source of truth instead.
   const isActiveChatResponding = inFlightChatIds.has(activeChatId)
 
+  // Fix round 1, Finding 2: distinct from `isActiveChatResponding` — this
+  // chat has no local stream to Stop, it's waiting on the "Generating
+  // answer" placeholder's poll (Item 3) to catch the server's answer.
+  // Gates the composer to `disabled` (see the composer JSX below), never
+  // `isResponding` — there's nothing to abort here.
+  const isActiveChatPendingAnswer = pendingAnswerChatIds.has(activeChatId)
+
   const summarizeDisabledReason = useMemo(
     () =>
       isSharedChat
@@ -1651,21 +1659,30 @@ export default function AppLayout() {
                 onExtractMetadata={layoutDemo ? () => undefined : handleExtractMetadata}
                 onStop={handleStop}
                 onComposerFocus={handleComposerFocus}
-                isResponding={
-                  layoutDemo
-                    ? false
-                    : isActiveChatResponding || isSummarizing || isExtracting || isCategorizing
+                isResponding={layoutDemo ? false : isActiveChatResponding}
+                // Fix round 1, Finding 1: Summarize/Extract/Categorize being
+                // busy must disable Send — it must NOT swap Send for Stop
+                // (there is nothing for Stop to abort while a tool action,
+                // not a chat answer, is in flight). `isResponding` above now
+                // only reflects this chat's own streaming/abortable state.
+                toolActionPending={
+                  layoutDemo ? false : isSummarizing || isExtracting || isCategorizing
                 }
                 disabled={
                   layoutDemo
                     ? false
-                    : browse.sessionExpired || isActiveChatMessagesLoading || isActiveChatBeingCreated
+                    : browse.sessionExpired ||
+                      isActiveChatMessagesLoading ||
+                      isActiveChatBeingCreated ||
+                      isActiveChatPendingAnswer
                 }
                 disabledReason={
                   layoutDemo
                     ? undefined
-                    : (inputBlockedReason ??
-                      (isActiveChatBeingCreated ? 'Setting up this chat' : undefined))
+                    : (isActiveChatPendingAnswer
+                        ? 'Waiting for the current answer to finish'
+                        : (inputBlockedReason ??
+                          (isActiveChatBeingCreated ? 'Setting up this chat' : undefined)))
                 }
                 summarizeDisabledReason={layoutDemo ? null : summarizeDisabledReason}
                 categorizeDisabledReason={layoutDemo ? null : categorizeDisabledReason}

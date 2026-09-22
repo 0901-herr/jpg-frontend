@@ -1032,6 +1032,37 @@ describe('AppLayout — Summarize', () => {
     ).not.toBeInTheDocument()
   })
 
+  // Fix round 1, Finding 1: while Summarize (or Categorize/Extract
+  // metadata) is in flight, the composer's own Send/Stop button must show
+  // a disabled Send — never a clickable-but-inert Stop, since there is
+  // nothing for Stop to abort here (the tool action isn't a chat stream).
+  it('shows a disabled Send button, not Stop, on the composer while Summarize is in flight', async () => {
+    const user = userEvent.setup()
+    let resolveSummary: ((value: { summary: string }) => void) | undefined
+    fetchDocumentSummary.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSummary = resolve
+        }),
+    )
+
+    render(<AppLayout />)
+
+    await user.click(screen.getByRole('button', { name: 'Summarize selected document' }))
+    expect(
+      await screen.findByText('Summarizing this document. This can take up to a minute.'),
+    ).toBeInTheDocument()
+
+    expect(screen.queryByRole('button', { name: 'Stop response' })).not.toBeInTheDocument()
+    const sendButton = screen.getByRole('button', { name: 'Send message' })
+    expect(sendButton).toBeDisabled()
+
+    await act(async () => {
+      resolveSummary?.({ summary: 'This document covers Q3 minutes.' })
+      await Promise.resolve()
+    })
+  })
+
   it('removes the thinking placeholder on a fetch error, keeping the user request', async () => {
     const user = userEvent.setup()
     let rejectSummary: ((err: unknown) => void) | undefined
@@ -2123,6 +2154,113 @@ describe('AppLayout — message pane skeleton while a chat is loading messages',
     expect(screen.getByText('Already loaded answer')).toBeInTheDocument()
     expect(screen.queryByTestId('messages-skeleton')).not.toBeInTheDocument()
   })
+})
+
+describe('AppLayout — Fix round 1, Finding 2: composer gated during a pending-answer poll', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    currentSignal = null
+    initialSelectedIds = new Set(['doc-1'])
+    initialDocumentMeta = defaultDocumentMeta()
+    listChatSessions.mockReset()
+    getChatSession.mockReset()
+    getChatSession.mockResolvedValue({})
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+    listChatSessions.mockResolvedValue({ sessions: [], shared: [] })
+    getChatSession.mockResolvedValue({})
+    window.history.pushState({}, '', '/')
+  })
+
+  it(
+    'disables the composer with "Waiting for the current answer to finish" while the placeholder is showing, and re-enables it with the real answer once the poll resolves',
+    async () => {
+      // A page refresh (or a follower who missed the live SSE stream)
+      // landing on a session whose answer is still generating server-side
+      // — Item 3's placeholder + poll. Real timers throughout: the poll is
+      // registered with the real `setInterval`, so faking the clock
+      // afterwards would never reach it (see useChatStore.test.ts's Item 3
+      // block for the same reasoning).
+      listChatSessions.mockResolvedValueOnce({
+        sessions: [
+          {
+            id: 's1',
+            title: 'Old chat',
+            project_id: null,
+            visibility: 'private',
+            share_token: null,
+            created_at: '2026-09-01T00:00:00Z',
+            updated_at: '2026-09-01T00:00:00Z',
+            message_count: 1,
+          },
+        ],
+        shared: [],
+      })
+      getChatSession.mockResolvedValue({
+        id: 's1',
+        title: 'Old chat',
+        project_id: null,
+        visibility: 'private',
+        share_token: null,
+        created_at: '2026-09-01T00:00:00Z',
+        updated_at: '2026-09-01T00:00:00Z',
+        is_owner: true,
+        can_query: true,
+        scope_document_ids: ['doc-1'],
+        messages: [{ id: 'q1', role: 'user', content: 'What is in the contract?' }],
+        pending_answer: true,
+      })
+
+      render(<AppLayout />)
+
+      await waitFor(() => expect(screen.getByTestId('active-chat-id').textContent).toBe('s1'))
+      await screen.findByText('Generating answer')
+
+      expect(
+        await screen.findByText('Waiting for the current answer to finish'),
+      ).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Stop response' })).not.toBeInTheDocument()
+      const textarea = await screen.findByPlaceholderText(
+        'Ask a question about the selected documents',
+      )
+      expect(textarea).toBeDisabled()
+
+      getChatSession.mockResolvedValue({
+        id: 's1',
+        title: 'Old chat',
+        project_id: null,
+        visibility: 'private',
+        share_token: null,
+        created_at: '2026-09-01T00:00:00Z',
+        updated_at: '2026-09-01T00:00:00Z',
+        is_owner: true,
+        can_query: true,
+        scope_document_ids: ['doc-1'],
+        messages: [
+          { id: 'q1', role: 'user', content: 'What is in the contract?' },
+          { id: 'a1', role: 'assistant', content: 'The contract says X.' },
+        ],
+        pending_answer: false,
+      })
+
+      await waitFor(
+        () => {
+          expect(screen.getByText('The contract says X.')).toBeInTheDocument()
+        },
+        { timeout: 5000, interval: 250 },
+      )
+      expect(screen.queryByText('Generating answer')).not.toBeInTheDocument()
+      expect(
+        screen.queryByText('Waiting for the current answer to finish'),
+      ).not.toBeInTheDocument()
+      expect(
+        screen.getByPlaceholderText('Ask a question about the selected documents'),
+      ).not.toBeDisabled()
+    },
+    10000,
+  )
 })
 
 describe('AppLayout — composer locked while a brand-new chat is still being created', () => {

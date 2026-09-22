@@ -266,6 +266,17 @@ export interface UseChatStoreResult {
    * viewer's most recent own chat if the removed one was active; opening
    * the share link again just re-adds it. */
   removeSharedChat: (chatId: string) => void
+  /** Chat ids with an active "poll until the pending answer lands" timer
+   * (Item 3's `pollPendingAnswer`) — the chat has a "Generating answer"
+   * placeholder standing in for a server-side answer that hasn't landed
+   * yet. A caller should disable that chat's composer while its id is in
+   * here (fix round 1, Finding 2): a send racing the poll used to get
+   * added to `inFlightChatIds`, which made the poll's own self-check stop
+   * it without ever applying the finished answer, stranding the
+   * placeholder. This is deliberately not routed through
+   * `isChatInFlightLocally`/`inFlightChatIds` — there is nothing to Stop
+   * here, only something to wait out. */
+  pendingAnswerChatIds: Set<string>
 }
 
 /** Owns every chat-store concern that used to live directly in AppLayout:
@@ -474,11 +485,26 @@ export function useChatStore({
   // since nothing renders off this directly.
   const pendingAnswerTimersRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map())
 
+  // Reactive mirror of `pendingAnswerTimersRef`'s keys — the ref alone is
+  // enough to drive the poll itself, but fix round 1, Finding 2 needs a
+  // caller (AppLayout's composer) to re-render off "is this chat still
+  // waiting on a pending answer," which a ref can't do.
+  const [pendingAnswerChatIds, setPendingAnswerChatIds] = useState<Set<string>>(
+    () => new Set<string>(),
+  )
+
   const stopPendingAnswerPoll = useCallback((chatId: string) => {
     const timer = pendingAnswerTimersRef.current.get(chatId)
-    if (timer == null) return
-    clearInterval(timer)
-    pendingAnswerTimersRef.current.delete(chatId)
+    if (timer != null) {
+      clearInterval(timer)
+      pendingAnswerTimersRef.current.delete(chatId)
+    }
+    setPendingAnswerChatIds((prev) => {
+      if (!prev.has(chatId)) return prev
+      const next = new Set(prev)
+      next.delete(chatId)
+      return next
+    })
   }, [])
 
   // Every poll timer is torn down on unmount — nothing left running once
@@ -510,8 +536,25 @@ export function useChatStore({
   const pollPendingAnswer = useCallback(
     (chatId: string, isOwnSession: boolean) => {
       if (pendingAnswerTimersRef.current.has(chatId)) return
+      setPendingAnswerChatIds((prev) => {
+        if (prev.has(chatId)) return prev
+        const next = new Set(prev)
+        next.add(chatId)
+        return next
+      })
       const timer = setInterval(() => {
-        if (chatId !== activeChatIdRef.current || isChatInFlightLocally(chatId)) {
+        // Fix round 1, Finding 2: this used to also stop (without applying
+        // the answer) the instant `isChatInFlightLocally(chatId)` went
+        // true — e.g. a resend racing the poll. That let a same-chat send
+        // strand the "Generating answer" placeholder forever: the poll
+        // gave up, but the resend's own stream is a NEW turn, not the one
+        // the placeholder was standing in for. The composer is now
+        // disabled for a chat in `pendingAnswerChatIds` (see AppLayout),
+        // so that race shouldn't happen in the UI any more — but the poll
+        // itself no longer depends on it either way: it only self-stops
+        // once the answer has actually landed (`pending_answer` is
+        // false), or this chat is no longer the active one.
+        if (chatId !== activeChatIdRef.current) {
           stopPendingAnswerPoll(chatId)
           return
         }
@@ -533,7 +576,7 @@ export function useChatStore({
       }, 3000)
       pendingAnswerTimersRef.current.set(chatId, timer)
     },
-    [isChatInFlightLocally, stopPendingAnswerPoll],
+    [stopPendingAnswerPoll],
   )
 
   // Shared by `ensureMessagesLoaded` and `refreshSharedChat` — fetches one
@@ -1035,5 +1078,6 @@ export function useChatStore({
     sessionsCreating,
     refreshSharedChat,
     removeSharedChat,
+    pendingAnswerChatIds,
   }
 }
