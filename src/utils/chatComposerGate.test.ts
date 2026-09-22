@@ -35,6 +35,18 @@ describe('getSendDisabledReason', () => {
     ).toBe('Sign in to continue')
   })
 
+  it('returns the provided disabledReason when disabled is true', () => {
+    expect(
+      getSendDisabledReason({
+        selectedCount: 2,
+        hasMessage: true,
+        isResponding: false,
+        disabled: true,
+        disabledReason: 'Waiting for the current answer to finish',
+      }),
+    ).toBe('Waiting for the current answer to finish')
+  })
+
   it('allows sending with zero selected documents when the chat has its own shared scope', () => {
     expect(
       getSendDisabledReason({

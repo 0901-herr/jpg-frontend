@@ -12,14 +12,18 @@ export function getSendDisabledReason(options: {
    * generating — blocks Send with its own reason, distinct from
    * `isResponding` (which swaps Send for Stop). */
   toolActionPending?: boolean
+  /** Specific reason why Send is disabled (e.g., "Waiting for the current
+   * answer to finish"). Used only when `disabled` is true; if not provided,
+   * defaults to 'Sign in to continue'. */
+  disabledReason?: string | null
 }): string | null {
-  const { selectedCount, hasMessage, isResponding, disabled, allowEmptySelection, toolActionPending } =
+  const { selectedCount, hasMessage, isResponding, disabled, allowEmptySelection, toolActionPending, disabledReason } =
     options
 
   if (isResponding) return null
   if (toolActionPending) return 'Wait for the current action to finish'
   if (selectedCount === 0 && !allowEmptySelection) return 'Select at least one document'
-  if (disabled) return 'Sign in to continue'
+  if (disabled) return disabledReason || 'Sign in to continue'
   if (!hasMessage) return 'Enter a question first'
   return null
 }
