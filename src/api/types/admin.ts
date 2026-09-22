@@ -19,7 +19,7 @@ export interface AdminHealthEndpoints {
   adapter: string
   logicaldoc: string
   rag_engine: string
-  minio: string
+  minio: string | null
   rabbitmq: string | null
   temporal: string | null
 }

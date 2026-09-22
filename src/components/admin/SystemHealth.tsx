@@ -23,6 +23,7 @@ interface HealthRow {
 function statusTag(value: string) {
   if (value === 'ok') return <Tag color="success">Healthy</Tag>
   if (value === 'unavailable') return <Tag color="error">Down</Tag>
+  if (value === 'unused') return <Tag>Not used</Tag>
   return <Tag>Unknown</Tag>
 }
 
@@ -57,7 +58,10 @@ function buildRows(
       status: health.rag_engine,
       endpoint: ep.rag_engine || ragApiBaseUrl || null,
     },
-    { key: 'minio', label: 'MinIO', status: health.minio, endpoint: ep.minio },
+    // Hide MinIO when handoff is adapter_proxy (adapter reports unused).
+    ...(health.minio === 'unused'
+      ? []
+      : [{ key: 'minio', label: 'MinIO', status: health.minio, endpoint: ep.minio }]),
     {
       key: 'rabbitmq',
       label: 'RabbitMQ',
@@ -83,7 +87,7 @@ export default function SystemHealth({
   const degraded =
     health.logicaldoc !== 'ok' ||
     health.rag_engine !== 'ok' ||
-    health.minio !== 'ok' ||
+    (health.minio !== 'ok' && health.minio !== 'unused') ||
     circuitOpen
 
   const rows = buildRows(health, health.endpoints ?? null, ragApiBaseUrl)
