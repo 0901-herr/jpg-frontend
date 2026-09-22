@@ -373,10 +373,26 @@ export default function ChatMessageItem({
     <div className="min-w-0">
       {message.role === 'user' ? (
         <div className="mt-8 mb-6 flex justify-end">
-          <div className="inline-flex flex-col items-end max-w-[min(36rem,85%)] min-w-0">
+          {/* 36rem is exactly 75% of the 48rem message column (`max-w-3xl`
+              below in AppLayout) — a sensible ChatGPT-style cap that lets a
+              short question stay compact and a long one expand up to
+              roughly three-quarters of the column's width, never the
+              cramped ~30% a too-small cap produces (client feedback: the
+              bubble "should've taken more space"). `80%` is the fallback
+              once the column itself is narrower than that (mobile), still
+              inside the "about 75-80%" asked for. The same expression is
+              set on both this wrapper AND the bubble div below — the
+              wrapper alone isn't enough: with `items-end` (not `stretch`)
+              its children aren't cross-axis-stretched to its width, so an
+              inline-block bubble with no cap of its own can render past
+              the wrapper's own clamped width instead of wrapping inside
+              it (regression: this dropped once already when a Related
+              PR added the author-label wrapper and only capped it, not
+              the bubble). */}
+          <div className="inline-flex flex-col items-end max-w-[min(36rem,80%)] min-w-0">
             <UserLabel name={authorName} />
             <div
-              className={`inline-block bg-[#f4f4f4] ${radius.lg} px-4 py-3 min-w-0 max-w-[min(36rem,85%)] break-words [overflow-wrap:anywhere]`}
+              className={`inline-block bg-[#f4f4f4] ${radius.lg} px-4 py-3 min-w-0 max-w-[min(36rem,80%)] break-words [overflow-wrap:anywhere]`}
             >
               <Text className={`${type.body} ${typeColor.body}`}>{message.content}</Text>
             </div>

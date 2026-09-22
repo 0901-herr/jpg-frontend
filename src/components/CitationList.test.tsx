@@ -40,6 +40,18 @@ function contentCiting(...sources: Source[]): string {
   return sources.map((s) => `Cites ${s.docRef}.`).join(' ')
 }
 
+/** The combined "N · p. M" pill nests a marker chip inside plain page
+ * text, so its full reading isn't any single element's own text —
+ * `getByText` only matches a node's own text, not text split across
+ * element children (see its "text is broken up by multiple elements"
+ * caveat). Reads every rendered pill's full text directly instead, in DOM
+ * order. */
+function pillTexts(): string[] {
+  return Array.from(document.querySelectorAll('.docu-citation-chip')).map(
+    (el) => el.textContent ?? '',
+  )
+}
+
 describe('CitationList grouping', () => {
   it('shows the cited-group count, not the raw citation count, in the header', async () => {
     const user = userEvent.setup()
@@ -62,7 +74,7 @@ describe('CitationList grouping', () => {
     expect(screen.getByText('C.pdf')).toBeInTheDocument()
   })
 
-  it('renders one page chip per distinct page under the grouped document', async () => {
+  it('renders one cohesive "N · p. M" pill per distinct page under the grouped document', async () => {
     const user = userEvent.setup()
     const sources: Source[] = [
       source({ index: 1, filename: 'A.pdf', documentId: 'doc-a', page: 2 }),
@@ -73,15 +85,10 @@ describe('CitationList grouping', () => {
     render(<CitationList sources={sources} content={contentCiting(...sources)} />)
     await user.click(screen.getByRole('button', { name: /Related documents/ }))
 
-    expect(screen.getByText('1')).toBeInTheDocument()
-    expect(screen.getByText('page 2')).toBeInTheDocument()
-    expect(screen.getByText('2')).toBeInTheDocument()
-    expect(screen.getByText('page 5')).toBeInTheDocument()
-    expect(screen.getByText('3')).toBeInTheDocument()
-    expect(screen.getByText('page 7')).toBeInTheDocument()
+    expect(pillTexts()).toEqual(['1 · p. 2', '2 · p. 5', '3 · p. 7'])
   })
 
-  it('prefixes each page chip with the same number an inline pill for that citation would show', async () => {
+  it('prefixes each page pill with the same number an inline pill for that citation would show', async () => {
     const user = userEvent.setup()
     const sources: Source[] = [
       source({ index: 1, filename: 'A.pdf', documentId: 'doc-a', page: 2 }),
@@ -94,12 +101,38 @@ describe('CitationList grouping', () => {
 
     // First appearance order in the answer text: doc-a p2 → 1, doc-b p1 →
     // 2, doc-a p5 → 3 — independent of how they group by document.
-    expect(screen.getByText('page 2')).toBeInTheDocument()
-    expect(screen.getByText('page 1')).toBeInTheDocument()
-    expect(screen.getByText('page 5')).toBeInTheDocument()
+    expect(pillTexts().sort()).toEqual(['1 · p. 2', '2 · p. 1', '3 · p. 5'].sort())
+  })
+
+  it('sorts a document\'s pills by citation marker number, not by page number (client feedback: pvsnp.pdf showed 2, 3, 1 instead of 1, 2, 3)', async () => {
+    const user = userEvent.setup()
+    // Cited out of page order: page 1 is cited second, page 2 third, page
+    // 9 first — `groupSourcesByDocument` would otherwise leave the pill
+    // row in page order (page 1, page 2, page 9 → markers 2, 3, 1).
+    const page9 = source({ index: 1, filename: 'pvsnp.pdf', documentId: 'doc-x', page: 9 })
+    const page1 = source({ index: 2, filename: 'pvsnp.pdf', documentId: 'doc-x', page: 1 })
+    const page2 = source({ index: 3, filename: 'pvsnp.pdf', documentId: 'doc-x', page: 2 })
+    const content = `First ${page9.docRef}. Second ${page1.docRef}. Third ${page2.docRef}.`
+
+    render(<CitationList sources={[page9, page1, page2]} content={content} />)
+    await user.click(screen.getByRole('button', { name: /Related documents/ }))
+
+    expect(pillTexts()).toEqual(['1 · p. 9', '2 · p. 1', '3 · p. 2'])
+  })
+
+  it('renders just the marker, with no page segment, for a citation with no page number', async () => {
+    const user = userEvent.setup()
+    const noPage = source({ index: 1, filename: 'A.pdf', documentId: 'doc-a', page: undefined })
+    // A bare marker with no surrounding prose leaves no "Cited for" clause
+    // (see `citationContextByAnswerOrder`'s doc comment), keeping this
+    // test scoped to just the pill itself.
+    const content = noPage.docRef!
+
+    render(<CitationList sources={[noPage]} content={content} />)
+    await user.click(screen.getByRole('button', { name: /Related documents/ }))
+
     expect(screen.getByText('1')).toBeInTheDocument()
-    expect(screen.getByText('2')).toBeInTheDocument()
-    expect(screen.getByText('3')).toBeInTheDocument()
+    expect(screen.queryByText(/p\./)).not.toBeInTheDocument()
   })
 
   it('opens the first page when the filename area is clicked', async () => {
@@ -155,10 +188,7 @@ describe('CitationList — answer-order numbering (Task 2)', () => {
     render(<CitationList sources={[doc6, doc7, doc8]} content={content} />)
     await user.click(screen.getByRole('button', { name: /Related documents/ }))
 
-    expect(screen.getByText('1')).toBeInTheDocument()
-    expect(screen.getByText('2')).toBeInTheDocument()
-    expect(screen.getByText('3')).toBeInTheDocument()
-    expect(screen.getAllByText('page 1')).toHaveLength(3)
+    expect(pillTexts()).toEqual(['1 · p. 1', '2 · p. 1', '3 · p. 1'])
   })
 
   it('puts a source the answer never cites under a collapsed "Also searched" section, separate from the cited count', async () => {
@@ -211,10 +241,11 @@ describe('CitationList — answer-order numbering (Task 2)', () => {
     render(<CitationList sources={[cited]} content={content} />)
     await user.click(screen.getByRole('button', { name: /Related documents/ }))
 
-    expect(screen.getByText('Cited for: "The budget grew significantly."')).toBeInTheDocument()
+    expect(screen.getByText('Cited for:')).toBeInTheDocument()
+    expect(screen.getByText('"The budget grew significantly."')).toBeInTheDocument()
   })
 
-  it('takes "Cited for" from the page holding the group\'s own first-cited number, not whichever page sorts first by page number (fix round 1)', async () => {
+  it('lists every clause a document was cited for, in marker order, not just the first (client feedback: pvsnp.pdf cited 3 times only showed one snippet)', async () => {
     const user = userEvent.setup()
     const pageFive = source({ index: 1, filename: 'Doc.pdf', documentId: 'doc-x', page: 5 })
     const pageTwo = source({ index: 2, filename: 'Doc.pdf', documentId: 'doc-x', page: 2 })
@@ -222,15 +253,42 @@ describe('CitationList — answer-order numbering (Task 2)', () => {
     // number that decides this row's position in "Related documents".
     // Page 2 is cited second (#2). `groupSourcesByDocument` sorts the
     // group's own page chips ascending by page number (page 2 before page
-    // 5), so a naive page-order scan for "Cited for" would wrongly surface
-    // page 2's sentence instead of the row's actual first-cited page.
+    // 5), so a naive page-order scan would wrongly surface page 2's
+    // sentence as if it were the group's first-cited clause.
     const content = `First point cites page five ${pageFive.docRef}. Second point cites page two ${pageTwo.docRef}.`
 
     render(<CitationList sources={[pageFive, pageTwo]} content={content} />)
     await user.click(screen.getByRole('button', { name: /Related documents/ }))
 
-    expect(screen.getByText('Cited for: "First point cites page five."')).toBeInTheDocument()
-    expect(screen.queryByText('Cited for: "Second point cites page two."')).not.toBeInTheDocument()
+    const clauses = screen.getAllByText(/^"/).map((el) => el.textContent)
+    expect(clauses).toEqual([
+      '"First point cites page five."',
+      '"Second point cites page two."',
+    ])
+  })
+
+  it('renders a document cited 3 times with sorted pills and all 3 clauses (owner repro: pvsnp.pdf)', async () => {
+    const user = userEvent.setup()
+    const page1 = source({ index: 1, filename: 'pvsnp.pdf', documentId: 'doc-x', page: 1 })
+    const page2 = source({ index: 2, filename: 'pvsnp.pdf', documentId: 'doc-x', page: 2 })
+    const page9 = source({ index: 3, filename: 'pvsnp.pdf', documentId: 'doc-x', page: 9 })
+    // Cited out of page order: page 9 first, page 1 second, page 2 third —
+    // the pill row must read 1, 2, 3 (marker order), not 2, 3, 1 (page
+    // order), and every one of the 3 clauses must show, not just the
+    // group's first-cited one.
+    const content = `A Turing machine consists of a tape ${page9.docRef}. It reads symbols ${page1.docRef}. It writes symbols ${page2.docRef}.`
+
+    render(<CitationList sources={[page9, page1, page2]} content={content} />)
+    await user.click(screen.getByRole('button', { name: /Related documents/ }))
+
+    expect(pillTexts()).toEqual(['1 · p. 9', '2 · p. 1', '3 · p. 2'])
+
+    const clauses = screen.getAllByText(/^"/).map((el) => el.textContent)
+    expect(clauses).toEqual([
+      '"A Turing machine consists of a tape."',
+      '"It reads symbols."',
+      '"It writes symbols."',
+    ])
   })
 
   it('shows "Searched, not cited" under an uncited entry instead of a "Cited for" line', async () => {
@@ -431,6 +489,34 @@ describe('docu-citation-pill CSS contract', () => {
     // depth. A rule written at the top level of the stylesheet (depth 0 at
     // its selector) is unlayered; one written inside `@layer name { ... }`
     // would be at depth 1+ here.
+    let depth = 0
+    for (let i = 0; i < selectorIndex; i++) {
+      if (css[i] === '{') depth++
+      else if (css[i] === '}') depth--
+    }
+    expect(depth).toBe(0)
+  })
+})
+
+describe('docu-citation-chip CSS contract', () => {
+  it('declares one background/border-radius for the combined pill, since a marker chip and a page chip used to be two visually separate pills', () => {
+    const css = readFileSync(path.resolve(__dirname, '../index.css'), 'utf-8')
+    const match = css.match(/\.docu-citation-chip\s*\{([^}]*)\}/)
+
+    expect(match).not.toBeNull()
+    const body = match![1]
+    expect(body).toMatch(/border-radius\s*:/)
+    expect(body).toMatch(/background\s*:/)
+  })
+
+  it('is not nested inside an @layer block', () => {
+    const css = readFileSync(path.resolve(__dirname, '../index.css'), 'utf-8').replace(
+      /\/\*[\s\S]*?\*\//g,
+      '',
+    )
+    const selectorIndex = css.indexOf('.docu-citation-chip')
+    expect(selectorIndex).toBeGreaterThan(-1)
+
     let depth = 0
     for (let i = 0; i < selectorIndex; i++) {
       if (css[i] === '{') depth++

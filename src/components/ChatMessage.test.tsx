@@ -87,11 +87,19 @@ describe('AnswerContent Markdown rendering', () => {
     expect(otherPill).toHaveTextContent('2')
 
     await user.click(screen.getByRole('button', { name: /Related documents/ }))
-    expect(screen.getByText('page 2')).toBeInTheDocument()
-    expect(screen.getByText('page 5')).toBeInTheDocument()
-    const numChips = Array.from(document.querySelectorAll('.docu-citation-num-chip')).map(
+    // The combined pill nests a marker chip inside plain page text, so its
+    // full "N · p. M" reading isn't any single element's own text —
+    // queried directly rather than via getByText (which only matches a
+    // node's own text, not text split across element children).
+    const pillTexts = Array.from(document.querySelectorAll('.docu-citation-chip')).map(
       (el) => el.textContent,
     )
+    expect(pillTexts).toEqual(['1 · p. 2', '2 · p. 5'])
+    // Scoped to the pill row (not the "Cited for" list below it, which
+    // repeats the same marker chip next to its clause).
+    const numChips = Array.from(
+      document.querySelectorAll('.docu-citation-page-chips .docu-citation-chip-num'),
+    ).map((el) => el.textContent)
     expect(numChips).toEqual(['1', '2'])
   })
 
@@ -774,7 +782,7 @@ describe('chat pane never scrolls horizontally', () => {
   // for the bubble to force itself wider than its own container even on a
   // 390px phone, with no breakpoint-specific override needed. This is a
   // regression guard for that existing behaviour, not new styling.
-  it('caps the user bubble width and right-aligns it like a ChatGPT-style turn', () => {
+  it('caps the user bubble width at about 75-80% of the message column and right-aligns it like a ChatGPT-style turn', () => {
     const { container } = render(
       <ChatMessageItem message={{ id: 'u1', role: 'user', content: 'Short question' }} />,
     )
@@ -782,7 +790,19 @@ describe('chat pane never scrolls horizontally', () => {
     const row = container.querySelector('.flex.justify-end')
     expect(row).not.toBeNull()
     const bubble = screen.getByText('Short question').closest('div')
-    expect(bubble?.className).toMatch(/max-w-\[min\(36rem,85%\)\]/)
+    // 36rem is exactly 75% of the 48rem (`max-w-3xl`) message column; 80%
+    // is the narrow-viewport fallback once that cap stops binding — both
+    // inside the "about 75-80%" the client asked for, not the old 85%
+    // (which overshot that band on a narrow screen).
+    expect(bubble?.className).toMatch(/max-w-\[min\(36rem,80%\)\]/)
+
+    // The same cap must also be set on the wrapper one level up — with
+    // `items-end` (not `stretch`) on that wrapper, an inline-block bubble
+    // has no cross-axis stretch to inherit a cap from, so without its own
+    // max-width a very wide bubble (e.g. the long-unbroken-string case
+    // below) can render past the wrapper's own clamped width instead of
+    // wrapping inside it.
+    expect(bubble?.parentElement?.className).toMatch(/max-w-\[min\(36rem,80%\)\]/)
   })
 })
 
@@ -954,8 +974,9 @@ describe('answer-order citation numbering (client feedback: a second question us
 
     await user.click(screen.getByRole('button', { name: /Related documents/ }))
 
+    expect(screen.getByText('Cited for:')).toBeInTheDocument()
     expect(
-      screen.getByText('Cited for: "The students mentioned are listed here."'),
+      screen.getByText('"The students mentioned are listed here."'),
     ).toBeInTheDocument()
 
     const highlighted = screen.getByText('students')

@@ -163,34 +163,72 @@ interface CitationListProps {
  * inline-citation number among its pages (used to sort cited groups
  * ascending, matching the order pills first appear in the answer), or
  * `undefined` when none of the group's pages are actually cited — that
- * group sorts into "Also searched" instead. `citedKey` is the
- * `citationNumberKey` of the *specific page* that earned `citedNumber` —
- * captured here, alongside the number, rather than re-derived later by
- * scanning `group.pages` in page-number order (fix round 1: that re-scan
- * picked whichever page sorts first by page number, which isn't
- * necessarily the group's own first-cited page when a document's pages
- * are cited out of page-number order — e.g. page 5 cited first, page 2
- * cited second, but `group.pages` sorts page 2 before page 5). */
+ * group sorts into "Also searched" instead. */
 interface OrderedGroup {
   group: DocumentGroup
   citedNumber: number | undefined
-  citedKey: string | undefined
 }
 
 function orderGroups(groups: DocumentGroup[], numbers: Map<string, number>): OrderedGroup[] {
   return groups.map((group) => {
     let citedNumber: number | undefined
-    let citedKey: string | undefined
     for (const entry of group.pages) {
-      const key = citationNumberKey(entry.source)
-      const n = numbers.get(key)
+      const n = numbers.get(citationNumberKey(entry.source))
       if (n != null && (citedNumber == null || n < citedNumber)) {
         citedNumber = n
-        citedKey = key
       }
     }
-    return { group, citedNumber, citedKey }
+    return { group, citedNumber }
   })
+}
+
+/** `group.pages` is sorted ascending by *page number* (see
+ * `groupSourcesByDocument`) — a document cited out of page order (e.g.
+ * marker 2 on page 1, marker 3 on page 2, marker 1 on page 9) would
+ * otherwise render its pill row as "2, 3, 1", not matching the order the
+ * markers actually appear in the answer. This re-sorts a copy for display
+ * only: cited pages ascending by their inline-citation number (matching
+ * the pills a reader has already seen in the answer text), then any
+ * uncited pages within the same document (no number — a retrieval chunk
+ * that was never actually quoted) after them, in their original
+ * page-ascending order. */
+function orderPagesForDisplay(
+  pages: DocumentGroup['pages'],
+  numbers: Map<string, number>,
+): DocumentGroup['pages'] {
+  return [...pages].sort((a, b) => {
+    const na = numbers.get(citationNumberKey(a.source))
+    const nb = numbers.get(citationNumberKey(b.source))
+    if (na != null && nb != null) return na - nb
+    if (na != null) return -1
+    if (nb != null) return 1
+    return (a.page ?? Number.POSITIVE_INFINITY) - (b.page ?? Number.POSITIVE_INFINITY)
+  })
+}
+
+/** Every citation clause for this document, not just the one behind its
+ * lowest number — a document cited 3 times (3 different markers) had only
+ * one "Cited for" line before, silently dropping the other two. Returns
+ * one `{ number, text }` per cited page in the group that has a captured
+ * clause (`citationContextByAnswerOrder` can leave a cited key out when
+ * its clause was nothing but citation markers — see that function's doc
+ * comment), sorted ascending by marker number so the list reads in the
+ * same order the pills do. */
+function citedContextsOf(
+  group: DocumentGroup,
+  numbers: Map<string, number>,
+  contexts: Map<string, string>,
+): Array<{ number: number; text: string }> {
+  const result: Array<{ number: number; text: string }> = []
+  for (const entry of group.pages) {
+    const key = citationNumberKey(entry.source)
+    const number = numbers.get(key)
+    if (number == null) continue
+    const text = contexts.get(key)
+    if (!text) continue
+    result.push({ number, text })
+  }
+  return result.sort((a, b) => a.number - b.number)
 }
 
 /** Renders a snippet with each word from `question` (≥ 4 letters, stop
@@ -219,16 +257,17 @@ function HighlightedSnippet({ text, question }: { text: string; question: string
 function DocumentRow({
   group,
   numbers,
-  citedFor,
+  citedContexts,
   question,
   openingKey,
   onOpen,
 }: {
   group: DocumentGroup
   numbers: Map<string, number>
-  /** The answer sentence/list-item this document was cited for, or
-   * `undefined` when it was retrieved but never actually cited. */
-  citedFor: string | undefined
+  /** One entry per citation of this document the answer actually quoted
+   * — its marker number and the clause it backs, in marker order. Empty
+   * when the document was retrieved but never actually cited. */
+  citedContexts: Array<{ number: number; text: string }>
   question: string
   openingKey: string | null
   onOpen: (source: Source, key: string) => void
@@ -237,6 +276,7 @@ function DocumentRow({
   const firstPage = group.pages[0]
   const rowOpeningKey = `${group.key}-row`
   const isRowOpening = openingKey === rowOpeningKey
+  const orderedPages = orderPagesForDisplay(group.pages, numbers)
 
   return (
     <li>
@@ -265,33 +305,41 @@ function DocumentRow({
               </span>
             )}
 
-            {group.pages.map((entry) => {
-              if (entry.page == null) return null
-              const canOpenPage = Boolean(entry.source.url || entry.source.documentId)
-              const pageKey = `${group.key}-p${entry.page}`
-              const isPageOpening = openingKey === pageKey
+            {orderedPages.map((entry) => {
               // Same number the inline pill for this citation shows, so a
               // reader can map one to the other. Uncited pages have none.
               const number = numbers.get(citationNumberKey(entry.source))
+              if (number == null && entry.page == null) return null
 
-              const chips = (
-                <>
+              const canOpenPage = Boolean(entry.source.url || entry.source.documentId)
+              const pageKey =
+                entry.page != null ? `${group.key}-p${entry.page}` : `${group.key}-c${number}`
+              const isPageOpening = openingKey === pageKey
+
+              // One cohesive pill per citation — marker + page together
+              // (client feedback: a separate number pill and page pill
+              // read as two unrelated chips). A citation with no page
+              // known shows just the marker.
+              const pill = (
+                <span className="docu-citation-chip">
                   {number != null && (
-                    <span className="docu-citation-num-chip" aria-hidden>
+                    <span className="docu-citation-chip-num" aria-hidden>
                       {number}
                     </span>
                   )}
-                  <span className="docu-citation-page-chip">page {entry.page}</span>
-                </>
+                  {number != null && entry.page != null && ' · '}
+                  {entry.page != null && <>p. {entry.page}</>}
+                </span>
               )
 
               if (!canOpenPage) {
-                return (
-                  <span key={pageKey} className="docu-citation-page-chips inline-flex items-center gap-1.5">
-                    {chips}
-                  </span>
-                )
+                return <Fragment key={pageKey}>{pill}</Fragment>
               }
+
+              const title =
+                entry.page != null
+                  ? `Open ${group.filename} at page ${entry.page} in LogicalDOC`
+                  : `Open ${group.filename} in LogicalDOC`
 
               return (
                 <button
@@ -302,22 +350,44 @@ function DocumentRow({
                     onOpen(entry.source, pageKey)
                   }}
                   disabled={isPageOpening}
-                  title={`Open ${group.filename} at page ${entry.page} in LogicalDOC`}
-                  className="docu-citation-page-chips inline-flex items-center gap-1.5 disabled:opacity-60"
+                  title={title}
+                  className="docu-citation-page-chips disabled:opacity-60"
                 >
-                  {chips}
+                  {pill}
                 </button>
               )
             })}
           </div>
 
-          {/* Why this document is in the list — the answer sentence it
-              backs, or an honest "not cited" for a retrieval candidate the
-              answer never actually quoted (client feedback: nothing told
-              the reader why a document was relevant). */}
-          <span className={`block ${type.caption} ${typeColor.muted} leading-relaxed mt-1`}>
-            {citedFor ? <>Cited for: &quot;{citedFor}&quot;</> : 'Searched, not cited'}
-          </span>
+          {/* Why this document is in the list — every answer clause it
+              backs (client feedback: only the first of 3 citations showed,
+              silently dropping the other two), each prefixed with the same
+              marker chip as its pill above — or an honest "not cited" for
+              a retrieval candidate the answer never actually quoted
+              (client feedback: nothing told the reader why a document was
+              relevant). */}
+          {citedContexts.length > 0 ? (
+            <div className="mt-1 space-y-1">
+              <span className={`block ${type.caption} ${typeColor.muted}`}>Cited for:</span>
+              {citedContexts.map(({ number, text }) => (
+                <div key={number} className="flex items-start gap-1.5">
+                  <span className="docu-citation-chip-num mt-px shrink-0" aria-hidden>
+                    {number}
+                  </span>
+                  <span
+                    className={`${type.caption} ${typeColor.muted} leading-relaxed line-clamp-2`}
+                    title={text}
+                  >
+                    &quot;{text}&quot;
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <span className={`block ${type.caption} ${typeColor.muted} leading-relaxed mt-1`}>
+              Searched, not cited
+            </span>
+          )}
 
           {group.snippet && (
             <span
@@ -384,13 +454,6 @@ export default function CitationList({ sources, content, question }: CitationLis
 
   const headerCount = citedGroups.length > 0 ? citedGroups.length : groups.length
 
-  // The page holding the group's own minimum cited number — the same page
-  // `orderGroups` used to decide this row's position in the list — carries
-  // the group's citation context, not whichever page happens to sort first
-  // by page number.
-  const citedForOf = (ordered: OrderedGroup): string | undefined =>
-    ordered.citedKey != null ? contexts.get(ordered.citedKey) : undefined
-
   return (
     <div className="pt-3 mt-3 border-t border-[#ececec]">
       <button
@@ -425,7 +488,7 @@ export default function CitationList({ sources, content, question }: CitationLis
                     key={ordered.group.key}
                     group={ordered.group}
                     numbers={numbers}
-                    citedFor={citedForOf(ordered)}
+                    citedContexts={citedContextsOf(ordered.group, numbers, contexts)}
                     question={question ?? ''}
                     openingKey={openingKey}
                     onOpen={(source, key) => void handleOpen(source, key)}
@@ -465,7 +528,7 @@ export default function CitationList({ sources, content, question }: CitationLis
                           key={group.key}
                           group={group}
                           numbers={numbers}
-                          citedFor={undefined}
+                          citedContexts={[]}
                           question={question ?? ''}
                           openingKey={openingKey}
                           onOpen={(source, key) => void handleOpen(source, key)}

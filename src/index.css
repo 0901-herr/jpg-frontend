@@ -772,29 +772,40 @@ button.docu-citation-pill:hover {
   align-self: center;
 }
 
-.docu-citation-num-chip,
-.docu-citation-page-chip {
+/* One cohesive pill per citation ("2 · p. 1") — a marker chip and a page
+   chip used to render as two visually separate pills; the client asked
+   for a single chip so the pairing reads as one thing. `.docu-citation-chip`
+   is the pill's own background/shape; `.docu-citation-chip-num` nests
+   inside it with the same round-chip visual language as the inline
+   `.docu-citation-pill` marker (a slightly darker circle for the digit),
+   so a reader can still tell the number apart from the page at a glance. */
+.docu-citation-chip {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  gap: 0.3em;
+  height: 1.375rem;
+  padding: 0 0.5rem;
+  border-radius: 9999px;
   background: #f0f0f0;
   color: #3f3f3f;
   font-size: 0.75rem;
   line-height: 1;
   font-weight: 500;
-}
-
-.docu-citation-num-chip {
-  width: 1.375rem;
-  height: 1.375rem;
-  border-radius: 9999px;
-}
-
-.docu-citation-page-chip {
-  height: 1.375rem;
-  padding: 0 0.5rem;
-  border-radius: 9999px;
   white-space: nowrap;
+}
+
+.docu-citation-chip-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.125rem;
+  height: 1.125rem;
+  padding: 0 0.25em;
+  border-radius: 9999px;
+  background: #dedede;
+  color: #525252;
+  font-weight: 600;
+  font-size: 0.7em;
 }
 
 button.docu-citation-page-chips {
@@ -807,9 +818,12 @@ button.docu-citation-page-chips {
   color: inherit;
 }
 
-button.docu-citation-page-chips:hover .docu-citation-num-chip,
-button.docu-citation-page-chips:hover .docu-citation-page-chip {
+button.docu-citation-page-chips:hover .docu-citation-chip {
   background: #e4e4e4;
+}
+
+button.docu-citation-page-chips:hover .docu-citation-chip-num {
+  background: #cfcfcf;
 }
 
 /* Answer Markdown — tables and lists (ChatMessage.tsx / markdownRenderers.tsx).
