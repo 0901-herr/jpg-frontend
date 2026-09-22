@@ -962,7 +962,7 @@ describe('answer-order citation numbering (client feedback: a second question us
     )
   })
 
-  it('shows "Cited for" with the citing sentence, and highlights the question’s significant words in the snippet', async () => {
+  it('shows the citing sentence in the chip\'s hover tooltip, not an always-visible "Cited for" block', async () => {
     const user = userEvent.setup()
     const cited: Source = {
       index: 1,
@@ -984,10 +984,43 @@ describe('answer-order citation numbering (client feedback: a second question us
 
     await user.click(screen.getByRole('button', { name: /Related documents/ }))
 
-    expect(screen.getByText('Cited for:')).toBeInTheDocument()
+    expect(screen.queryByText('Cited for:')).not.toBeInTheDocument()
     expect(
-      screen.getByText('"The students mentioned are listed here."'),
-    ).toBeInTheDocument()
+      screen.queryByText('"The students mentioned are listed here."'),
+    ).not.toBeInTheDocument()
+
+    await user.hover(screen.getByRole('button', { name: /Open Notes\.pdf/ }))
+    const tooltip = await screen.findByRole('tooltip')
+    expect(tooltip).toHaveTextContent('"The students mentioned are listed here."')
+  })
+
+  it('highlights the question’s significant words in the snippet of an uncited ("Also searched") document', async () => {
+    const user = userEvent.setup()
+    // `ChatMessageItem` only renders "Related documents" at all when the
+    // answer inline-cites at least one source (`answerHasInlineCitation`)
+    // — a second, genuinely cited source keeps that gate open while
+    // `uncited` (referenced nowhere in `content`) exercises the
+    // "Also searched" snippet-highlighting path under test.
+    const cited: Source = { index: 1, filename: 'Report.pdf', docRef: '[Doc1]', documentId: 'doc-r' }
+    const uncited: Source = {
+      index: 2,
+      filename: 'Notes.pdf',
+      docRef: '[Doc2]',
+      documentId: 'doc-1',
+      snippet: 'The lecturer discussed the students briefly.',
+    }
+    render(
+      <ChatMessageItem
+        message={assistantMessage({
+          content: 'The answer is here [Doc1].',
+          sources: [cited, uncited],
+          question: 'Who are the students mentioned?',
+        })}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /Related documents/ }))
+    await user.click(screen.getByRole('button', { name: /Also searched/ }))
 
     const highlighted = screen.getByText('students')
     expect(highlighted.tagName).toBe('SPAN')

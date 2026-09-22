@@ -33,6 +33,18 @@ function formatSessionDate(date: Date): string {
   return `${date.getDate()} ${SESSION_TITLE_MONTHS[date.getMonth()]} ${date.getFullYear()}`
 }
 
+// Module-level (not defined inline as a default parameter value) so it's
+// one stable function identity for the whole app's lifetime — a fresh
+// `() => false` literal evaluated on every call to `useChatStore` (as a
+// default parameter is) would give `isChatInFlightLocally` a new identity
+// every render for any caller that omits it, which would cascade through
+// several `useCallback`s below and retrigger the shared/follower-chat
+// fetch effect on every render (that branch is deliberately not gated on
+// "already loaded" — see `ensureMessagesLoaded`'s own comment).
+function alwaysFalse(): boolean {
+  return false
+}
+
 function isSameLocalDay(a: Date, b: Date): boolean {
   return (
     a.getFullYear() === b.getFullYear() &&
@@ -139,6 +151,14 @@ export interface UseChatStoreParams {
    * caller clears this once the share attempt resolves, at which point
    * the normal fallback resumes if still needed (e.g. a dead link). */
   hasPendingShare?: boolean
+  /** Item 3: true when THIS tab already has its own live SSE stream
+   * running for `chatId` (AppLayout's own `inFlightChatIds`/
+   * `abortControllersRef`) — a session-detail fetch racing that live
+   * stream can report `pending_answer: true` for a turn this tab is
+   * already rendering itself, and must never get a second "thinking"
+   * placeholder stacked on top of it. Defaults to "never in flight
+   * locally" (always show the placeholder) when omitted. */
+  isChatInFlightLocally?: (chatId: string) => boolean
 }
 
 export interface UseChatStoreResult {
@@ -246,6 +266,17 @@ export interface UseChatStoreResult {
    * viewer's most recent own chat if the removed one was active; opening
    * the share link again just re-adds it. */
   removeSharedChat: (chatId: string) => void
+  /** Chat ids with an active "poll until the pending answer lands" timer
+   * (Item 3's `pollPendingAnswer`) — the chat has a "Generating answer"
+   * placeholder standing in for a server-side answer that hasn't landed
+   * yet. A caller should disable that chat's composer while its id is in
+   * here (fix round 1, Finding 2): a send racing the poll used to get
+   * added to `inFlightChatIds`, which made the poll's own self-check stop
+   * it without ever applying the finished answer, stranding the
+   * placeholder. This is deliberately not routed through
+   * `isChatInFlightLocally`/`inFlightChatIds` — there is nothing to Stop
+   * here, only something to wait out. */
+  pendingAnswerChatIds: Set<string>
 }
 
 /** Owns every chat-store concern that used to live directly in AppLayout:
@@ -261,6 +292,7 @@ export function useChatStore({
   enabled,
   initialSession,
   hasPendingShare = false,
+  isChatInFlightLocally = alwaysFalse,
 }: UseChatStoreParams): UseChatStoreResult {
   // `App.useApp()` rather than the static `message` import from 'antd' —
   // the static functions "can not consume context like dynamic theme"
@@ -448,6 +480,105 @@ export function useChatStore({
     setActiveChatId(fresh.id)
   }, [hydrated, sessions.length, sharedSessions.length, hasPendingShare])
 
+  // Item 3: chat ids with an active "poll until the pending answer lands"
+  // timer (see `pollPendingAnswer` below) — kept in a ref, not state,
+  // since nothing renders off this directly.
+  const pendingAnswerTimersRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map())
+
+  // Reactive mirror of `pendingAnswerTimersRef`'s keys — the ref alone is
+  // enough to drive the poll itself, but fix round 1, Finding 2 needs a
+  // caller (AppLayout's composer) to re-render off "is this chat still
+  // waiting on a pending answer," which a ref can't do.
+  const [pendingAnswerChatIds, setPendingAnswerChatIds] = useState<Set<string>>(
+    () => new Set<string>(),
+  )
+
+  const stopPendingAnswerPoll = useCallback((chatId: string) => {
+    const timer = pendingAnswerTimersRef.current.get(chatId)
+    if (timer != null) {
+      clearInterval(timer)
+      pendingAnswerTimersRef.current.delete(chatId)
+    }
+    setPendingAnswerChatIds((prev) => {
+      if (!prev.has(chatId)) return prev
+      const next = new Set(prev)
+      next.delete(chatId)
+      return next
+    })
+  }, [])
+
+  // Every poll timer is torn down on unmount — nothing left running once
+  // this hook (and the AppLayout it belongs to) is gone.
+  useEffect(() => {
+    return () => {
+      for (const timer of pendingAnswerTimersRef.current.values()) clearInterval(timer)
+      pendingAnswerTimersRef.current.clear()
+    }
+  }, [])
+
+  // Stops a chat's poll the instant it's no longer the active one, rather
+  // than waiting up to one 3s tick for the poll's own self-check to catch
+  // up — see that self-check in `pollPendingAnswer` for why both exist.
+  useEffect(() => {
+    for (const chatId of pendingAnswerTimersRef.current.keys()) {
+      if (chatId !== activeChatId) stopPendingAnswerPoll(chatId)
+    }
+  }, [activeChatId, stopPendingAnswerPoll])
+
+  // Item 3: a page refresh (or a follower who missed the live SSE stream)
+  // can land on a session whose answer is still being generated
+  // server-side — `pending_answer: true`, last persisted message is the
+  // user's question. Polls that session's own detail every 3s until it
+  // flips false, then applies the real, now-persisted assistant message.
+  // Self-stops (no explicit chat-switch wiring needed beyond the effect
+  // above) once this chat is no longer active, this tab's own live stream
+  // has taken over, or the answer has landed.
+  const pollPendingAnswer = useCallback(
+    (chatId: string, isOwnSession: boolean) => {
+      if (pendingAnswerTimersRef.current.has(chatId)) return
+      setPendingAnswerChatIds((prev) => {
+        if (prev.has(chatId)) return prev
+        const next = new Set(prev)
+        next.add(chatId)
+        return next
+      })
+      const timer = setInterval(() => {
+        // Fix round 1, Finding 2: this used to also stop (without applying
+        // the answer) the instant `isChatInFlightLocally(chatId)` went
+        // true — e.g. a resend racing the poll. That let a same-chat send
+        // strand the "Generating answer" placeholder forever: the poll
+        // gave up, but the resend's own stream is a NEW turn, not the one
+        // the placeholder was standing in for. The composer is now
+        // disabled for a chat in `pendingAnswerChatIds` (see AppLayout),
+        // so that race shouldn't happen in the UI any more — but the poll
+        // itself no longer depends on it either way: it only self-stops
+        // once the answer has actually landed (`pending_answer` is
+        // false), or this chat is no longer the active one.
+        if (chatId !== activeChatIdRef.current) {
+          stopPendingAnswerPoll(chatId)
+          return
+        }
+        void (async () => {
+          try {
+            const detail = await getChatSession(chatId)
+            if (detail.pending_answer) return
+            stopPendingAnswerPoll(chatId)
+            const mapped = mapDetailToSession(detail)
+            if (isOwnSession) {
+              setSessions((prev) => prev.map((s) => (s.id === chatId ? mapped : s)))
+            } else {
+              setSharedSessions((prev) => prev.map((s) => (s.id === chatId ? mapped : s)))
+            }
+          } catch {
+            // Best-effort — leave the poll running, retry on the next tick.
+          }
+        })()
+      }, 3000)
+      pendingAnswerTimersRef.current.set(chatId, timer)
+    },
+    [stopPendingAnswerPoll],
+  )
+
   // Shared by `ensureMessagesLoaded` and `refreshSharedChat` — fetches one
   // chat's full detail and applies it to whichever list it belongs in.
   // Best-effort only: a failure leaves the session as it was rather than
@@ -458,6 +589,31 @@ export function useChatStore({
       try {
         const detail = await getChatSession(chatId)
         const mapped = mapDetailToSession(detail)
+        // Item 3: this tab's own live stream (if any) already owns this
+        // chat's "thinking" placeholder and its eventual real answer —
+        // never stack a second, store-driven one on top of it.
+        if (detail.pending_answer && !isChatInFlightLocally(chatId)) {
+          const lastMessage = mapped.messages[mapped.messages.length - 1]
+          if (!lastMessage || lastMessage.role !== 'assistant') {
+            mapped.messages = [
+              ...mapped.messages,
+              {
+                id: `pending-${chatId}`,
+                role: 'assistant',
+                content: '',
+                status: 'thinking',
+                // No trailing ellipsis (house style — see
+                // `noEllipsis.test.ts`): matches the shape of the other
+                // progress labels elsewhere in the app (e.g.
+                // `queryProgress.ts`'s "Putting the answer together").
+                progressLabel: 'Generating answer',
+              },
+            ]
+          }
+          pollPendingAnswer(chatId, isOwnSession)
+        } else {
+          stopPendingAnswerPoll(chatId)
+        }
         if (isOwnSession) {
           setSessions((prev) => prev.map((s) => (s.id === chatId ? mapped : s)))
         } else {
@@ -467,7 +623,7 @@ export function useChatStore({
         // Leave the session as-is (empty messages) — best-effort only.
       }
     },
-    [],
+    [isChatInFlightLocally, pollPendingAnswer, stopPendingAnswerPoll],
   )
 
   // Per-chat-id in-flight fetch count backing `messagesLoading` — the
@@ -922,5 +1078,6 @@ export function useChatStore({
     sessionsCreating,
     refreshSharedChat,
     removeSharedChat,
+    pendingAnswerChatIds,
   }
 }

@@ -55,6 +55,12 @@ interface ChatInputProps {
    * latest turn scrolled out of view above the composer. */
   onComposerFocus?: () => void
   isResponding?: boolean
+  /** True while this chat is busy with a Summarize/Categorize/Extract
+   * metadata action (or similar), or waiting on a background answer poll
+   * to resolve. Disables Send (and the tool buttons, via their own
+   * `*DisabledReason` props) but — unlike `isResponding` — never swaps
+   * Send for Stop, since there is nothing for Stop to abort here. */
+  toolActionPending?: boolean
   disabled?: boolean
   disabledReason?: string
   summarizeDisabledReason?: string | null
@@ -180,6 +186,7 @@ export default function ChatInput({
   onStop,
   onComposerFocus,
   isResponding = false,
+  toolActionPending = false,
   disabled = false,
   disabledReason,
   summarizeDisabledReason = null,
@@ -200,7 +207,13 @@ export default function ChatInput({
   const isCompactComposer = useMediaQuery(COMPACT_COMPOSER_QUERY)
 
   const hasScope = !sharedScopeEmpty && (selectedCount > 0 || allowEmptySelection)
-  const canSend = !isResponding && !disabled && !viewOnly && value.trim().length > 0 && hasScope
+  const canSend =
+    !isResponding &&
+    !toolActionPending &&
+    !disabled &&
+    !viewOnly &&
+    value.trim().length > 0 &&
+    hasScope
   const canSummarize = summarizeDisabledReason == null
   const canCategorize = categorizeDisabledReason == null
   const canExtractMetadata = extractMetadataDisabledReason == null
@@ -208,13 +221,14 @@ export default function ChatInput({
     selectedCount,
     hasMessage: value.trim().length > 0,
     isResponding,
+    toolActionPending,
     disabled: disabled || viewOnly || sharedScopeEmpty,
     allowEmptySelection: allowEmptySelection && !sharedScopeEmpty,
   })
 
   const handleSend = () => {
     const trimmed = value.trim()
-    if (!trimmed || isResponding || disabled || viewOnly || !hasScope) return
+    if (!trimmed || isResponding || toolActionPending || disabled || viewOnly || !hasScope) return
     onSend(trimmed)
     setValue('')
   }
@@ -310,7 +324,7 @@ export default function ChatInput({
     <QueryTierDropdown
       tier={queryTier}
       onChange={onQueryTierChange}
-      disabled={disabled || isResponding}
+      disabled={disabled || isResponding || toolActionPending}
     />
   )
 

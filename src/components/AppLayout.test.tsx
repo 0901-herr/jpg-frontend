@@ -169,6 +169,24 @@ let nextSendQueryRejection: unknown = null
 // hanging until abort — models a query that actually completes, for tests
 // that need the success path (e.g. the post-answer shared-chat refresh).
 let nextSendQueryResolution: SendMessageResponse | null = null
+// Item 4: every call this mock has seen that hasn't settled yet, so a test
+// with TWO chats streaming at once (e.g. one per chat id) can resolve/abort
+// each independently instead of only ever controlling "the last call" via
+// `currentSignal`/`lastSendQueryRequest` above (still kept, and still
+// updated on every call, for every existing single-request test).
+interface PendingSendQueryCall {
+  request: SendMessageRequest
+  resolve: (response: SendMessageResponse) => void
+  reject: (err: unknown) => void
+}
+let pendingSendQueryCalls: PendingSendQueryCall[] = []
+
+function resolvePendingSendQueryFor(chatId: string | undefined, response: SendMessageResponse) {
+  const idx = pendingSendQueryCalls.findIndex((c) => c.request.chatId === chatId)
+  if (idx === -1) throw new Error(`No pending sendQuery call for chat ${chatId}`)
+  const [call] = pendingSendQueryCalls.splice(idx, 1)
+  call.resolve(response)
+}
 
 vi.mock('../hooks/mutations/useSendQuery', () => ({
   useSendQuery: () => {
@@ -181,20 +199,29 @@ vi.mock('../hooks/mutations/useSendQuery', () => ({
           setIsPending(true)
           currentSignal = request.signal ?? null
           lastSendQueryRequest = request
+          const settle = (fn: () => void) => {
+            pendingSendQueryCalls = pendingSendQueryCalls.filter((c) => c.request !== request)
+            fn()
+          }
+          pendingSendQueryCalls.push({
+            request,
+            resolve: (res) => settle(() => resolve(res)),
+            reject: (err) => settle(() => reject(err)),
+          })
           if (nextSendQueryRejection) {
             const err = nextSendQueryRejection
             nextSendQueryRejection = null
-            reject(err)
+            settle(() => reject(err))
             return
           }
           if (nextSendQueryResolution) {
             const res = nextSendQueryResolution
             nextSendQueryResolution = null
-            resolve(res)
+            settle(() => resolve(res))
             return
           }
           request.signal?.addEventListener('abort', () => {
-            reject(new DOMException('Aborted', 'AbortError'))
+            settle(() => reject(new DOMException('Aborted', 'AbortError')))
           })
         }),
     }
@@ -260,9 +287,10 @@ afterAll(() => {
   getComputedStyleSpy.mockRestore()
 })
 
-describe('AppLayout — abort on New chat / select chat while streaming', () => {
+describe('AppLayout — Item 4: chat switching never aborts a background request', () => {
   beforeEach(() => {
     currentSignal = null
+    pendingSendQueryCalls = []
     initialSelectedIds = new Set(['doc-1'])
     initialDocumentMeta = defaultDocumentMeta()
     validateQueryScope.mockResolvedValue({
@@ -279,7 +307,7 @@ describe('AppLayout — abort on New chat / select chat while streaming', () => 
     vi.clearAllMocks()
   })
 
-  it('aborts the in-flight request, resets the composer immediately, and marks the old chat interrupted', async () => {
+  it('keeps the request running (not aborted) and the composer usable when starting a New chat mid-stream', async () => {
     const user = userEvent.setup()
     render(<AppLayout />)
 
@@ -293,27 +321,24 @@ describe('AppLayout — abort on New chat / select chat while streaming', () => 
 
     await user.click(screen.getByRole('button', { name: 'New chat' }))
 
-    // Aborted, and the composer resets to idle immediately — no need to
-    // wait for the aborted fetch promise to settle.
-    expect(currentSignal?.aborted).toBe(true)
+    // Never aborted — the request for the old chat keeps running in the
+    // background — and the NEW chat's own composer is immediately usable
+    // (Send, not stuck on Stop for a request that belongs to another chat).
+    expect(currentSignal?.aborted).toBe(false)
     expect(screen.getByRole('button', { name: 'Send message' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Stop response' })).not.toBeInTheDocument()
 
-    // Let the rejected mutateAsync promise actually settle so React has
-    // fully processed the abort's rejection (no unhandled state left).
-    await act(async () => {
-      await Promise.resolve()
-    })
-
-    // Switch back to the old chat (now the second entry) to see its history.
+    // Switch back to the old chat: it's still streaming (Stop still shown),
+    // not interrupted.
     const oldChatButtons = screen.getAllByRole('button', { name: /^select:/ })
     await user.click(oldChatButtons[oldChatButtons.length - 1])
 
-    expect(await screen.findByText('Answer interrupted.')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Stop response' })).toBeInTheDocument()
+    expect(screen.queryByText('Answer interrupted.')).not.toBeInTheDocument()
     expect(screen.getByText('What is in the contract?')).toBeInTheDocument()
   })
 
-  it('aborts the in-flight request when selecting a different history entry mid-stream', async () => {
+  it('does not abort and lets the still-streaming chat compose freely when selecting a different history entry mid-stream', async () => {
     const user = userEvent.setup()
     render(<AppLayout />)
 
@@ -329,8 +354,107 @@ describe('AppLayout — abort on New chat / select chat while streaming', () => 
     // Select the OTHER chat (not the one currently streaming).
     await user.click(chatButtons[chatButtons.length - 1])
 
-    expect(currentSignal?.aborted).toBe(true)
+    expect(currentSignal?.aborted).toBe(false)
+    // The now-active (other) chat's own composer is enabled — Stop belongs
+    // only to the chat that's actually streaming.
     expect(screen.queryByRole('button', { name: 'Stop response' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeInTheDocument()
+  })
+
+  it('streams two chats concurrently, each landing its own answer in its own chat, and Stop only aborts the active one', async () => {
+    const user = userEvent.setup()
+    render(<AppLayout />)
+
+    // Chat A: send and let it start streaming.
+    const textarea = await screen.findByPlaceholderText(/ask a question/i)
+    await user.type(textarea, 'Question A')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+    await screen.findByRole('button', { name: 'Stop response' })
+    expect(pendingSendQueryCalls).toHaveLength(1)
+    const chatAId = pendingSendQueryCalls[0].request.chatId
+
+    // Switch to a brand-new chat B and send there too, while A is still
+    // in flight — B's composer must be usable, not disabled by A's stream.
+    await user.click(screen.getByRole('button', { name: 'New chat' }))
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeInTheDocument()
+
+    const textareaB = await screen.findByPlaceholderText(/ask a question/i)
+    await user.type(textareaB, 'Question B')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+    await screen.findByRole('button', { name: 'Stop response' })
+
+    expect(pendingSendQueryCalls).toHaveLength(2)
+    const chatBId = pendingSendQueryCalls.find((c) => c.request.chatId !== chatAId)!.request.chatId
+    expect(chatBId).not.toBe(chatAId)
+
+    // Stop, while chat B is active, only aborts B's own controller.
+    await user.click(screen.getByRole('button', { name: 'Stop response' }))
+    expect(pendingSendQueryCalls).toHaveLength(1)
+    expect(pendingSendQueryCalls[0].request.chatId).toBe(chatAId)
+    expect(await screen.findByText('Response stopped.')).toBeInTheDocument()
+
+    // Resolve chat A's request (still running in the background) and
+    // switch back to it — its own answer landed there, not in B.
+    await act(async () => {
+      resolvePendingSendQueryFor(chatAId, {
+        messageId: 'answer-a',
+        content: 'Answer for A',
+        thinkingSeconds: 1,
+      })
+      await Promise.resolve()
+    })
+
+    const chatButtons = screen.getAllByRole('button', { name: /^select:/ })
+    await user.click(chatButtons[chatButtons.length - 1])
+
+    expect(await screen.findByText('Answer for A')).toBeInTheDocument()
+    expect(screen.queryByText('Response stopped.')).not.toBeInTheDocument()
+  })
+})
+
+describe('AppLayout — Item 1: Stop works during the thinking phase, not only while streaming', () => {
+  beforeEach(() => {
+    currentSignal = null
+    pendingSendQueryCalls = []
+    initialSelectedIds = new Set(['doc-1'])
+    initialDocumentMeta = defaultDocumentMeta()
+    validateQueryScope.mockResolvedValue({
+      total_files: 1,
+      ready_files: 1,
+      indexing_files: 0,
+      failed_files: 0,
+      missing_files: 0,
+      accessible_document_ids: ['doc-1'],
+    })
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('shows a functional Stop button the moment the message is sent, before any progress/delta event has fired', async () => {
+    const user = userEvent.setup()
+    render(<AppLayout />)
+
+    const textarea = await screen.findByPlaceholderText(/ask a question/i)
+    await user.type(textarea, 'What is in the contract?')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    // Stop is shown immediately — the mock's mutateAsync hasn't fired any
+    // onProgress/onDelta callback yet at this point, i.e. this is still
+    // the pure "thinking" phase, not streaming.
+    const stopButton = await screen.findByRole('button', { name: 'Stop response' })
+    expect(stopButton).toBeEnabled()
+    expect(currentSignal?.aborted).toBe(false)
+
+    // And it's functional here, not just visible: clicking it aborts the
+    // request and produces the same interrupted turn stopping mid-stream
+    // would.
+    await user.click(stopButton)
+
+    expect(currentSignal?.aborted).toBe(true)
+    expect(await screen.findByText('Response stopped.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeInTheDocument()
   })
 })
 
@@ -908,6 +1032,37 @@ describe('AppLayout — Summarize', () => {
     ).not.toBeInTheDocument()
   })
 
+  // Fix round 1, Finding 1: while Summarize (or Categorize/Extract
+  // metadata) is in flight, the composer's own Send/Stop button must show
+  // a disabled Send — never a clickable-but-inert Stop, since there is
+  // nothing for Stop to abort here (the tool action isn't a chat stream).
+  it('shows a disabled Send button, not Stop, on the composer while Summarize is in flight', async () => {
+    const user = userEvent.setup()
+    let resolveSummary: ((value: { summary: string }) => void) | undefined
+    fetchDocumentSummary.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSummary = resolve
+        }),
+    )
+
+    render(<AppLayout />)
+
+    await user.click(screen.getByRole('button', { name: 'Summarize selected document' }))
+    expect(
+      await screen.findByText('Summarizing this document. This can take up to a minute.'),
+    ).toBeInTheDocument()
+
+    expect(screen.queryByRole('button', { name: 'Stop response' })).not.toBeInTheDocument()
+    const sendButton = screen.getByRole('button', { name: 'Send message' })
+    expect(sendButton).toBeDisabled()
+
+    await act(async () => {
+      resolveSummary?.({ summary: 'This document covers Q3 minutes.' })
+      await Promise.resolve()
+    })
+  })
+
   it('removes the thinking placeholder on a fetch error, keeping the user request', async () => {
     const user = userEvent.setup()
     let rejectSummary: ((err: unknown) => void) | undefined
@@ -1057,7 +1212,7 @@ describe('AppLayout — Extract metadata', () => {
     expect(await screen.findByRole('button', { name: 'Extract metadata' })).toBeEnabled()
   })
 
-  it('aborts an in-flight extraction on New chat and marks it interrupted', async () => {
+  it('does NOT abort an in-flight extraction on New chat (Item 4: navigation never aborts a background request any more)', async () => {
     const user = userEvent.setup()
     extractMetadata.mockImplementation(() => new Promise<MetadataExtractionResponse>(() => {}))
 
@@ -1073,7 +1228,12 @@ describe('AppLayout — Extract metadata', () => {
     const oldChatButtons = screen.getAllByRole('button', { name: /^select:/ })
     await user.click(oldChatButtons[oldChatButtons.length - 1])
 
-    expect(await screen.findByText('Answer interrupted.')).toBeInTheDocument()
+    // Still thinking, not interrupted — the extraction request itself was
+    // never touched by switching away from its chat.
+    expect(
+      await screen.findByText('Extracting metadata. This can take up to a minute.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Answer interrupted.')).not.toBeInTheDocument()
     expect(screen.getByText('Extract metadata from doc-1.pdf')).toBeInTheDocument()
   })
 
@@ -1994,6 +2154,113 @@ describe('AppLayout — message pane skeleton while a chat is loading messages',
     expect(screen.getByText('Already loaded answer')).toBeInTheDocument()
     expect(screen.queryByTestId('messages-skeleton')).not.toBeInTheDocument()
   })
+})
+
+describe('AppLayout — Fix round 1, Finding 2: composer gated during a pending-answer poll', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    currentSignal = null
+    initialSelectedIds = new Set(['doc-1'])
+    initialDocumentMeta = defaultDocumentMeta()
+    listChatSessions.mockReset()
+    getChatSession.mockReset()
+    getChatSession.mockResolvedValue({})
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+    listChatSessions.mockResolvedValue({ sessions: [], shared: [] })
+    getChatSession.mockResolvedValue({})
+    window.history.pushState({}, '', '/')
+  })
+
+  it(
+    'disables the composer with "Waiting for the current answer to finish" while the placeholder is showing, and re-enables it with the real answer once the poll resolves',
+    async () => {
+      // A page refresh (or a follower who missed the live SSE stream)
+      // landing on a session whose answer is still generating server-side
+      // — Item 3's placeholder + poll. Real timers throughout: the poll is
+      // registered with the real `setInterval`, so faking the clock
+      // afterwards would never reach it (see useChatStore.test.ts's Item 3
+      // block for the same reasoning).
+      listChatSessions.mockResolvedValueOnce({
+        sessions: [
+          {
+            id: 's1',
+            title: 'Old chat',
+            project_id: null,
+            visibility: 'private',
+            share_token: null,
+            created_at: '2026-09-01T00:00:00Z',
+            updated_at: '2026-09-01T00:00:00Z',
+            message_count: 1,
+          },
+        ],
+        shared: [],
+      })
+      getChatSession.mockResolvedValue({
+        id: 's1',
+        title: 'Old chat',
+        project_id: null,
+        visibility: 'private',
+        share_token: null,
+        created_at: '2026-09-01T00:00:00Z',
+        updated_at: '2026-09-01T00:00:00Z',
+        is_owner: true,
+        can_query: true,
+        scope_document_ids: ['doc-1'],
+        messages: [{ id: 'q1', role: 'user', content: 'What is in the contract?' }],
+        pending_answer: true,
+      })
+
+      render(<AppLayout />)
+
+      await waitFor(() => expect(screen.getByTestId('active-chat-id').textContent).toBe('s1'))
+      await screen.findByText('Generating answer')
+
+      expect(
+        await screen.findByText('Waiting for the current answer to finish'),
+      ).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Stop response' })).not.toBeInTheDocument()
+      const textarea = await screen.findByPlaceholderText(
+        'Ask a question about the selected documents',
+      )
+      expect(textarea).toBeDisabled()
+
+      getChatSession.mockResolvedValue({
+        id: 's1',
+        title: 'Old chat',
+        project_id: null,
+        visibility: 'private',
+        share_token: null,
+        created_at: '2026-09-01T00:00:00Z',
+        updated_at: '2026-09-01T00:00:00Z',
+        is_owner: true,
+        can_query: true,
+        scope_document_ids: ['doc-1'],
+        messages: [
+          { id: 'q1', role: 'user', content: 'What is in the contract?' },
+          { id: 'a1', role: 'assistant', content: 'The contract says X.' },
+        ],
+        pending_answer: false,
+      })
+
+      await waitFor(
+        () => {
+          expect(screen.getByText('The contract says X.')).toBeInTheDocument()
+        },
+        { timeout: 5000, interval: 250 },
+      )
+      expect(screen.queryByText('Generating answer')).not.toBeInTheDocument()
+      expect(
+        screen.queryByText('Waiting for the current answer to finish'),
+      ).not.toBeInTheDocument()
+      expect(
+        screen.getByPlaceholderText('Ask a question about the selected documents'),
+      ).not.toBeDisabled()
+    },
+    10000,
+  )
 })
 
 describe('AppLayout — composer locked while a brand-new chat is still being created', () => {

@@ -69,6 +69,13 @@ export interface ChatSessionDetailDto extends ChatSessionSummaryDto {
    * the sent question's file tags. */
   scope_documents?: ChatScopeDocumentDto[]
   messages: ChatMessageDto[]
+  /** True while an answer is still being generated server-side for this
+   * session (the last persisted message is the user's question) — Item 3,
+   * additive field, absent on an older adapter. Lets a client that missed
+   * the live SSE stream (e.g. a page refresh mid-answer) show a "thinking"
+   * placeholder and poll until the real assistant message lands, instead
+   * of silently dropping the in-progress turn. */
+  pending_answer?: boolean
 }
 
 export interface ListSessionsResponseDto {

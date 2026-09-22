@@ -1429,3 +1429,297 @@ describe('messagesLoading', () => {
     await waitFor(() => expect(result.current.messagesLoading.has('ext-1')).toBe(false))
   })
 })
+
+describe('Item 3: pending_answer placeholder + poll', () => {
+  // Fake timers only wrap the poll-advancing step itself (each test turns
+  // them on right before that and off right after) — hydration runs under
+  // real timers first, via the ordinary testing-library `waitFor`, so it
+  // isn't at the mercy of `vi.waitFor`'s own fake-timer auto-advance
+  // (unreliable across this codebase's async hydration chain, observed
+  // live: `hydrated` never flipped true under it).
+
+  function pendingDetail() {
+    return {
+      id: 's1',
+      title: 'Session 1',
+      project_id: null,
+      visibility: 'private' as const,
+      share_token: null,
+      created_at: '2026-09-16T00:00:00Z',
+      updated_at: '2026-09-16T00:00:00Z',
+      message_count: 1,
+      owner_username: 'user-1',
+      is_owner: true,
+      can_query: true,
+      scope_document_ids: ['doc-1'],
+      messages: [
+        { id: 'q1', role: 'user' as const, content: 'What is in the contract?' },
+      ],
+      pending_answer: true,
+    }
+  }
+
+  function answeredDetail() {
+    return {
+      ...pendingDetail(),
+      pending_answer: false,
+      messages: [
+        { id: 'q1', role: 'user' as const, content: 'What is in the contract?' },
+        { id: 'a1', role: 'assistant' as const, content: 'The contract says X.' },
+      ],
+    }
+  }
+
+  async function hydratedOwnPendingChat() {
+    vi.mocked(chatApi.listChatSessions).mockResolvedValue({
+      sessions: [
+        {
+          id: 's1',
+          title: 'Session 1',
+          project_id: null,
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-16T00:00:00Z',
+          updated_at: '2026-09-16T00:00:00Z',
+          message_count: 1,
+        },
+      ],
+      shared: [],
+    })
+    vi.mocked(chatApi.getChatSession).mockResolvedValue(pendingDetail() as never)
+
+    const { result } = renderHook(() => useChatStore(baseParams()))
+    await waitFor(() => expect(result.current.hydrated).toBe(true))
+    await waitFor(() =>
+      expect(result.current.sessions.find((s) => s.id === 's1')?.messages).toHaveLength(2),
+    )
+    return result
+  }
+
+  it('appends a "thinking" placeholder when a session loads with pending_answer true and no assistant reply yet', async () => {
+    const result = await hydratedOwnPendingChat()
+
+    const messages = result.current.sessions.find((s) => s.id === 's1')?.messages
+    expect(messages).toHaveLength(2)
+    expect(messages?.[0]).toMatchObject({ role: 'user', content: 'What is in the contract?' })
+    expect(messages?.[1]).toMatchObject({
+      role: 'assistant',
+      status: 'thinking',
+      content: '',
+    })
+  })
+
+  it(
+    'polls every 3s and replaces the placeholder with the real answer once pending_answer flips false',
+    async () => {
+      // Real timers throughout — the poll is registered with the real
+      // `setInterval` (started while hydrating, before this test could
+      // install fake ones), so faking the clock afterwards would never
+      // reach that already-scheduled timer. A real ~3.1s wait is slower
+      // but actually exercises the poll interval itself.
+      const result = await hydratedOwnPendingChat()
+      vi.mocked(chatApi.getChatSession).mockResolvedValue(answeredDetail() as never)
+
+      await waitFor(
+        () => {
+          const messages = result.current.sessions.find((s) => s.id === 's1')?.messages
+          expect(messages).toHaveLength(2)
+          expect(messages?.[1]).toMatchObject({
+            role: 'assistant',
+            status: undefined,
+            content: 'The contract says X.',
+          })
+        },
+        { timeout: 5000, interval: 250 },
+      )
+    },
+    10000,
+  )
+
+  it('never adds a placeholder for a chat this tab is already streaming into itself', async () => {
+    vi.mocked(chatApi.listChatSessions).mockResolvedValue({
+      sessions: [
+        {
+          id: 's1',
+          title: 'Session 1',
+          project_id: null,
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-16T00:00:00Z',
+          updated_at: '2026-09-16T00:00:00Z',
+          message_count: 1,
+        },
+      ],
+      shared: [],
+    })
+    vi.mocked(chatApi.getChatSession).mockResolvedValue(pendingDetail() as never)
+
+    const { result } = renderHook(() =>
+      useChatStore(baseParams({ isChatInFlightLocally: (id: string) => id === 's1' })),
+    )
+    await waitFor(() => expect(result.current.hydrated).toBe(true))
+    // Give the background fetch a chance to settle — it must NOT append a
+    // placeholder on top of whatever this tab's own live stream is doing.
+    await waitFor(() =>
+      expect(chatApi.getChatSession).toHaveBeenCalledWith('s1'),
+    )
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const messages = result.current.sessions.find((s) => s.id === 's1')?.messages
+    expect(messages ?? []).toHaveLength(1)
+  })
+
+  // Fix round 1, Finding 2: `pendingAnswerChatIds` is what a caller (the
+  // composer) gates on to disable Send while a chat is waiting on its
+  // answer poll, instead of letting a same-chat resend race it.
+  it('exposes the chat id via pendingAnswerChatIds while the "thinking" placeholder is showing', async () => {
+    const result = await hydratedOwnPendingChat()
+
+    expect(result.current.pendingAnswerChatIds.has('s1')).toBe(true)
+  })
+
+  it(
+    'removes the chat id from pendingAnswerChatIds once the poll resolves the real answer',
+    async () => {
+      const result = await hydratedOwnPendingChat()
+      expect(result.current.pendingAnswerChatIds.has('s1')).toBe(true)
+      vi.mocked(chatApi.getChatSession).mockResolvedValue(answeredDetail() as never)
+
+      await waitFor(
+        () => expect(result.current.pendingAnswerChatIds.has('s1')).toBe(false),
+        { timeout: 5000, interval: 250 },
+      )
+    },
+    10000,
+  )
+
+  it(
+    'keeps polling and still applies the answer even if isChatInFlightLocally later flips true for this chat — a resend racing the poll must not strand the placeholder',
+    async () => {
+      // Regression test for the exact bug fix round 1, Finding 2 reported:
+      // the poll used to self-stop (without applying the answer) the
+      // instant `isChatInFlightLocally(chatId)` went true mid-poll, e.g. a
+      // second send in the same chat. `isChatInFlightLocally` is read only
+      // once, up front, by `fetchAndApplyDetail` (to decide whether to add
+      // the placeholder at all) — it must have no further effect on the
+      // already-running poll's own stop condition.
+      let inFlightLocally = false
+      vi.mocked(chatApi.listChatSessions).mockResolvedValue({
+        sessions: [
+          {
+            id: 's1',
+            title: 'Session 1',
+            project_id: null,
+            visibility: 'private',
+            share_token: null,
+            created_at: '2026-09-16T00:00:00Z',
+            updated_at: '2026-09-16T00:00:00Z',
+            message_count: 1,
+          },
+        ],
+        shared: [],
+      })
+      vi.mocked(chatApi.getChatSession).mockResolvedValue(pendingDetail() as never)
+
+      const { result } = renderHook(() =>
+        useChatStore(baseParams({ isChatInFlightLocally: () => inFlightLocally })),
+      )
+      await waitFor(() => expect(result.current.hydrated).toBe(true))
+      await waitFor(() => expect(result.current.pendingAnswerChatIds.has('s1')).toBe(true))
+
+      // Simulate a resend racing the poll: this tab now reports itself as
+      // in flight for the same chat id, the way a second `handleSend`
+      // would via `inFlightChatIds`.
+      inFlightLocally = true
+      vi.mocked(chatApi.getChatSession).mockResolvedValue(answeredDetail() as never)
+
+      await waitFor(
+        () => {
+          const messages = result.current.sessions.find((s) => s.id === 's1')?.messages
+          expect(messages).toHaveLength(2)
+          expect(messages?.[1]).toMatchObject({
+            role: 'assistant',
+            status: undefined,
+            content: 'The contract says X.',
+          })
+        },
+        { timeout: 5000, interval: 250 },
+      )
+    },
+    10000,
+  )
+
+  // Minor follow-up (fix round 1): the same placeholder + poll path for a
+  // shared/follower chat (`isOwnSession=false`), which applies the mapped
+  // session to `sharedSessions` instead of `sessions`.
+  it(
+    'applies the pending-answer placeholder and poll to sharedSessions for a shared/follower chat',
+    async () => {
+      vi.mocked(chatApi.listChatSessions).mockResolvedValue({
+        sessions: [],
+        shared: [
+          {
+            id: 'shared-1',
+            title: 'Shared chat',
+            owner_username: 'alice',
+            visibility: 'query',
+            opened_at: '2026-09-16T00:00:00Z',
+          },
+        ],
+      })
+      const sharedPendingDetail = {
+        id: 'shared-1',
+        title: 'Shared chat',
+        project_id: null,
+        visibility: 'query' as const,
+        share_token: null,
+        created_at: '2026-09-16T00:00:00Z',
+        updated_at: '2026-09-16T00:00:00Z',
+        message_count: 1,
+        owner_username: 'alice',
+        is_owner: false,
+        can_query: true,
+        scope_document_ids: ['doc-1'],
+        messages: [{ id: 'q1', role: 'user' as const, content: 'What is in the contract?' }],
+        pending_answer: true,
+      }
+      vi.mocked(chatApi.getChatSession).mockResolvedValue(sharedPendingDetail as never)
+
+      const { result } = renderHook(() => useChatStore(baseParams()))
+      await waitFor(() => expect(result.current.hydrated).toBe(true))
+      act(() => result.current.setActiveChatId('shared-1'))
+
+      await waitFor(() => {
+        const messages = result.current.sharedSessions.find((s) => s.id === 'shared-1')?.messages
+        expect(messages).toHaveLength(2)
+        expect(messages?.[1]).toMatchObject({ role: 'assistant', status: 'thinking' })
+      })
+      expect(result.current.pendingAnswerChatIds.has('shared-1')).toBe(true)
+
+      vi.mocked(chatApi.getChatSession).mockResolvedValue({
+        ...sharedPendingDetail,
+        pending_answer: false,
+        messages: [
+          { id: 'q1', role: 'user' as const, content: 'What is in the contract?' },
+          { id: 'a1', role: 'assistant' as const, content: 'The contract says X.' },
+        ],
+      } as never)
+
+      await waitFor(
+        () => {
+          const messages = result.current.sharedSessions.find((s) => s.id === 'shared-1')?.messages
+          expect(messages?.[1]).toMatchObject({
+            role: 'assistant',
+            status: undefined,
+            content: 'The contract says X.',
+          })
+        },
+        { timeout: 5000, interval: 250 },
+      )
+    },
+    10000,
+  )
+})
