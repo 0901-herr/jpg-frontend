@@ -111,7 +111,6 @@ describe('Sidebar — chat ordering', () => {
 
 describe('Sidebar — chat list loading', () => {
   it('shows a compact loading state instead of temporary chat rows while sessions hydrate', async () => {
-    const user = userEvent.setup()
     render(
       <MemoryRouter>
         <Sidebar
