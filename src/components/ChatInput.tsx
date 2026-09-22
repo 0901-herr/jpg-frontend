@@ -238,6 +238,7 @@ export default function ChatInput({
     toolActionPending,
     disabled: disabled || viewOnly || sharedScopeEmpty,
     allowEmptySelection: allowEmptySelection && !sharedScopeEmpty,
+    ...(disabled && { disabledReason }),
   })
 
   const handleSend = () => {
