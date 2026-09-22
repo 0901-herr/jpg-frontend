@@ -282,15 +282,21 @@ export default function AppLayout() {
   // freshly sent message's author label agrees with whatever name the
   // sidebar's profile row already shows for "you".
   const currentUsername = browse.username ?? authSession?.username ?? 'You'
-  const abortControllerRef = useRef<AbortController | null>(null)
-  const streamingCitationsRef = useRef<Citation[]>([])
-  const lastProgressStageRef = useRef<string | undefined>(undefined)
-  const hadPartialAnswerRef = useRef(false)
-  // Sticky for the duration of one query: set true the moment an
-  // `abstention` event arrives, read when the final assistant message is
-  // built so it carries the flag through even though that message object
-  // is constructed fresh rather than derived from the streaming placeholder.
-  const abstainedRef = useRef(false)
+  // One AbortController per chat with an in-flight query, keyed by chat id
+  // — replaces the old single `abortControllerRef` (Item 4): switching
+  // chats must no longer abort the chat left behind, so there can be more
+  // than one request in flight (one per chat) at a time. `inFlightChatIds`
+  // is the state twin of this ref's keys, read by the composer to derive
+  // `isResponding` for whichever chat is currently active — the ref alone
+  // can't drive a re-render.
+  const abortControllersRef = useRef<Map<string, AbortController>>(new Map())
+  const [inFlightChatIds, setInFlightChatIds] = useState<Set<string>>(new Set())
+  // Self-cancel-on-resend only for `handleExtractMetadata`'s own request —
+  // deliberately its own ref, never shared with the per-chat query
+  // controllers above: extract-metadata is a one-off action tied to the
+  // selected document, not a chat-keyed query stream, and (post Item 4)
+  // nothing aborts it on a chat switch any more than it aborts a query.
+  const extractAbortControllerRef = useRef<AbortController | null>(null)
 
   // A widened viewport (orientation change, resizing a browser window) must
   // never leave the mobile Drawer stuck open behind the now-visible desktop
@@ -553,59 +559,35 @@ export default function AppLayout() {
     scrollToBottom,
   ])
 
-  // UX P0-3: switching away from a chat that's still streaming must not
-  // leave the new chat's composer stuck on "Stop" waiting for the OLD
-  // chat's request to finish. Aborts the in-flight request, resets the
-  // composer to idle immediately (sendQuery.reset(), rather than waiting on
-  // the aborted fetch promise to reject and settle asynchronously), and
-  // marks the old chat's in-progress answer as interrupted in place.
-  const abortActiveResponse = useCallback(() => {
-    const controller = abortControllerRef.current
-    if (!controller) return
-
-    const chatId = activeChatId
-    controller.abort('navigation')
-    abortControllerRef.current = null
-    sendQuery.reset()
-
-    const session =
-      sessionsRef.current.find((s) => s.id === chatId) ??
-      sharedSessionsRef.current.find((s) => s.id === chatId)
-    const lastMsg = session?.messages[session.messages.length - 1]
-    const interrupted: ChatMessage | undefined =
-      lastMsg && lastMsg.role === 'assistant' && (lastMsg.status === 'thinking' || lastMsg.status === 'streaming')
-        ? { ...lastMsg, status: 'complete', interrupted: true, liveText: '', progressLabel: undefined }
-        : undefined
-
-    if (interrupted) {
-      updateChatMessages(chatId, (messages) => {
-        const next = [...messages]
-        next[next.length - 1] = interrupted
-        return next
-      })
-      chatStore.recordAssistantMessage(chatId, interrupted)
-    }
-  }, [activeChatId, sendQuery, updateChatMessages, chatStore.recordAssistantMessage])
-
+  // Item 4: switching chats (or starting a new one) no longer aborts
+  // anything — the old chat's request keeps running in the background,
+  // keyed by its own chat id in `abortControllersRef`/`inFlightChatIds`,
+  // and its answer lands in that chat's own messages (via the chat id
+  // `handleSend` captures at send time) whether or not it's still the
+  // active chat when it finishes. Superseded UX P0-3's `abortActiveResponse`
+  // (which used to abort on navigation) — see `handleSend`'s own
+  // `endInFlight` for where a chat's entry is removed once its request
+  // actually settles.
   const handleNewChat = useCallback(() => {
-    abortActiveResponse()
     chatStore.createChat()
-  }, [abortActiveResponse, chatStore.createChat])
+  }, [chatStore.createChat])
 
   const handleSelectChat = useCallback(
     (chatId: string) => {
-      if (chatId !== activeChatId) abortActiveResponse()
       setActiveChatId(chatId)
     },
-    [abortActiveResponse, activeChatId, setActiveChatId],
+    [setActiveChatId],
   )
 
   const handleRenameChat = chatStore.renameChat
   const handleDeleteChat = chatStore.deleteChat
 
+  // Stops only the ACTIVE chat's own request — a Stop click can never
+  // reach into another chat's background stream (there's no UI for that;
+  // each chat only ever shows its own composer's Stop button).
   const handleStop = useCallback(() => {
-    abortControllerRef.current?.abort()
-  }, [])
+    abortControllersRef.current.get(activeChatId)?.abort()
+  }, [activeChatId])
 
   const updateAssistantMessage = useCallback(
     (chatId: string, updater: (msg: ChatMessage) => ChatMessage): ChatMessage | undefined => {
@@ -635,6 +617,17 @@ export default function AppLayout() {
 
   const handleSend = useCallback(
     async (text: string, options?: { displayText?: string }) => {
+      // Captured once, up front — every callback and completion/error path
+      // below must target THIS chat, never whatever `activeChatId` happens
+      // to be by the time an async callback fires (Item 4: sending in chat
+      // B, or just switching away, must never redirect chat A's own
+      // in-flight answer). A plain `const` closed over by this single
+      // invocation of `handleSend` already can't drift — unlike a ref, it
+      // isn't shared with any other invocation — but it's named `chatId`
+      // throughout on purpose, so a reviewer can tell at a glance that
+      // every read below is the captured value, not a live one.
+      const chatId = activeChatId
+
       // A brand-new chat's own `POST /chat/sessions` (fired by `createChat`,
       // not awaited there) may still be in flight the moment the owner
       // sends their first message — awaiting it here (a no-op for any chat
@@ -643,7 +636,7 @@ export default function AppLayout() {
       // when `persist_query_scope`/`_apply_scope` run. See
       // `ensureSessionCreated`'s doc comment for why this matters
       // specifically for a shared chat's scope.
-      await chatStore.ensureSessionCreated(activeChatId)
+      await chatStore.ensureSessionCreated(chatId)
 
       // Catches the case where this chat was deleted from another
       // device/tab since this one last synced: the query endpoint itself
@@ -652,7 +645,7 @@ export default function AppLayout() {
       // `verifyChatBeforeQuery`'s doc comment) — gone without a trace on
       // the next refresh. Already handled (switched chats, warned the
       // user) if this resolves false, so just abort the send.
-      if (!(await chatStore.verifyChatBeforeQuery(activeChatId))) return
+      if (!(await chatStore.verifyChatBeforeQuery(chatId))) return
 
       const selectedDocs = [...selection.selectedIds]
       // A shared queryable chat always uses the host's own scope — the
@@ -676,22 +669,61 @@ export default function AppLayout() {
 
       setInputBlockedReason(undefined)
 
-      abortControllerRef.current?.abort()
+      // A resend for a chat that somehow already has a request in flight
+      // (the composer disables Send while `inFlightChatIds` has this chat,
+      // so this is only a defensive guard, not the normal path) replaces
+      // that chat's own old request — never another chat's. Concurrent
+      // sends across DIFFERENT chats are always allowed (Item 4): each
+      // chat gets its own entry in this map, so starting chat B's request
+      // never touches chat A's controller.
+      abortControllersRef.current.get(chatId)?.abort()
       const controller = new AbortController()
-      abortControllerRef.current = controller
-      lastProgressStageRef.current = undefined
-      hadPartialAnswerRef.current = false
-      abstainedRef.current = false
+      abortControllersRef.current.set(chatId, controller)
+      setInFlightChatIds((prev) => {
+        if (prev.has(chatId)) return prev
+        const next = new Set(prev)
+        next.add(chatId)
+        return next
+      })
+      // Local to this one invocation of `handleSend` (not refs) — each
+      // concurrent send (a different chat) gets its own independent copy,
+      // so one chat's progress/abstention/citation state can never bleed
+      // into another's while both stream at once.
+      let lastProgressStage: string | undefined
+      let hadPartialAnswer = false
+      // Sticky for the duration of one query: set true the moment an
+      // `abstention` event arrives, read when the final assistant message
+      // is built so it carries the flag through even though that message
+      // object is constructed fresh rather than derived from the
+      // streaming placeholder.
+      let abstained = false
+      let streamingCitations: Citation[] = []
       const startedAt = Date.now()
 
       const elapsedSeconds = () => Math.max(1, Math.round((Date.now() - startedAt) / 1000))
 
       const friendlyQueryError = (raw: string | undefined, httpStatus?: number) =>
         toUserFacingQueryError(raw, {
-          progressLabel: formatProgressStage(lastProgressStageRef.current),
-          hadPartialAnswer: hadPartialAnswerRef.current,
+          progressLabel: formatProgressStage(lastProgressStage),
+          hadPartialAnswer,
           httpStatus,
         })
+
+      // Removes this chat's in-flight bookkeeping once its request truly
+      // settles (success, stopped, or error) — run in the outer `finally`
+      // below so it fires on every exit path from this point on, including
+      // an early `return` from scope validation further down.
+      const endInFlight = () => {
+        if (abortControllersRef.current.get(chatId) === controller) {
+          abortControllersRef.current.delete(chatId)
+        }
+        setInFlightChatIds((prev) => {
+          if (!prev.has(chatId)) return prev
+          const next = new Set(prev)
+          next.delete(chatId)
+          return next
+        })
+      }
 
       let scopeDocuments = selectedDocs
       // Display names of the documents actually in scope for this query —
@@ -713,312 +745,314 @@ export default function AppLayout() {
       // viewer can't browse the files well enough to name them.
       let userFileTags: string[] | undefined
 
-      if (useSharedScope) {
-        scopeDocuments = sharedScopeIds
-        const resolvedScope = resolveProgressScope(
-          scopeDocuments,
-          selection.documentMeta,
-          browse.getFolderNode,
-        )
-        scopeFolders = resolvedScope.folders
-        // Prefer the adapter's own resolved filenames (`scope_documents`)
-        // over the viewer's local browse-tree metadata — the whole point
-        // of a shared chat is that the follower may not be able to browse
-        // these files at all, so the host-sent names are the only
-        // trustworthy source. Falls back to the old resolution (then a
-        // bare count) only for a chat whose detail predates that field.
-        if (sharedScopeDocuments.length > 0) {
-          userFileTags = sharedScopeDocuments.map(
-            (doc) => doc.filename ?? `File ${doc.documentId}`,
-          )
-          scopeFilenames = userFileTags
-        } else {
-          scopeFilenames = resolvedScope.files
-          userFileTags =
-            scopeFilenames.length > 0
-              ? scopeFilenames
-              : [`${scopeDocuments.length} shared file${scopeDocuments.length === 1 ? '' : 's'}`]
-        }
-      } else {
-        try {
-          const scope = await validateQueryScope(selectedDocs, controller.signal)
-          if (controller.signal.aborted) return
-
-          const deniedCount = selectedDocs.length - scope.accessible_document_ids.length
-          if (deniedCount > 0) {
-            selection.trimSelection(scope.accessible_document_ids)
-            message.warning(
-              `${deniedCount} selected ${deniedCount === 1 ? 'document was' : 'documents were'} removed because you don't have access.`,
-            )
-          }
-
-          scopeDocuments = scope.accessible_document_ids
+      // Item 1: the whole rest of this function — from here through the
+      // final streaming outcome — runs inside one `try`/`finally` so that
+      // `endInFlight()` fires on EVERY exit path, not just the streaming
+      // one: an early `return` from scope validation below (a validation
+      // network error, no accessible documents, etc.) must clear this
+      // chat's "in flight" state exactly as reliably as a normal
+      // completion — otherwise the composer would be stuck showing Stop
+      // for a request that never actually started streaming.
+      try {
+        if (useSharedScope) {
+          scopeDocuments = sharedScopeIds
           const resolvedScope = resolveProgressScope(
             scopeDocuments,
             selection.documentMeta,
             browse.getFolderNode,
           )
-          scopeFilenames = resolvedScope.files
           scopeFolders = resolvedScope.folders
-
-          if (scopeDocuments.length === 0) {
-            const reason =
-              scope.failed_files > 0
-                ? 'None of the selected documents are ready to answer questions yet.'
-                : 'No accessible documents in your selection.'
-            setInputBlockedReason(reason)
-            message.error(reason)
-            return
-          }
-
-          if (scope.ready_files === 0 && scope.indexing_files > 0) {
-            const reason = 'Documents are still being prepared. Please wait until at least one is ready.'
-            setInputBlockedReason(reason)
-            message.warning(reason)
-            return
-          }
-
-          if (scope.ready_files === 0) {
-            const reason = 'No ready documents in your selection.'
-            setInputBlockedReason(reason)
-            message.error(reason)
-            return
-          }
-
-          if (scope.indexing_files > 0) {
-            message.info(
-              `${scope.indexing_files} selected ${scope.indexing_files === 1 ? 'document is' : 'documents are'} still being prepared. Answers may be incomplete.`,
+          // Prefer the adapter's own resolved filenames (`scope_documents`)
+          // over the viewer's local browse-tree metadata — the whole point
+          // of a shared chat is that the follower may not be able to browse
+          // these files at all, so the host-sent names are the only
+          // trustworthy source. Falls back to the old resolution (then a
+          // bare count) only for a chat whose detail predates that field.
+          if (sharedScopeDocuments.length > 0) {
+            userFileTags = sharedScopeDocuments.map(
+              (doc) => doc.filename ?? `File ${doc.documentId}`,
             )
+            scopeFilenames = userFileTags
+          } else {
+            scopeFilenames = resolvedScope.files
+            userFileTags =
+              scopeFilenames.length > 0
+                ? scopeFilenames
+                : [`${scopeDocuments.length} shared file${scopeDocuments.length === 1 ? '' : 's'}`]
           }
-        } catch (err) {
-          if (controller.signal.aborted) return
-          const httpStatus = err instanceof ApiError ? err.status : undefined
-          const detail = friendlyQueryError(
-            err instanceof ApiError ? queryErrorRawMessage(err) : 'Validation failed',
-            httpStatus,
-          )
-          message.error(detail)
-          return
-        }
-      }
+        } else {
+          try {
+            const scope = await validateQueryScope(selectedDocs, controller.signal)
+            if (controller.signal.aborted) return
 
-      const userMsg: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: 'user',
-        content: options?.displayText ?? text,
-        fileTags: userFileTags,
-      }
-
-      const assistantId = crypto.randomUUID()
-      const question = options?.displayText ?? text
-      const thinkingMsg: ChatMessage = {
-        id: assistantId,
-        role: 'assistant',
-        content: '',
-        status: 'thinking',
-        startedAt,
-        question,
-        progressScopeFiles: scopeFilenames,
-        progressScopeFolders: scopeFolders,
-      }
-
-      shouldStickToBottomRef.current = true
-
-      updateChatMessages(activeChatId, (messages) => [...messages, userMsg, thinkingMsg])
-      chatStore.recordUserMessage(activeChatId, userMsg, scopeDocuments)
-
-      requestAnimationFrame(() => scrollToBottom('auto'))
-
-      streamingCitationsRef.current = []
-      const progressContext = () => ({
-        filenames: scopeFilenames,
-      })
-      let coverage: CoverageInfo | undefined
-      // Captured from whichever branch below actually persists the
-      // assistant turn (success, stopped, or error) — awaited in
-      // `finally` before a shared-chat refresh, so that refresh's GET can
-      // never race this POST and clobber the just-finished answer with a
-      // detail fetched before it landed server-side.
-      let assistantPersistPromise: Promise<void> | undefined
-
-      try {
-        const response = await sendQuery.mutateAsync({
-          chatId: activeChatId,
-          message: text,
-          documents: scopeDocuments,
-          omitDocuments: useSharedScope,
-          tier: queryTier,
-          signal: controller.signal,
-          callbacks: {
-            onCoverage: (c) => {
-              coverage = c
-              updateAssistantMessage(activeChatId, (msg) => ({
-                ...msg,
-                status: msg.content ? 'streaming' : 'thinking',
-                coverage: c,
-              }))
-            },
-            onProgress: (stage, payload) => {
-              lastProgressStageRef.current = stage
-              updateAssistantMessage(activeChatId, (msg) => ({
-                ...msg,
-                status: msg.content ? 'streaming' : 'thinking',
-                progressLabel: formatProgressStage(stage, payload, progressContext()),
-                progressStage: stage,
-              }))
-            },
-            onRoute: (strategy) => {
-              updateAssistantMessage(activeChatId, (msg) => ({
-                ...msg,
-                status: msg.content ? 'streaming' : 'thinking',
-                progressLabel: msg.content ? undefined : formatRouteLabel(strategy),
-              }))
-            },
-            onError: (rawMessage) => {
-              const content = friendlyQueryError(rawMessage)
-              updateAssistantMessage(activeChatId, (msg) => ({
-                ...msg,
-                status: 'error',
-                content,
-                progressLabel: formatProgressStage(lastProgressStageRef.current),
-              }))
-            },
-            onDelta: (text) => {
-              hadPartialAnswerRef.current = true
-              updateAssistantMessage(activeChatId, (msg) => ({
-                ...msg,
-                status: 'streaming',
-                liveText: (msg.liveText ?? '') + text,
-                coverage: coverage ?? msg.coverage,
-                progressLabel: undefined,
-              }))
-            },
-            onAnswer: (delta) => {
-              hadPartialAnswerRef.current = true
-              updateAssistantMessage(activeChatId, (msg) => ({
-                ...msg,
-                status: 'streaming',
-                content: appendStreamDelta(msg.content, delta),
-                // This segment just finalized into `content` — clear the
-                // live preview so the next segment's deltas start fresh
-                // rather than duplicating text already shown.
-                liveText: '',
-                coverage: coverage ?? msg.coverage,
-              }))
-            },
-            onCitations: (batch) => {
-              streamingCitationsRef.current = mergeCitations(
-                streamingCitationsRef.current,
-                batch,
+            const deniedCount = selectedDocs.length - scope.accessible_document_ids.length
+            if (deniedCount > 0) {
+              selection.trimSelection(scope.accessible_document_ids)
+              message.warning(
+                `${deniedCount} selected ${deniedCount === 1 ? 'document was' : 'documents were'} removed because you don't have access.`,
               )
-              const citations = streamingCitationsRef.current
-              updateAssistantMessage(activeChatId, (msg) => {
-                const next: ChatMessage = {
-                  ...msg,
-                  sources: citationsToSources(citations),
-                }
-                // Citations arrive right before the "generating" progress
-                // event — if nothing has streamed in yet, show the
-                // generating label now instead of waiting for that event.
-                if (!msg.content) {
-                  next.progressLabel = formatProgressStage('generating', {}, progressContext())
-                  next.progressStage = 'generating'
-                }
-                return next
-              })
-            },
-            onAbstention: () => {
-              // Citations already shown were retrieval candidates, not
-              // sources for an answer that was never written — clear them
-              // rather than let them linger as if they backed the canned
-              // "couldn't find relevant content" message that follows. The
-              // progress label is cleared too: ChatMessage's "No matching
-              // content" caption (driven by `abstained`, set below) takes
-              // over as the explanation instead.
-              streamingCitationsRef.current = []
-              abstainedRef.current = true
-              updateAssistantMessage(activeChatId, (msg) => ({
-                ...msg,
-                sources: undefined,
-                progressLabel: undefined,
-              }))
-            },
-          },
-        })
+            }
 
-        if (controller.signal.aborted) return
+            scopeDocuments = scope.accessible_document_ids
+            const resolvedScope = resolveProgressScope(
+              scopeDocuments,
+              selection.documentMeta,
+              browse.getFolderNode,
+            )
+            scopeFilenames = resolvedScope.files
+            scopeFolders = resolvedScope.folders
 
-        const assistantMsg: ChatMessage = {
-          id: response.messageId,
-          role: 'assistant',
-          content: response.content,
-          // Retrieval candidates shown mid-stream never back an abstained
-          // answer — belt-and-braces alongside streamQuery already zeroing
-          // its own `citations` on abstention.
-          sources: abstainedRef.current ? undefined : response.sources,
-          status: 'complete',
-          thinkingSeconds: response.thinkingSeconds,
-          coverage: response.coverage ?? coverage,
-          abstained: abstainedRef.current,
-          question,
+            if (scopeDocuments.length === 0) {
+              const reason =
+                scope.failed_files > 0
+                  ? 'None of the selected documents are ready to answer questions yet.'
+                  : 'No accessible documents in your selection.'
+              setInputBlockedReason(reason)
+              message.error(reason)
+              return
+            }
+
+            if (scope.ready_files === 0 && scope.indexing_files > 0) {
+              const reason = 'Documents are still being prepared. Please wait until at least one is ready.'
+              setInputBlockedReason(reason)
+              message.warning(reason)
+              return
+            }
+
+            if (scope.ready_files === 0) {
+              const reason = 'No ready documents in your selection.'
+              setInputBlockedReason(reason)
+              message.error(reason)
+              return
+            }
+
+            if (scope.indexing_files > 0) {
+              message.info(
+                `${scope.indexing_files} selected ${scope.indexing_files === 1 ? 'document is' : 'documents are'} still being prepared. Answers may be incomplete.`,
+              )
+            }
+          } catch (err) {
+            if (controller.signal.aborted) return
+            const httpStatus = err instanceof ApiError ? err.status : undefined
+            const detail = friendlyQueryError(
+              err instanceof ApiError ? queryErrorRawMessage(err) : 'Validation failed',
+              httpStatus,
+            )
+            message.error(detail)
+            return
+          }
         }
 
-        // Sidebar titles are dated ("Session 15 Sep 2026 (1)"), set once
-        // at session creation — no longer overwritten with the first
-        // question.
-        updateChatMessages(activeChatId, (messages) => [...messages.slice(0, -1), assistantMsg])
-        assistantPersistPromise = chatStore.recordAssistantMessage(activeChatId, assistantMsg)
-      } catch (err) {
-        if (controller.signal.aborted) {
-          // A "new chat" / "select another chat" abort (reason ===
-          // 'navigation') already marked this exact message as interrupted
-          // synchronously in abortActiveResponse — don't overwrite it here.
-          // Only the explicit Stop button (no reason) needs handling in
-          // this async continuation.
-          if (controller.signal.reason !== 'navigation') {
-            const stopped = updateAssistantMessage(activeChatId, (msg) => ({
+        const userMsg: ChatMessage = {
+          id: crypto.randomUUID(),
+          role: 'user',
+          content: options?.displayText ?? text,
+          fileTags: userFileTags,
+        }
+
+        const assistantId = crypto.randomUUID()
+        const question = options?.displayText ?? text
+        const thinkingMsg: ChatMessage = {
+          id: assistantId,
+          role: 'assistant',
+          content: '',
+          status: 'thinking',
+          startedAt,
+          question,
+          progressScopeFiles: scopeFilenames,
+          progressScopeFolders: scopeFolders,
+        }
+
+        shouldStickToBottomRef.current = true
+
+        updateChatMessages(chatId, (messages) => [...messages, userMsg, thinkingMsg])
+        chatStore.recordUserMessage(chatId, userMsg, scopeDocuments)
+
+        requestAnimationFrame(() => scrollToBottom('auto'))
+
+        const progressContext = () => ({
+          filenames: scopeFilenames,
+        })
+        let coverage: CoverageInfo | undefined
+        // Captured from whichever branch below actually persists the
+        // assistant turn (success, stopped, or error) — awaited in
+        // `finally` before a shared-chat refresh, so that refresh's GET can
+        // never race this POST and clobber the just-finished answer with a
+        // detail fetched before it landed server-side.
+        let assistantPersistPromise: Promise<void> | undefined
+
+        try {
+          const response = await sendQuery.mutateAsync({
+            chatId,
+            message: text,
+            documents: scopeDocuments,
+            omitDocuments: useSharedScope,
+            tier: queryTier,
+            signal: controller.signal,
+            callbacks: {
+              onCoverage: (c) => {
+                coverage = c
+                updateAssistantMessage(chatId, (msg) => ({
+                  ...msg,
+                  status: msg.content ? 'streaming' : 'thinking',
+                  coverage: c,
+                }))
+              },
+              onProgress: (stage, payload) => {
+                lastProgressStage = stage
+                updateAssistantMessage(chatId, (msg) => ({
+                  ...msg,
+                  status: msg.content ? 'streaming' : 'thinking',
+                  progressLabel: formatProgressStage(stage, payload, progressContext()),
+                  progressStage: stage,
+                }))
+              },
+              onRoute: (strategy) => {
+                updateAssistantMessage(chatId, (msg) => ({
+                  ...msg,
+                  status: msg.content ? 'streaming' : 'thinking',
+                  progressLabel: msg.content ? undefined : formatRouteLabel(strategy),
+                }))
+              },
+              onError: (rawMessage) => {
+                const content = friendlyQueryError(rawMessage)
+                updateAssistantMessage(chatId, (msg) => ({
+                  ...msg,
+                  status: 'error',
+                  content,
+                  progressLabel: formatProgressStage(lastProgressStage),
+                }))
+              },
+              onDelta: (text) => {
+                hadPartialAnswer = true
+                updateAssistantMessage(chatId, (msg) => ({
+                  ...msg,
+                  status: 'streaming',
+                  liveText: (msg.liveText ?? '') + text,
+                  coverage: coverage ?? msg.coverage,
+                  progressLabel: undefined,
+                }))
+              },
+              onAnswer: (delta) => {
+                hadPartialAnswer = true
+                updateAssistantMessage(chatId, (msg) => ({
+                  ...msg,
+                  status: 'streaming',
+                  content: appendStreamDelta(msg.content, delta),
+                  // This segment just finalized into `content` — clear the
+                  // live preview so the next segment's deltas start fresh
+                  // rather than duplicating text already shown.
+                  liveText: '',
+                  coverage: coverage ?? msg.coverage,
+                }))
+              },
+              onCitations: (batch) => {
+                streamingCitations = mergeCitations(streamingCitations, batch)
+                const citations = streamingCitations
+                updateAssistantMessage(chatId, (msg) => {
+                  const next: ChatMessage = {
+                    ...msg,
+                    sources: citationsToSources(citations),
+                  }
+                  // Citations arrive right before the "generating" progress
+                  // event — if nothing has streamed in yet, show the
+                  // generating label now instead of waiting for that event.
+                  if (!msg.content) {
+                    next.progressLabel = formatProgressStage('generating', {}, progressContext())
+                    next.progressStage = 'generating'
+                  }
+                  return next
+                })
+              },
+              onAbstention: () => {
+                // Citations already shown were retrieval candidates, not
+                // sources for an answer that was never written — clear them
+                // rather than let them linger as if they backed the canned
+                // "couldn't find relevant content" message that follows. The
+                // progress label is cleared too: ChatMessage's "No matching
+                // content" caption (driven by `abstained`, set below) takes
+                // over as the explanation instead.
+                streamingCitations = []
+                abstained = true
+                updateAssistantMessage(chatId, (msg) => ({
+                  ...msg,
+                  sources: undefined,
+                  progressLabel: undefined,
+                }))
+              },
+            },
+          })
+
+          if (controller.signal.aborted) return
+
+          const assistantMsg: ChatMessage = {
+            id: response.messageId,
+            role: 'assistant',
+            content: response.content,
+            // Retrieval candidates shown mid-stream never back an abstained
+            // answer — belt-and-braces alongside streamQuery already zeroing
+            // its own `citations` on abstention.
+            sources: abstained ? undefined : response.sources,
+            status: 'complete',
+            thinkingSeconds: response.thinkingSeconds,
+            coverage: response.coverage ?? coverage,
+            abstained,
+            question,
+          }
+
+          // Sidebar titles are dated ("Session 15 Sep 2026 (1)"), set once
+          // at session creation — no longer overwritten with the first
+          // question.
+          updateChatMessages(chatId, (messages) => [...messages.slice(0, -1), assistantMsg])
+          assistantPersistPromise = chatStore.recordAssistantMessage(chatId, assistantMsg)
+        } catch (err) {
+          if (controller.signal.aborted) {
+            // Only path that aborts this controller any more (post Item 4)
+            // is the composer's own Stop button for this exact chat — a
+            // chat switch/new chat no longer aborts anything — so this is
+            // always a user-initiated stop, thinking phase or streaming.
+            const stopped = updateAssistantMessage(chatId, (msg) => ({
               ...msg,
               content: msg.content || 'Response stopped.',
               status: 'complete',
               liveText: '',
               thinkingSeconds: elapsedSeconds(),
             }))
-            if (stopped) assistantPersistPromise = chatStore.recordAssistantMessage(activeChatId, stopped)
+            if (stopped) assistantPersistPromise = chatStore.recordAssistantMessage(chatId, stopped)
+            return
           }
-          return
-        }
 
-        const httpStatus = err instanceof ApiError ? err.status : undefined
-        const detail = friendlyQueryError(queryErrorRawMessage(err), httpStatus)
-        message.error(detail, 8)
-        const errored = updateAssistantMessage(activeChatId, (msg) => ({
-          ...msg,
-          content: detail,
-          status: 'error',
-          liveText: '',
-          progressLabel: formatProgressStage(lastProgressStageRef.current),
-          thinkingSeconds: elapsedSeconds(),
-        }))
-        if (errored) assistantPersistPromise = chatStore.recordAssistantMessage(activeChatId, errored)
+          const httpStatus = err instanceof ApiError ? err.status : undefined
+          const detail = friendlyQueryError(queryErrorRawMessage(err), httpStatus)
+          message.error(detail, 8)
+          const errored = updateAssistantMessage(chatId, (msg) => ({
+            ...msg,
+            content: detail,
+            status: 'error',
+            liveText: '',
+            progressLabel: formatProgressStage(lastProgressStage),
+            thinkingSeconds: elapsedSeconds(),
+          }))
+          if (errored) assistantPersistPromise = chatStore.recordAssistantMessage(chatId, errored)
+        } finally {
+          // Picks up a host scope change made mid-conversation — the chat's
+          // activation-time fetch (`useChatStore`'s `ensureMessagesLoaded`)
+          // only runs when the viewer switches TO this chat, so a follower
+          // who stays on one shared chat and keeps asking otherwise never
+          // sees a scope the host changed after the initial load. Awaits the
+          // assistant-message persist first (if this turn produced one) so
+          // the refresh GET can never race that POST — firing concurrently
+          // could fetch a detail from before the just-finished answer landed
+          // server-side and briefly clobber it back out of local state.
+          if (isSharedChat) {
+            void (async () => {
+              await assistantPersistPromise
+              chatStore.refreshSharedChat(chatId)
+            })()
+          }
+        }
       } finally {
-        if (abortControllerRef.current === controller) {
-          abortControllerRef.current = null
-        }
-        // Picks up a host scope change made mid-conversation — the chat's
-        // activation-time fetch (`useChatStore`'s `ensureMessagesLoaded`)
-        // only runs when the viewer switches TO this chat, so a follower
-        // who stays on one shared chat and keeps asking otherwise never
-        // sees a scope the host changed after the initial load. Awaits the
-        // assistant-message persist first (if this turn produced one) so
-        // the refresh GET can never race that POST — firing concurrently
-        // could fetch a detail from before the just-finished answer landed
-        // server-side and briefly clobber it back out of local state.
-        if (isSharedChat) {
-          void (async () => {
-            await assistantPersistPromise
-            chatStore.refreshSharedChat(activeChatId)
-          })()
-        }
+        endInFlight()
       }
     },
     [
@@ -1061,6 +1095,12 @@ export default function AppLayout() {
     [browse.getFolderNode, selectedDocument],
   )
 
+  // Item 4: no longer `sendQuery.isPending` — that reflected whichever
+  // mutation call the hook's single observer last latched onto, which
+  // breaks down the moment two chats can stream at once. This chat's own
+  // membership in `inFlightChatIds` is the source of truth instead.
+  const isActiveChatResponding = inFlightChatIds.has(activeChatId)
+
   const summarizeDisabledReason = useMemo(
     () =>
       isSharedChat
@@ -1068,18 +1108,18 @@ export default function AppLayout() {
         : getSummarizeDisabledReason({
             selectedCount: selection.selectedCount,
             document: selectedDocument,
-            isResponding: sendQuery.isPending || isSummarizing || isExtracting || isCategorizing,
+            isResponding: isActiveChatResponding || isSummarizing || isExtracting || isCategorizing,
             disabled: browse.sessionExpired,
           }),
     [
       browse.sessionExpired,
+      isActiveChatResponding,
       isCategorizing,
       isExtracting,
       isSharedChat,
       isSummarizing,
       selectedDocument,
       selection.selectedCount,
-      sendQuery.isPending,
     ],
   )
 
@@ -1090,18 +1130,18 @@ export default function AppLayout() {
         : getExtractMetadataDisabledReason({
             selectedCount: selection.selectedCount,
             document: selectedDocument,
-            isResponding: sendQuery.isPending || isSummarizing || isExtracting || isCategorizing,
+            isResponding: isActiveChatResponding || isSummarizing || isExtracting || isCategorizing,
             disabled: browse.sessionExpired,
           }),
     [
       browse.sessionExpired,
+      isActiveChatResponding,
       isCategorizing,
       isExtracting,
       isSharedChat,
       isSummarizing,
       selectedDocument,
       selection.selectedCount,
-      sendQuery.isPending,
     ],
   )
 
@@ -1113,11 +1153,12 @@ export default function AppLayout() {
             selectedCount: selection.selectedCount,
             document: selectedDocument,
             folder: selectedDocumentFolder,
-            isResponding: sendQuery.isPending || isSummarizing || isExtracting || isCategorizing,
+            isResponding: isActiveChatResponding || isSummarizing || isExtracting || isCategorizing,
             disabled: browse.sessionExpired,
           }),
     [
       browse.sessionExpired,
+      isActiveChatResponding,
       isCategorizing,
       isExtracting,
       isSharedChat,
@@ -1125,7 +1166,6 @@ export default function AppLayout() {
       selectedDocument,
       selectedDocumentFolder,
       selection.selectedCount,
-      sendQuery.isPending,
     ],
   )
 
@@ -1261,9 +1301,9 @@ export default function AppLayout() {
     extractingRef.current = true
     setIsExtracting(true)
 
-    abortControllerRef.current?.abort()
+    extractAbortControllerRef.current?.abort()
     const controller = new AbortController()
-    abortControllerRef.current = controller
+    extractAbortControllerRef.current = controller
 
     const userMsg: ChatMessage = {
       id: crypto.randomUUID(),
@@ -1340,8 +1380,8 @@ export default function AppLayout() {
           ),
         )
       } finally {
-        if (abortControllerRef.current === controller) {
-          abortControllerRef.current = null
+        if (extractAbortControllerRef.current === controller) {
+          extractAbortControllerRef.current = null
         }
         extractingRef.current = false
         setIsExtracting(false)
@@ -1594,7 +1634,11 @@ export default function AppLayout() {
                 onExtractMetadata={layoutDemo ? () => undefined : handleExtractMetadata}
                 onStop={handleStop}
                 onComposerFocus={handleComposerFocus}
-                isResponding={layoutDemo ? false : sendQuery.isPending}
+                isResponding={
+                  layoutDemo
+                    ? false
+                    : isActiveChatResponding || isSummarizing || isExtracting || isCategorizing
+                }
                 disabled={
                   layoutDemo
                     ? false
