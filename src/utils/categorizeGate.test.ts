@@ -98,6 +98,18 @@ describe('getCategorizeDisabledReason', () => {
     ).toBe('File not ready yet')
   })
 
+  it('blocks an UNSUPPORTED document, like FAILED', () => {
+    expect(
+      getCategorizeDisabledReason({
+        selectedCount: 1,
+        document: doc({ indexing_status: 'UNSUPPORTED', queryable: false }),
+        folder: folder(),
+        isResponding: false,
+        disabled: false,
+      }),
+    ).toBe('File not ready yet')
+  })
+
   it('treats a missing document (selection not resolved yet) as not queryable', () => {
     expect(
       getCategorizeDisabledReason({

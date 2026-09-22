@@ -229,6 +229,31 @@ describe('useBrowseCategories auto-refresh', () => {
     expect(fetchBrowseStatus).not.toHaveBeenCalled()
   })
 
+  it('treats UNSUPPORTED as settled, like READY/FAILED — idle cadence, not fast', async () => {
+    vi.mocked(fetchBrowseCategories).mockResolvedValue({
+      categories: [],
+      uncategorized_count: 0,
+      accessible_document_ids: ['1'],
+    })
+    const unsupportedDoc: BrowseDocumentItem = {
+      ...doc('1'),
+      indexing_status: 'UNSUPPORTED',
+      queryable: false,
+    }
+
+    renderHook(() =>
+      useBrowseCategories([unsupportedDoc], {
+        enabled: true,
+        activeFolderId: 4,
+        refreshActiveFolder,
+      }),
+    )
+
+    await waitFor(() => expect(fetchBrowseCategories).toHaveBeenCalledTimes(1))
+    expect(intervalWithMs(60_000)).toBeDefined()
+    expect(intervalWithMs(15_000)).toBeUndefined()
+  })
+
   it('does not schedule a poll while category view is disabled', () => {
     renderHook(() =>
       useBrowseCategories([doc('1')], {

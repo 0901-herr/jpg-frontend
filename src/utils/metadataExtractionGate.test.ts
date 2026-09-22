@@ -26,6 +26,9 @@ describe('metadataExtractionGate', () => {
       false,
     )
     expect(isMetadataExtractionReady(doc({ queryable: false }))).toBe(false)
+    expect(
+      isMetadataExtractionReady(doc({ indexing_status: 'UNSUPPORTED', queryable: false })),
+    ).toBe(false)
     expect(isMetadataExtractionReady(undefined)).toBe(false)
   })
 
@@ -85,6 +88,21 @@ describe('metadataExtractionGate', () => {
         disabled: false,
       }),
     ).toBeNull()
+
+    expect(
+      getExtractMetadataDisabledReason({
+        selectedCount: 1,
+        document: doc({
+          indexing_status: 'UNSUPPORTED',
+          queryable: false,
+          status_reason: 'Unsupported file type (.mp4). Only PDF, Word, Excel, PowerPoint, text, Markdown, HTML and CSV files can be indexed.',
+        }),
+        isResponding: false,
+        disabled: false,
+      }),
+    ).toBe(
+      'Unsupported file type (.mp4). Only PDF, Word, Excel, PowerPoint, text, Markdown, HTML and CSV files can be indexed.',
+    )
   })
 
   it('disables while any response is in flight or the session has expired', () => {

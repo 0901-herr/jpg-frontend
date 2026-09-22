@@ -89,7 +89,10 @@ export function useBrowseCategories(
     if (BROWSE_REFRESH_SECONDS <= 0) return undefined
 
     const hasUnsettled = folderDocuments.some(
-      (doc) => doc.indexing_status !== 'READY' && doc.indexing_status !== 'FAILED',
+      (doc) =>
+        doc.indexing_status !== 'READY' &&
+        doc.indexing_status !== 'FAILED' &&
+        doc.indexing_status !== 'UNSUPPORTED',
     )
     const seconds = hasUnsettled ? BROWSE_REFRESH_SECONDS : BROWSE_IDLE_REFRESH_SECONDS
     const documentIds = folderDocuments.map((doc) => doc.document_id)

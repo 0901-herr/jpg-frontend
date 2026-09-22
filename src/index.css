@@ -354,6 +354,10 @@ input.ant-input:focus-visible {
   background: #dc2626;
 }
 
+.docu-file-row-tooltip-status--unsupported .docu-file-row-tooltip-dot {
+  background: #9ca3af;
+}
+
 .docu-file-row-tooltip-explanation {
   margin: 0;
   font-weight: 400;

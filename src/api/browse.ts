@@ -46,7 +46,9 @@ function demoDocument(
           ? 'Indexing failed for this file.'
           : indexing_status === 'NOT_INDEXED'
             ? 'Not ingested yet.'
-            : null
+            : indexing_status === 'UNSUPPORTED'
+              ? 'Unsupported file type. Only PDF, Word, Excel, PowerPoint, text, Markdown, HTML and CSV files can be indexed.'
+              : null
   return {
     document_id,
     filename,
@@ -56,14 +58,19 @@ function demoDocument(
     indexing_status,
     rag_document_id: queryable ? `demo-rag-${document_id}` : null,
     classification_category,
-    summary_status: queryable ? 'READY' : indexing_status === 'FAILED' ? 'FAILED' : 'PENDING',
+    summary_status:
+      queryable
+        ? 'READY'
+        : indexing_status === 'FAILED' || indexing_status === 'UNSUPPORTED'
+          ? 'FAILED'
+          : 'PENDING',
     status_reason,
     queryable,
   }
 }
 
 /** Mixed statuses so the composer/share demos can show Ready / Partial /
- * Preparing / Failed / Queued tooltips in the Files tree. */
+ * Preparing / Failed / Queued / Unsupported tooltips in the Files tree. */
 const COMPOSER_DEMO_DOCUMENTS: Record<number, BrowseDocumentItem[]> = {
   1: [
     demoDocument('demo-handbook', 'Company_Handbook_2026.pdf', 1, 'General', 'READY'),
@@ -81,6 +88,7 @@ const COMPOSER_DEMO_DOCUMENTS: Record<number, BrowseDocumentItem[]> = {
   4: [
     demoDocument('demo-onboarding', 'New_Starter_Onboarding.docx', 4, 'People', 'FAILED'),
     demoDocument('demo-org-chart', 'Organisation_Chart.pdf', 4, 'People', 'NOT_INDEXED'),
+    demoDocument('demo-team-video', 'Team_Offsite_Recap.mp4', 4, 'People', 'UNSUPPORTED'),
   ],
   5: [
     demoDocument('demo-project-atlas', 'Project_Atlas_Brief.pdf', 5, 'Projects', 'READY'),

@@ -7,6 +7,7 @@ import IndexingStatusBadge, {
   getDocumentSelectionHint,
   getReadinessTooltipExplanation,
   getSelectableDocumentIds,
+  getSelectionWarning,
   getStatusLabel,
   isDocumentSelectable,
   StatusIcon,
@@ -49,6 +50,23 @@ describe('getReadinessTooltipExplanation', () => {
       'Unsupported file format.',
     )
   })
+
+  it('explains UNSUPPORTED using the adapter status_reason when present', () => {
+    expect(
+      getReadinessTooltipExplanation(
+        'UNSUPPORTED',
+        'Unsupported file type (.mp4). Only PDF, Word, Excel, PowerPoint, text, Markdown, HTML and CSV files can be indexed.',
+      ),
+    ).toBe(
+      'Unsupported file type (.mp4). Only PDF, Word, Excel, PowerPoint, text, Markdown, HTML and CSV files can be indexed.',
+    )
+  })
+
+  it('falls back to generic unsupported-type copy when UNSUPPORTED has no status_reason', () => {
+    expect(getReadinessTooltipExplanation('UNSUPPORTED')).toBe(
+      "This file type can't be searched. Only PDF, Word, Excel, PowerPoint, text, Markdown, HTML and CSV files are supported.",
+    )
+  })
 })
 
 describe('getDocumentSelectionHint', () => {
@@ -78,6 +96,24 @@ describe('IndexingStatusBadge selection rules', () => {
     ])
     expect(ids).toEqual(['1', '2'])
   })
+
+  it('never allows UNSUPPORTED documents, queryable or not', () => {
+    expect(isDocumentSelectable('UNSUPPORTED', false)).toBe(false)
+    expect(isDocumentSelectable('UNSUPPORTED', true)).toBe(false)
+    const ids = getSelectableDocumentIds([
+      doc('1', 'READY', true),
+      doc('2', 'UNSUPPORTED', false),
+    ])
+    expect(ids).toEqual(['1'])
+  })
+})
+
+describe('getSelectionWarning', () => {
+  it('warns about an unsupported file type', () => {
+    expect(getSelectionWarning('UNSUPPORTED')).toBe(
+      'Unsupported file type. Not ready for questions.',
+    )
+  })
 })
 
 describe('getStatusLabel', () => {
@@ -91,6 +127,10 @@ describe('getStatusLabel', () => {
 
   it('treats an unrecognised status (e.g. adapter PENDING) as Queued', () => {
     expect(getStatusLabel('PENDING')).toBe('Queued')
+  })
+
+  it('labels UNSUPPORTED as Unsupported', () => {
+    expect(getStatusLabel('UNSUPPORTED')).toBe('Unsupported')
   })
 })
 
@@ -128,6 +168,7 @@ describe('IndexingStatusBadge compact mode', () => {
     INDEXING: 'Preparing',
     FAILED: 'Failed',
     NOT_INDEXED: 'Queued',
+    UNSUPPORTED: 'Unsupported',
   }
 
   const longLabels: Record<string, string> = {
@@ -136,6 +177,7 @@ describe('IndexingStatusBadge compact mode', () => {
     INDEXING: 'Preparing',
     FAILED: 'Failed',
     NOT_INDEXED: 'Queued',
+    UNSUPPORTED: 'Unsupported',
   }
 
   for (const status of Object.keys(compactLabels)) {
@@ -216,7 +258,14 @@ describe('StatusIcon (compact file-row marker)', () => {
     expect(container).toHaveTextContent('')
   })
 
-  for (const status of ['PARTIAL', 'INDEXING', 'FAILED', 'NOT_INDEXED', 'PENDING'] as const) {
+  for (const status of [
+    'PARTIAL',
+    'INDEXING',
+    'FAILED',
+    'NOT_INDEXED',
+    'UNSUPPORTED',
+    'PENDING',
+  ] as const) {
     it(`hides the icon for ${status} — hover on the file row carries the status instead`, () => {
       const { container } = render(createElement(StatusIcon, { status }))
 

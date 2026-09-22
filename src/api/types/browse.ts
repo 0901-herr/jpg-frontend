@@ -1,4 +1,10 @@
-export type IndexingStatus = 'READY' | 'PARTIAL' | 'INDEXING' | 'FAILED' | 'NOT_INDEXED'
+export type IndexingStatus =
+  | 'READY'
+  | 'PARTIAL'
+  | 'INDEXING'
+  | 'FAILED'
+  | 'NOT_INDEXED'
+  | 'UNSUPPORTED'
 
 export type SummaryStatus = 'READY' | 'PENDING' | 'FAILED' | 'NOT_AVAILABLE'
 

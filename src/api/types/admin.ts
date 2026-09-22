@@ -12,6 +12,7 @@ export type LifecycleStatus =
   | 'READY'
   | 'RETRYING'
   | 'FAILED'
+  | 'UNSUPPORTED'
   | 'DELETING'
   | 'DELETED'
 

@@ -46,6 +46,12 @@ const STATUS_CONFIG: Record<
     className: 'bg-zinc-100 text-zinc-500',
     icon: <StatusNotIndexedIcon />,
   },
+  UNSUPPORTED: {
+    label: 'Unsupported',
+    compactLabel: 'Unsupported',
+    className: 'bg-zinc-100 text-zinc-500',
+    icon: <StatusNotIndexedIcon />,
+  },
 }
 
 export function getStatusLabel(status: IndexingStatus | string): string {
@@ -154,6 +160,7 @@ export function getSelectionWarning(status: IndexingStatus | string): string | n
   if (status === 'PARTIAL') return 'Partially ready. Answers may be incomplete.'
   if (status === 'INDEXING') return 'Still getting ready. Answers may be incomplete.'
   if (status === 'FAILED') return 'Could not be prepared. Not ready for questions.'
+  if (status === 'UNSUPPORTED') return 'Unsupported file type. Not ready for questions.'
   if (status === 'NOT_INDEXED') return 'Not ready yet. Not ready for questions.'
   return null
 }
@@ -170,6 +177,12 @@ export function getReadinessTooltipExplanation(
     return (
       statusReason?.trim() ||
       'Partly searchable for now. Answers may miss some details until processing finishes.'
+    )
+  }
+  if (status === 'UNSUPPORTED') {
+    return (
+      statusReason?.trim() ||
+      "This file type can't be searched. Only PDF, Word, Excel, PowerPoint, text, Markdown, HTML and CSV files are supported."
     )
   }
   return statusReason?.trim() || 'Not ready for questions yet.'
