@@ -197,7 +197,13 @@ async function streamQuery(
   payload: QueryRequest,
   callbacks: StreamQueryCallbacks,
   signal?: AbortSignal,
-): Promise<{ content: string; citations: Citation[]; coverage?: CoverageEvent; durationMs?: number }> {
+): Promise<{
+  content: string
+  citations: Citation[]
+  coverage?: CoverageEvent
+  durationMs?: number
+  messageId?: string
+}> {
   const toFriendlyStreamError = (err: unknown): string => {
     const httpStatus = err instanceof ApiError ? err.status : undefined
     // `ApiError.detail` only (not `.message`, which falls back to the raw
@@ -243,6 +249,14 @@ async function streamQuery(
   let durationMs: number | undefined
   let streamError: string | null = null
   let terminalEvent = false
+  // The persisted assistant chat_message id (Item 3, additive field —
+  // absent on an older adapter): the adapter now persists the assistant
+  // turn server-side before emitting `done`, and `done.message_id` is that
+  // row's own id. `sendMessage` prefers this over a fresh client-generated
+  // uuid so `recordAssistantMessage`'s POST lands as an idempotent upsert
+  // against the row the adapter already created, instead of creating a
+  // second, orphaned one.
+  let messageId: string | undefined
   // Sticky once set: an `abstention` event means whatever citations
   // arrived before it were retrieval candidates for an answer that was
   // never written, not real sources — drop them, and ignore any further
@@ -397,6 +411,7 @@ async function streamQuery(
             terminalEvent = true
             const obj = asRecord(data)
             durationMs = obj ? readNumber(obj, 'duration_ms') : undefined
+            messageId = obj ? readString(obj, 'message_id') : undefined
             // Mechanism B (the streaming post-generation absence-assertion
             // check, `is_absence_assertion` in rag-engine) has no dedicated
             // SSE event of its own — unlike Mechanism A's `abstention`
@@ -478,7 +493,7 @@ async function streamQuery(
     throw new Error(streamError)
   }
 
-  return { content, citations, coverage, durationMs }
+  return { content, citations, coverage, durationMs, messageId }
 }
 
 /** SSE query — streams answer tokens and returns final message shape. */
@@ -491,7 +506,7 @@ export async function sendMessage(request: SendMessageRequest): Promise<SendMess
     ...(request.chatId ? { conversation_id: request.chatId } : {}),
   }
 
-  const { content, citations, coverage, durationMs } = await streamQuery(
+  const { content, citations, coverage, durationMs, messageId } = await streamQuery(
     payload,
     request.callbacks ?? {},
     request.signal,
@@ -503,7 +518,7 @@ export async function sendMessage(request: SendMessageRequest): Promise<SendMess
       : Math.max(1, Math.round((Date.now() - startedAt) / 1000))
 
   return {
-    messageId: crypto.randomUUID(),
+    messageId: messageId ?? crypto.randomUUID(),
     content,
     fileTags: citations.length > 0 ? citationsToTags(citations) : undefined,
     sources: citations.length > 0 ? citationsToSources(citations) : undefined,

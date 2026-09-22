@@ -964,3 +964,36 @@ describe('sendMessage final_answer handling', () => {
     expect(result.sources).toBeUndefined()
   })
 })
+
+describe('sendMessage message_id handling (Item 3)', () => {
+  it("uses the done event's message_id as the returned messageId when present", async () => {
+    scriptedEvents = [
+      { event: 'answer', data: { text: 'The answer.' } },
+      { event: 'done', data: { duration_ms: 5, message_id: 'persisted-msg-1' } },
+    ]
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'A question',
+      documents: ['doc1'],
+    })
+
+    expect(result.messageId).toBe('persisted-msg-1')
+  })
+
+  it('falls back to a fresh client-generated id when message_id is absent (older adapter, backward compatible)', async () => {
+    scriptedEvents = [
+      { event: 'answer', data: { text: 'The answer.' } },
+      { event: 'done', data: { duration_ms: 5 } },
+    ]
+
+    const result = await sendMessage({
+      chatId: 'c1',
+      message: 'A question',
+      documents: ['doc1'],
+    })
+
+    expect(typeof result.messageId).toBe('string')
+    expect(result.messageId.length).toBeGreaterThan(0)
+  })
+})

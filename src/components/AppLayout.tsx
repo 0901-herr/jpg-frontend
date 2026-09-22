@@ -177,12 +177,37 @@ export default function AppLayout() {
   // empty own chat while this is still pending (never selected, only to
   // then be silently outranked by the shared one a moment later).
   const [shareToken, setShareToken] = useState<string | null>(() => getShareTokenFromLocation())
+  // One AbortController per chat with an in-flight query, keyed by chat id
+  // — replaces the old single `abortControllerRef` (Item 4): switching
+  // chats must no longer abort the chat left behind, so there can be more
+  // than one request in flight (one per chat) at a time. Declared before
+  // `useChatStore` so its own `isChatInFlightLocally` guard (Item 3) can
+  // read it — this component's `inFlightChatIds` state (declared further
+  // down) is this ref's re-render-driving twin, for the composer.
+  const abortControllersRef = useRef<Map<string, AbortController>>(new Map())
+  // Stable identity (empty dep array — reads the ref, never a state/prop
+  // value, so it never needs to change) on purpose: `useChatStore` closes
+  // several of its own `useCallback`s over this function, and a fresh
+  // function identity on every render would cascade through them and
+  // retrigger the effect that calls `ensureMessagesLoaded` on every
+  // render — an unbounded fetch loop for any shared/follower chat (that
+  // branch deliberately isn't gated on "already loaded").
+  const isChatInFlightLocally = useCallback(
+    (chatId: string) => abortControllersRef.current.has(chatId),
+    [],
+  )
   const chatStore = useChatStore({
     chatUserId,
     authLoading,
     enabled: chatStoreEnabled(),
     initialSession: initialSessionRef.current,
     hasPendingShare: shareToken != null,
+    // Item 3: a session detail fetch can report `pending_answer: true` for
+    // a chat this SAME tab is already streaming into itself (the fetch and
+    // this tab's own live stream can race) — in that case the live
+    // callbacks already own this chat's placeholder/answer, so the store
+    // must never also add its own "thinking" stand-in on top.
+    isChatInFlightLocally,
   })
   const {
     sessions,
@@ -282,14 +307,6 @@ export default function AppLayout() {
   // freshly sent message's author label agrees with whatever name the
   // sidebar's profile row already shows for "you".
   const currentUsername = browse.username ?? authSession?.username ?? 'You'
-  // One AbortController per chat with an in-flight query, keyed by chat id
-  // — replaces the old single `abortControllerRef` (Item 4): switching
-  // chats must no longer abort the chat left behind, so there can be more
-  // than one request in flight (one per chat) at a time. `inFlightChatIds`
-  // is the state twin of this ref's keys, read by the composer to derive
-  // `isResponding` for whichever chat is currently active — the ref alone
-  // can't drive a re-render.
-  const abortControllersRef = useRef<Map<string, AbortController>>(new Map())
   const [inFlightChatIds, setInFlightChatIds] = useState<Set<string>>(new Set())
   // Self-cancel-on-resend only for `handleExtractMetadata`'s own request —
   // deliberately its own ref, never shared with the per-chat query
