@@ -106,6 +106,58 @@ function withCitationTooltip(source: Source, child: ReactNode) {
   )
 }
 
+/** Hover preview for a "Related documents" page chip — same visual shape
+ * as `CitationHoverPreview` (filename, optional page, optional excerpt),
+ * but the excerpt is the exact clause this citation backs (`quote`, from
+ * `citationContextByAnswerOrder`) when there is one, shown in quotes to
+ * match the "Cited for" line this replaces — falling back to the source's
+ * own retrieval snippet (unquoted, as `CitationHoverPreview` shows it) for
+ * a chip with no captured clause (e.g. an "Also searched" page). */
+function ChipHoverPreview({
+  filename,
+  page,
+  quote,
+  snippet,
+}: {
+  filename: string
+  page: number | undefined
+  quote: string | undefined
+  snippet: string | undefined
+}) {
+  return (
+    <div className="docu-citation-preview">
+      <p className="docu-citation-preview-filename m-0">{filename}</p>
+      {page != null && <p className="docu-citation-preview-meta m-0">Page {page}</p>}
+      {quote ? (
+        <p className="docu-citation-preview-snippet m-0">&quot;{quote}&quot;</p>
+      ) : (
+        snippet && <p className="docu-citation-preview-snippet m-0">{snippet}</p>
+      )}
+    </div>
+  )
+}
+
+function withChipTooltip(
+  reactKey: string,
+  filename: string,
+  page: number | undefined,
+  quote: string | undefined,
+  snippet: string | undefined,
+  child: ReactNode,
+) {
+  return (
+    <Tooltip
+      key={reactKey}
+      title={<ChipHoverPreview filename={filename} page={page} quote={quote} snippet={snippet} />}
+      placement="top"
+      mouseEnterDelay={0.15}
+      classNames={{ root: 'docu-citation-preview-tooltip' }}
+    >
+      {child}
+    </Tooltip>
+  )
+}
+
 export function CitationLink({ source, label, number, className }: CitationLinkProps) {
   const [opening, setOpening] = useState(false)
 
@@ -289,18 +341,22 @@ function DocumentRow({
           aria-hidden
         />
         <div className="docu-citation-row-body min-w-0 flex-1">
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 flex-wrap">
             {canOpenRow ? (
               <button
                 type="button"
                 onClick={() => firstPage && onOpen(firstPage.source, rowOpeningKey)}
                 disabled={isRowOpening}
-                className={`min-w-0 break-words text-left ${type.body} ${typeColor.body} leading-relaxed underline decoration-[#c8c8c8] underline-offset-2 hover:decoration-[#676767] disabled:opacity-60`}
+                title={group.filename}
+                className={`min-w-0 truncate text-left ${type.body} ${typeColor.body} leading-relaxed underline decoration-[#c8c8c8] underline-offset-2 hover:decoration-[#676767] disabled:opacity-60`}
               >
                 {group.filename}
               </button>
             ) : (
-              <span className={`min-w-0 break-words ${type.body} ${typeColor.body} leading-relaxed`}>
+              <span
+                title={group.filename}
+                className={`min-w-0 truncate ${type.body} ${typeColor.body} leading-relaxed`}
+              >
                 {group.filename}
               </span>
             )}
@@ -315,13 +371,18 @@ function DocumentRow({
               const pageKey =
                 entry.page != null ? `${group.key}-p${entry.page}` : `${group.key}-c${number}`
               const isPageOpening = openingKey === pageKey
+              // The exact clause this citation backs (client feedback: the
+              // always-visible "Cited for" block made the card tall) — now
+              // shown in the chip's own hover tooltip instead, alongside
+              // the filename/page a plain citation preview would show.
+              const quote = number != null ? citedContexts.find((c) => c.number === number)?.text : undefined
 
               // One cohesive pill per citation — marker + page together
               // (client feedback: a separate number pill and page pill
               // read as two unrelated chips). A citation with no page
               // known shows just the marker.
               const pill = (
-                <span className="docu-citation-chip">
+                <span className="docu-citation-chip shrink-0">
                   {number != null && (
                     <span className="docu-citation-chip-num" aria-hidden>
                       {number}
@@ -333,7 +394,14 @@ function DocumentRow({
               )
 
               if (!canOpenPage) {
-                return <Fragment key={pageKey}>{pill}</Fragment>
+                return withChipTooltip(
+                  pageKey,
+                  group.filename,
+                  entry.page,
+                  quote,
+                  entry.source.snippet,
+                  pill,
+                )
               }
 
               const title =
@@ -341,55 +409,45 @@ function DocumentRow({
                   ? `Open ${group.filename} at page ${entry.page} in LogicalDOC`
                   : `Open ${group.filename} in LogicalDOC`
 
-              return (
+              return withChipTooltip(
+                pageKey,
+                group.filename,
+                entry.page,
+                quote,
+                entry.source.snippet,
                 <button
-                  key={pageKey}
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation()
                     onOpen(entry.source, pageKey)
                   }}
                   disabled={isPageOpening}
-                  title={title}
-                  className="docu-citation-page-chips disabled:opacity-60"
+                  aria-label={title}
+                  className="docu-citation-page-chips shrink-0 disabled:opacity-60"
                 >
                   {pill}
-                </button>
+                </button>,
               )
             })}
           </div>
 
-          {/* Why this document is in the list — every answer clause it
-              backs (client feedback: only the first of 3 citations showed,
-              silently dropping the other two), each prefixed with the same
-              marker chip as its pill above — or an honest "not cited" for
-              a retrieval candidate the answer never actually quoted
-              (client feedback: nothing told the reader why a document was
-              relevant). */}
-          {citedContexts.length > 0 ? (
-            <div className="mt-1 space-y-1">
-              <span className={`block ${type.caption} ${typeColor.muted}`}>Cited for:</span>
-              {citedContexts.map(({ number, text }) => (
-                <div key={number} className="flex items-start gap-1.5">
-                  <span className="docu-citation-chip-num mt-px shrink-0" aria-hidden>
-                    {number}
-                  </span>
-                  <span
-                    className={`${type.caption} ${typeColor.muted} leading-relaxed line-clamp-2`}
-                    title={text}
-                  >
-                    &quot;{text}&quot;
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : (
+          {/* An honest "not cited" caption for a retrieval candidate the
+              answer never actually quoted (client feedback: nothing told
+              the reader why a document was relevant) — the cited case's
+              own "Cited for" text now lives in each chip's hover tooltip
+              instead of an always-visible block here. */}
+          {citedContexts.length === 0 && (
             <span className={`block ${type.caption} ${typeColor.muted} leading-relaxed mt-1`}>
               Searched, not cited
             </span>
           )}
 
-          {group.snippet && (
+          {/* Only shown for an uncited ("Also searched") row — for a cited
+              row this would duplicate content already in the chip
+              tooltips' quotes (client feedback: the trailing summary
+              snippet under a cited card repeated what "Cited for" already
+              said). */}
+          {citedContexts.length === 0 && group.snippet && (
             <span
               className={`block ${type.body} ${typeColor.secondary} leading-relaxed mt-1 line-clamp-2`}
             >

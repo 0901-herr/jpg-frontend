@@ -233,7 +233,7 @@ describe('CitationList — answer-order numbering (Task 2)', () => {
     expect(rowFilenames).toEqual(['Beta.pdf', 'Alpha.pdf'])
   })
 
-  it('shows "Cited for" with the citing sentence under a cited entry', async () => {
+  it('shows the citing sentence in the chip\'s hover tooltip for a cited entry, not an always-visible "Cited for" block', async () => {
     const user = userEvent.setup()
     const cited = source({ index: 1, filename: 'Report.pdf', documentId: 'doc-r', page: 1 })
     const content = `The budget grew significantly ${cited.docRef}.`
@@ -241,11 +241,19 @@ describe('CitationList — answer-order numbering (Task 2)', () => {
     render(<CitationList sources={[cited]} content={content} />)
     await user.click(screen.getByRole('button', { name: /Related documents/ }))
 
-    expect(screen.getByText('Cited for:')).toBeInTheDocument()
-    expect(screen.getByText('"The budget grew significantly."')).toBeInTheDocument()
+    // No always-visible "Cited for" list and no always-visible quote line
+    // — the tall stacked card the client flagged.
+    expect(screen.queryByText('Cited for:')).not.toBeInTheDocument()
+    expect(screen.queryByText('"The budget grew significantly."')).not.toBeInTheDocument()
+
+    await user.hover(screen.getByRole('button', { name: /Open Report\.pdf/ }))
+    const tooltip = await screen.findByRole('tooltip')
+    expect(tooltip).toHaveTextContent('Report.pdf')
+    expect(tooltip).toHaveTextContent('Page 1')
+    expect(tooltip).toHaveTextContent('"The budget grew significantly."')
   })
 
-  it('lists every clause a document was cited for, in marker order, not just the first (client feedback: pvsnp.pdf cited 3 times only showed one snippet)', async () => {
+  it('lists every clause a document was cited for, each in its own chip\'s tooltip, in marker order (client feedback: pvsnp.pdf cited 3 times only showed one snippet)', async () => {
     const user = userEvent.setup()
     const pageFive = source({ index: 1, filename: 'Doc.pdf', documentId: 'doc-x', page: 5 })
     const pageTwo = source({ index: 2, filename: 'Doc.pdf', documentId: 'doc-x', page: 2 })
@@ -257,38 +265,63 @@ describe('CitationList — answer-order numbering (Task 2)', () => {
     // sentence as if it were the group's first-cited clause.
     const content = `First point cites page five ${pageFive.docRef}. Second point cites page two ${pageTwo.docRef}.`
 
-    render(<CitationList sources={[pageFive, pageTwo]} content={content} />)
+    const { unmount } = render(<CitationList sources={[pageFive, pageTwo]} content={content} />)
     await user.click(screen.getByRole('button', { name: /Related documents/ }))
 
-    const clauses = screen.getAllByText(/^"/).map((el) => el.textContent)
-    expect(clauses).toEqual([
+    expect(pillTexts()).toEqual(['1 · p. 5', '2 · p. 2'])
+
+    await user.hover(screen.getByRole('button', { name: /Open Doc\.pdf at page 5/ }))
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
       '"First point cites page five."',
+    )
+    unmount()
+
+    // Rendered fresh rather than un/re-hovering in the same tree — antd's
+    // tooltip fade-out (mouseLeaveDelay) can leave the first tooltip node
+    // in the DOM at the moment the second one mounts, so querying by role
+    // alone can't tell which one is "current".
+    render(<CitationList sources={[pageFive, pageTwo]} content={content} />)
+    await user.click(screen.getByRole('button', { name: /Related documents/ }))
+    await user.hover(screen.getByRole('button', { name: /Open Doc\.pdf at page 2/ }))
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
       '"Second point cites page two."',
-    ])
+    )
   })
 
-  it('renders a document cited 3 times with sorted pills and all 3 clauses (owner repro: pvsnp.pdf)', async () => {
+  it('renders a document cited 3 times with sorted pills and all 3 clauses available on hover (owner repro: pvsnp.pdf)', async () => {
     const user = userEvent.setup()
     const page1 = source({ index: 1, filename: 'pvsnp.pdf', documentId: 'doc-x', page: 1 })
     const page2 = source({ index: 2, filename: 'pvsnp.pdf', documentId: 'doc-x', page: 2 })
     const page9 = source({ index: 3, filename: 'pvsnp.pdf', documentId: 'doc-x', page: 9 })
     // Cited out of page order: page 9 first, page 1 second, page 2 third —
     // the pill row must read 1, 2, 3 (marker order), not 2, 3, 1 (page
-    // order), and every one of the 3 clauses must show, not just the
-    // group's first-cited one.
+    // order), and every one of the 3 clauses must be reachable, not just
+    // the group's first-cited one.
     const content = `A Turing machine consists of a tape ${page9.docRef}. It reads symbols ${page1.docRef}. It writes symbols ${page2.docRef}.`
 
-    render(<CitationList sources={[page9, page1, page2]} content={content} />)
+    const { unmount: unmountFirst } = render(
+      <CitationList sources={[page9, page1, page2]} content={content} />,
+    )
     await user.click(screen.getByRole('button', { name: /Related documents/ }))
 
     expect(pillTexts()).toEqual(['1 · p. 9', '2 · p. 1', '3 · p. 2'])
+    unmountFirst()
 
-    const clauses = screen.getAllByText(/^"/).map((el) => el.textContent)
-    expect(clauses).toEqual([
-      '"A Turing machine consists of a tape."',
-      '"It reads symbols."',
-      '"It writes symbols."',
-    ])
+    // Rendered fresh per chip (see the previous test's comment) so a
+    // lingering tooltip from the prior hover can never be mistaken for
+    // the one under test.
+    const expectations: Array<[RegExp, string]> = [
+      [/Open pvsnp\.pdf at page 9/, '"A Turing machine consists of a tape."'],
+      [/Open pvsnp\.pdf at page 1/, '"It reads symbols."'],
+      [/Open pvsnp\.pdf at page 2/, '"It writes symbols."'],
+    ]
+    for (const [name, quote] of expectations) {
+      const { unmount } = render(<CitationList sources={[page9, page1, page2]} content={content} />)
+      await user.click(screen.getByRole('button', { name: /Related documents/ }))
+      await user.hover(screen.getByRole('button', { name }))
+      expect(await screen.findByRole('tooltip')).toHaveTextContent(quote)
+      unmount()
+    }
   })
 
   it('shows "Searched, not cited" under an uncited entry instead of a "Cited for" line', async () => {
@@ -318,14 +351,19 @@ describe('CitationList — answer-order numbering (Task 2)', () => {
       snippet: 'The lecturer discussed the students briefly.',
     })
 
+    // The trailing summary snippet is only shown for an uncited ("Also
+    // searched") entry now (a cited entry's quote lives in its chip
+    // tooltip instead) — the answer never actually cites this source, so
+    // `content` carries no `docRef` for it.
     render(
       <CitationList
         sources={[withSnippet]}
-        content={contentCiting(withSnippet)}
+        content="No citations here."
         question="Who are the students mentioned?"
       />,
     )
     await user.click(screen.getByRole('button', { name: /Related documents/ }))
+    await user.click(screen.getByRole('button', { name: /Also searched/ }))
 
     const highlighted = screen.getByText('students')
     expect(highlighted.tagName).toBe('SPAN')
@@ -348,10 +386,30 @@ describe('CitationList — answer-order numbering (Task 2)', () => {
       snippet: 'The lecturer discussed the students briefly.',
     })
 
-    render(<CitationList sources={[withSnippet]} content={contentCiting(withSnippet)} />)
+    render(<CitationList sources={[withSnippet]} content="No citations here." />)
     await user.click(screen.getByRole('button', { name: /Related documents/ }))
+    await user.click(screen.getByRole('button', { name: /Also searched/ }))
 
     expect(screen.getByText('The lecturer discussed the students briefly.')).toBeInTheDocument()
+  })
+
+  it('does not show the trailing summary snippet for a cited entry — the quote is in the chip tooltip instead', async () => {
+    const user = userEvent.setup()
+    const cited = source({
+      index: 1,
+      filename: 'Report.pdf',
+      documentId: 'doc-r',
+      page: 1,
+      snippet: 'Revenue increased in the enterprise segment overall this year.',
+    })
+    const content = `The budget grew significantly ${cited.docRef}.`
+
+    render(<CitationList sources={[cited]} content={content} />)
+    await user.click(screen.getByRole('button', { name: /Related documents/ }))
+
+    expect(
+      screen.queryByText('Revenue increased in the enterprise segment overall this year.'),
+    ).not.toBeInTheDocument()
   })
 })
 
