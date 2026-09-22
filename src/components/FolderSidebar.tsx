@@ -26,6 +26,7 @@ import { safeNewTabUrl } from '../utils/navigation'
 import BrowseViewToggle, { type BrowseViewMode } from './BrowseViewToggle'
 import CategoryTag from './CategoryTag'
 import DocumentChecklist from './DocumentChecklist'
+import SelectionLimitNotice from './SelectionLimitNotice'
 import {
   getReadinessTooltipExplanation,
   getSelectableDocumentIds,
@@ -727,6 +728,8 @@ export default function FolderSidebar({
             )}
           </div>
         </div>
+        <SelectionLimitNotice selectedCount={selection.selectedIds.size} />
+
         {/* No local overflow — parent sidebar scrolls Files + Chats together. */}
         <div className="flex flex-col -mx-2.5 px-2.5">
           {viewMode === 'folder' ? (
