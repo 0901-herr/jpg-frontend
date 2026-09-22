@@ -11,6 +11,7 @@ import {
 import type { QueryTier } from '../api/types/query'
 import { fetchDocumentViewUrl } from '../api/browse'
 import { getSendDisabledReason } from '../utils/chatComposerGate'
+import { MAX_SELECTED_FILE_PREVIEW } from '../config/selection'
 import { safeNewTabUrl } from '../utils/navigation'
 import { type, typeColor } from '../styles/typography'
 import { radius } from '../styles/theme'
@@ -128,13 +129,18 @@ interface ChatInputProps {
 // semantics once native markers (and the `list-style` they imply) are gone.
 function SelectedFilesTooltip({
   files,
+  totalCount = files.length,
 }: {
   files: { documentId: string; filename: string }[]
+  totalCount?: number
 }) {
   const { message } = App.useApp()
   const [openingId, setOpeningId] = useState<string | null>(null)
 
   if (files.length === 0) return null
+
+  const previewFiles = files.slice(0, MAX_SELECTED_FILE_PREVIEW)
+  const remainingCount = Math.max(0, totalCount - previewFiles.length)
 
   const openFile = async (documentId: string, filename: string) => {
     if (openingId) return
@@ -156,7 +162,7 @@ function SelectedFilesTooltip({
       role="list"
       className="docu-selected-files-list m-0 max-h-56 overflow-y-auto"
     >
-      {files.map((file) => (
+      {previewFiles.map((file) => (
         <li key={file.documentId} className="docu-selected-files-item text-xs">
           <button
             type="button"
@@ -174,6 +180,11 @@ function SelectedFilesTooltip({
           </button>
         </li>
       ))}
+      {remainingCount > 0 && (
+        <li className="docu-selected-files-item text-xs" aria-label={`${remainingCount} more files`}>
+          {remainingCount} more {remainingCount === 1 ? 'file' : 'files'}
+        </li>
+      )}
     </ol>
   )
 }
@@ -250,7 +261,7 @@ export default function ChatInput({
     selectedCount > 0 ? (
       <div className="docu-chat-composer-files-wrap">
         <Tooltip
-          title={<SelectedFilesTooltip files={selectedFiles} />}
+          title={<SelectedFilesTooltip files={selectedFiles} totalCount={selectedCount} />}
           placement="top"
           mouseEnterDelay={0.2}
           classNames={{ root: 'docu-selected-files-tooltip' }}
@@ -303,10 +314,11 @@ export default function ChatInput({
       <Tooltip
         title={
           <SelectedFilesTooltip
-            files={sharedScopeFiles.map((file) => ({
+            files={sharedScopeFiles.slice(0, MAX_SELECTED_FILE_PREVIEW).map((file) => ({
               documentId: file.documentId,
               filename: file.filename ?? `File ${file.documentId}`,
             }))}
+            totalCount={sharedScopeFiles.length}
           />
         }
         placement="top"

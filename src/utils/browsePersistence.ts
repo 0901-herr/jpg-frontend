@@ -1,3 +1,5 @@
+import { MAX_EXPLICIT_SELECTION } from '../config/selection'
+
 const SELECTED_DOCS_KEY = 'docu_selected_documents'
 const EXPANDED_FOLDERS_KEY = 'docu_expanded_folders'
 const ACTIVE_FOLDER_KEY = 'docu_active_folder'
@@ -53,7 +55,22 @@ export function loadPersistedSelection(userId?: string | null): Set<string> | nu
   if (raw === null) return null
   try {
     const parsed = JSON.parse(raw)
-    return new Set(Array.isArray(parsed) ? parsed.map(String) : [])
+    if (!Array.isArray(parsed)) return new Set()
+    if (parsed.length > MAX_EXPLICIT_SELECTION) {
+      // Never restore or re-submit a stale oversized selection. Clearing the
+      // slot also prevents the same bad payload from being retried forever on
+      // every mount; the user can make a fresh bounded selection instead.
+      try {
+        localStorage.removeItem(
+          typeof userId === 'string' ? selectedDocumentsKey(userId) : SELECTED_DOCS_KEY,
+        )
+      } catch {
+        // A storage failure must not prevent the in-memory selection from
+        // starting empty.
+      }
+      return new Set()
+    }
+    return new Set(parsed.map(String))
   } catch {
     return new Set()
   }
@@ -63,10 +80,12 @@ export function persistSelection(ids: Set<string>, userId?: string | null) {
   // There is no safe owner to write against until authentication resolves.
   if (userId === null) return
   try {
-    localStorage.setItem(
-      typeof userId === 'string' ? selectedDocumentsKey(userId) : SELECTED_DOCS_KEY,
-      JSON.stringify([...ids]),
-    )
+    const key = typeof userId === 'string' ? selectedDocumentsKey(userId) : SELECTED_DOCS_KEY
+    if (ids.size > MAX_EXPLICIT_SELECTION) {
+      localStorage.removeItem(key)
+      return
+    }
+    localStorage.setItem(key, JSON.stringify([...ids]))
   } catch {
     // Storage can be unavailable (private browsing) or full. Selection still
     // lives in React state, so persistence is best effort and must never make

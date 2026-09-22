@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { BrowseDocumentItem } from '../api/types/browse'
+import { MAX_EXPLICIT_SELECTION, MAX_SELECTED_FILE_PREVIEW } from '../config/selection'
 import { getSelectableDocumentIds } from '../components/IndexingStatusBadge'
 import {
   loadPersistedSelection,
@@ -43,11 +44,22 @@ export function useDocumentSelection(userId?: string | null) {
       setSelectionState((previous) => {
         const current = previous.userId === userId ? previous.ids : new Set<string>()
         const next = updater(current)
+        if (next.size > MAX_EXPLICIT_SELECTION) return previous
         persistSelection(next, userId)
         return { userId, ids: next }
       })
     },
     [userId],
+  )
+
+  const canAddSelection = useCallback(
+    (ids: Iterable<string>) => {
+      const current = selectionState.userId === userId ? selectionState.ids : EMPTY_SELECTION
+      const next = new Set(current)
+      for (const id of ids) next.add(id)
+      return next.size <= MAX_EXPLICIT_SELECTION
+    },
+    [selectionState, userId],
   )
 
   const registerDocuments = useCallback((documents: BrowseDocumentItem[]) => {
@@ -62,26 +74,35 @@ export function useDocumentSelection(userId?: string | null) {
   }, [])
 
   const toggleDocument = useCallback((documentId: string, checked: boolean) => {
+    if (checked && !selectedIds.has(documentId) && selectedIds.size >= MAX_EXPLICIT_SELECTION) {
+      return false
+    }
     updateSelection((prev) => {
       const next = new Set(prev)
       if (checked) next.add(documentId)
       else next.delete(documentId)
       return next
     })
-  }, [updateSelection])
+    return true
+  }, [selectedIds, updateSelection])
 
   const setSelection = useCallback((ids: Iterable<string>) => {
     const next = new Set(ids)
+    if (next.size > MAX_EXPLICIT_SELECTION) return false
     updateSelection(() => next)
+    return true
   }, [updateSelection])
 
   const mergeSelection = useCallback((ids: Iterable<string>) => {
+    const incoming = [...ids]
+    if (!canAddSelection(incoming)) return false
     updateSelection((prev) => {
       const next = new Set(prev)
-      for (const id of ids) next.add(id)
+      for (const id of incoming) next.add(id)
       return next
     })
-  }, [updateSelection])
+    return true
+  }, [canAddSelection, updateSelection])
 
   const removeSelection = useCallback((ids: Iterable<string>) => {
     updateSelection((prev) => {
@@ -95,10 +116,11 @@ export function useDocumentSelection(userId?: string | null) {
     (documents: BrowseDocumentItem[], { replace = false }: { replace?: boolean } = {}) => {
       const ids = getSelectableDocumentIds(documents)
       if (replace) {
-        setSelection(ids)
+        return setSelection(ids)
       } else if (ids.length > 0) {
-        mergeSelection(ids)
+        return mergeSelection(ids)
       }
+      return true
     },
     [mergeSelection, setSelection],
   )
@@ -127,6 +149,7 @@ export function useDocumentSelection(userId?: string | null) {
   const selectedFilenames = useMemo(
     () =>
       [...selectedIds]
+        .slice(0, MAX_SELECTED_FILE_PREVIEW)
         .map((id) => documentMeta.get(id)?.filename ?? `Document ${id}`)
         .sort((a, b) => a.localeCompare(b)),
     [documentMeta, selectedIds],

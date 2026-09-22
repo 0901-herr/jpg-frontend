@@ -350,6 +350,19 @@ describe('resolveProgressScope', () => {
     expect(scope.folders).toEqual([])
   })
 
+  it('bounds file and folder names retained for the progress ticker', () => {
+    const ids = Array.from({ length: 25 }, (_, i) => `doc-${i}`)
+    const meta = docMeta(
+      Object.fromEntries(ids.map((id, i) => [id, { filename: `${i}.pdf`, folder_id: i }])),
+    )
+    const scope = resolveProgressScope(ids, meta, (folderId) => ({ name: `Folder ${folderId}` }))
+
+    expect(scope.files).toHaveLength(20)
+    expect(scope.folders).toHaveLength(20)
+    expect(scope.files.at(-1)).toBe('19.pdf')
+    expect(scope.folders.at(-1)).toBe('Folder 19')
+  })
+
   it('returns empty files and folders for an empty document list', () => {
     expect(resolveProgressScope([], docMeta({}), () => undefined)).toEqual({
       files: [],

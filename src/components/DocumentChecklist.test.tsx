@@ -246,6 +246,45 @@ describe('DocumentChecklist sidebar row layout', () => {
   })
 })
 
+describe('DocumentChecklist selection limit', () => {
+  it('disables unchecked rows once 500 documents are selected', () => {
+    const selectedIds = new Set(Array.from({ length: 500 }, (_, i) => String(i)))
+    const { container } = render(
+      <DocumentChecklist
+        documents={[doc({ document_id: 'new-doc', indexing_status: 'READY', queryable: true })]}
+        selectedIds={selectedIds}
+        onToggle={vi.fn()}
+        onSelectAll={vi.fn()}
+        onDeselectAll={vi.fn()}
+      />,
+    )
+
+    const row = screen.getByText('contract.pdf').closest('label')
+    expect(row).not.toBeNull()
+    expect(row?.querySelector('input[type="checkbox"]')).toBeDisabled()
+    expect(container.textContent).toContain('0/1')
+  })
+
+  it('reports a rejected select-all action to the caller', async () => {
+    const user = userEvent.setup()
+    const onSelectionLimitExceeded = vi.fn()
+    render(
+      <DocumentChecklist
+        documents={[doc({ indexing_status: 'READY', queryable: true })]}
+        selectedIds={new Set()}
+        onToggle={vi.fn()}
+        onSelectAll={() => false}
+        onDeselectAll={vi.fn()}
+        onSelectionLimitExceeded={onSelectionLimitExceeded}
+      />,
+    )
+
+    await user.click(screen.getByRole('checkbox', { name: 'Select all' }))
+
+    expect(onSelectionLimitExceeded).toHaveBeenCalledOnce()
+  })
+})
+
 describe('DocumentChecklist "Select all" toggle', () => {
   const docA = doc({ document_id: 'doc-a', filename: 'a.pdf', indexing_status: 'READY', queryable: true })
   const docB = doc({ document_id: 'doc-b', filename: 'b.pdf', indexing_status: 'READY', queryable: true })

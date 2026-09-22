@@ -1,4 +1,5 @@
 import { displayFilename } from './citations'
+import { MAX_SELECTED_FILE_PREVIEW } from '../config/selection'
 
 const STAGE_LABELS: Record<string, string> = {
   classifying: 'Understanding your question',
@@ -237,8 +238,8 @@ export function progressTickerLabel(
   { stageLabel, stage, files, folders }: ProgressTickerContext,
 ): string | undefined {
   const isGenerating = (stage ?? '').toLowerCase() === 'generating'
-  const uniqueFiles = [...new Set(files.filter(Boolean))]
-  const uniqueFolders = [...new Set(folders.filter(Boolean))]
+  const uniqueFiles = [...new Set(files.slice(0, MAX_SELECTED_FILE_PREVIEW).filter(Boolean))]
+  const uniqueFolders = [...new Set(folders.slice(0, MAX_SELECTED_FILE_PREVIEW).filter(Boolean))]
 
   if (isGenerating) {
     const scopeLines = [
@@ -295,13 +296,14 @@ export function resolveProgressScope(
   getFolderNode: (folderId: number) => { name: string } | undefined,
 ): ProgressScope {
   const files = documentIds
+    .slice(0, MAX_SELECTED_FILE_PREVIEW)
     .map((id) => documentMeta.get(id)?.filename)
     .filter((name): name is string => Boolean(name))
     .map(displayFilename)
 
   const folderIds = [
     ...new Set(
-      documentIds
+      documentIds.slice(0, MAX_SELECTED_FILE_PREVIEW)
         .map((id) => documentMeta.get(id)?.folder_id)
         .filter((id): id is number => typeof id === 'number'),
     ),
@@ -309,6 +311,7 @@ export function resolveProgressScope(
   const folders = folderIds
     .map((folderId) => getFolderNode(folderId)?.name)
     .filter((name): name is string => Boolean(name))
+    .slice(0, MAX_SELECTED_FILE_PREVIEW)
 
   return { files, folders }
 }

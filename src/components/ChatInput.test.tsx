@@ -347,6 +347,21 @@ describe('ChatInput — selected files popover', () => {
     }
   })
 
+  it('bounds the selected-file preview while preserving the aggregate count', async () => {
+    const user = userEvent.setup()
+    const files = fileEntries(...Array.from({ length: 25 }, (_, i) => `file-${i}.pdf`))
+    renderChatInput({ selectedCount: files.length, selectedFiles: files })
+
+    await user.hover(screen.getByText(`${files.length} files`))
+
+    const tooltip = await screen.findByRole('tooltip')
+    expect(within(tooltip).getAllByRole('listitem')).toHaveLength(21)
+    expect(tooltip).toHaveTextContent('5 more files')
+    expect(tooltip).toHaveTextContent('file-0.pdf')
+    expect(tooltip).toHaveTextContent('file-19.pdf')
+    expect(tooltip).not.toHaveTextContent('file-20.pdf')
+  })
+
   it('underlines on hover styling is declared in unlayered CSS and opens the file in LogicalDOC on click', async () => {
     const user = userEvent.setup()
     const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
