@@ -45,7 +45,7 @@ vi.mock('../api/browse', () => ({
 
 const root: BrowseRootResponse = { root_folder_id: 1, username: 'dev' }
 
-function rootContents(status: 'INDEXING' | 'READY'): BrowseFolderContentsResponse {
+function rootContents(status: 'INDEXING' | 'READY' | 'UNSUPPORTED'): BrowseFolderContentsResponse {
   return {
     folder: { folder_id: 1, name: 'Root', parent_id: null, has_children: true },
     folders: [{ folder_id: 2, name: 'Sub', parent_id: 1, has_children: false }],
@@ -171,6 +171,18 @@ describe('useBrowseTree auto-refresh', () => {
     expect(event.documents).toHaveLength(1)
     expect(event.documents[0].document_id).toBe('doc-1')
     expect(event.documents[0].indexing_status).toBe('READY')
+  })
+
+  it('treats UNSUPPORTED as settled — idle cadence, no fast-cadence status poll', async () => {
+    fetchFolderContents.mockResolvedValueOnce(rootContents('UNSUPPORTED'))
+    const result = await initHook()
+    expect(result.current.activeFolderContents?.documents[0].indexing_status).toBe('UNSUPPORTED')
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000)
+    })
+    // settled (terminal, like FAILED) -> no fast-cadence status poll
+    expect(fetchBrowseStatus).not.toHaveBeenCalled()
   })
 
   it('idle cadence performs the full folder re-fetch once every document has settled', async () => {

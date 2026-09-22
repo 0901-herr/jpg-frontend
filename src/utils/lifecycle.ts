@@ -11,6 +11,7 @@ export const LIFECYCLE_LABELS: Record<LifecycleStatus, string> = {
   READY: 'Ready',
   RETRYING: 'Retrying',
   FAILED: 'Failed',
+  UNSUPPORTED: 'Unsupported',
   DELETING: 'Deleting',
   DELETED: 'Deleted',
 }
@@ -26,6 +27,7 @@ export const LIFECYCLE_HINTS: Record<LifecycleStatus, string> = {
   READY: 'Successfully indexed and searchable',
   RETRYING: 'A temporary error occurred; waiting to try again',
   FAILED: 'Ingestion failed',
+  UNSUPPORTED: "This file type can't be indexed and will not be retried",
   DELETING: 'Being removed from RAG and storage',
   DELETED: 'Removed from the searchable corpus',
 }
@@ -41,6 +43,7 @@ export const LIFECYCLE_COLORS: Record<LifecycleStatus, string> = {
   READY: 'success',
   RETRYING: 'warning',
   FAILED: 'error',
+  UNSUPPORTED: 'default',
   DELETING: 'warning',
   DELETED: 'default',
 }
@@ -48,7 +51,12 @@ export const LIFECYCLE_COLORS: Record<LifecycleStatus, string> = {
 export function isTerminalLifecycle(status: LifecycleStatus): boolean {
   // PARTIAL can still be upgraded to READY by the completion recheck, so
   // keep polling document detail while it is Partial.
-  return status === 'READY' || status === 'FAILED' || status === 'DELETED'
+  return (
+    status === 'READY' ||
+    status === 'FAILED' ||
+    status === 'UNSUPPORTED' ||
+    status === 'DELETED'
+  )
 }
 
 /** Ordered ingestion pipeline stages for waterfall UI. */
@@ -75,6 +83,7 @@ const STATUS_STAGE_INDEX: Record<LifecycleStatus, number> = {
   READY: 6,
   RETRYING: 1,
   FAILED: -1,
+  UNSUPPORTED: -1,
   DELETING: 6,
   DELETED: 6,
 }
@@ -101,7 +110,7 @@ export function getPipelineProgress(
   let activeIndex = STATUS_STAGE_INDEX[status]
   let failed = false
 
-  if (status === 'FAILED') {
+  if (status === 'FAILED' || status === 'UNSUPPORTED') {
     failed = true
     activeIndex = inferFailedStageIndex(doc)
   } else if (status === 'DELETING') {
@@ -130,7 +139,9 @@ export function getPipelineProgress(
   })
 
   const summary =
-    status === 'FAILED'
+    status === 'UNSUPPORTED'
+      ? 'Unsupported file type — cannot be indexed'
+      : status === 'FAILED'
       ? `Failed at ${PIPELINE_STAGES[activeIndex]?.label ?? 'unknown stage'}`
       : status === 'READY'
         ? 'Fully indexed and searchable'

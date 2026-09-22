@@ -109,4 +109,20 @@ describe('summaryGate', () => {
       }),
     ).toBe('Summary not ready yet')
   })
+
+  it('treats an UNSUPPORTED file type like FAILED — not ready, never queryable', () => {
+    expect(
+      getSummarizeDisabledReason({
+        selectedCount: 1,
+        document: doc({
+          indexing_status: 'UNSUPPORTED',
+          queryable: false,
+          summary_status: 'NOT_AVAILABLE',
+          status_reason: 'Unsupported file type (.mp4).',
+        }),
+        isResponding: false,
+        disabled: false,
+      }),
+    ).toBe('File not ready yet')
+  })
 })

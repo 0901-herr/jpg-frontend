@@ -94,11 +94,12 @@ export default function DocumentDetailsPanel({ docId, open, onClose }: DocumentD
             )}
           </section>
 
-          {data.lifecycle_status === 'FAILED' && data.last_error && (
+          {(data.lifecycle_status === 'FAILED' || data.lifecycle_status === 'UNSUPPORTED') &&
+            data.last_error && (
             <section className="admin-document-details-section">
               <div className="admin-error-panel rounded-xl border p-4">
               <Text strong className="admin-error-panel-title">
-                Failure
+                {data.lifecycle_status === 'UNSUPPORTED' ? 'Unsupported file type' : 'Failure'}
               </Text>
               <Paragraph className={`!mb-0 mt-1 ${ADMIN_TEXT_ERROR}`}>{data.last_error}</Paragraph>
               {data.last_error_code && (

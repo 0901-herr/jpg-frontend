@@ -537,6 +537,55 @@ describe('FolderSidebar file row status', () => {
     expect(screen.queryByRole('img')).not.toBeInTheDocument()
   })
 
+  it('shows Unsupported with the adapter reason above the full filename, and the file is not selectable', async () => {
+    const unsupportedDoc: BrowseDocumentItem = {
+      ...folderDocuments[0],
+      indexing_status: 'UNSUPPORTED',
+      queryable: false,
+      status_reason:
+        'Unsupported file type (.mp4). Only PDF, Word, Excel, PowerPoint, text, Markdown, HTML and CSV files can be indexed.',
+    }
+    render(
+      <FolderSidebar
+        browse={createBrowseFixture({
+          cache: new Map([
+            [
+              1,
+              {
+                contents: {
+                  folder: { folder_id: 1, name: 'Root', parent_id: null, has_children: false },
+                  folders: [],
+                  documents: [unsupportedDoc],
+                  page: 0,
+                  has_more_documents: false,
+                },
+                loadedPages: new Set([0]),
+              },
+            ],
+          ]),
+        })}
+        selection={createSelectionFixture()}
+      />,
+    )
+
+    const user = userEvent.setup()
+    const row = (await screen.findByText('contract.pdf')).closest(
+      '.ant-tree-treenode',
+    ) as HTMLElement
+    await user.hover(within(row).getByText('contract.pdf'))
+
+    const tooltip = await screen.findByRole('tooltip')
+    expect(tooltip).toHaveTextContent('Unsupported')
+    expect(tooltip).toHaveTextContent(
+      'Unsupported file type (.mp4). Only PDF, Word, Excel, PowerPoint, text, Markdown, HTML and CSV files can be indexed.',
+    )
+    expect(tooltip).not.toHaveTextContent('Not ready')
+    expect(tooltip.querySelector('.docu-file-row-tooltip-status--unsupported')).not.toBeNull()
+
+    const checkbox = row.querySelector('.ant-tree-checkbox') as HTMLElement
+    expect(checkbox).toHaveClass('ant-tree-checkbox-disabled')
+  })
+
   it('shows Partial (not Not ready) for a PARTIAL document in the row tooltip', async () => {
     const partialDoc: BrowseDocumentItem = {
       ...folderDocuments[0],

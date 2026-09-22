@@ -574,7 +574,12 @@ export function useBrowseTree(
   const hasUnsettledDocument = useMemo(() => {
     for (const entry of cache.values()) {
       for (const doc of entry.contents.documents) {
-        if (doc.indexing_status !== 'READY' && doc.indexing_status !== 'FAILED') return true
+        if (
+          doc.indexing_status !== 'READY' &&
+          doc.indexing_status !== 'FAILED' &&
+          doc.indexing_status !== 'UNSUPPORTED'
+        )
+          return true
       }
     }
     return false

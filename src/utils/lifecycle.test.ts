@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { buildDocumentQuery } from '../components/admin/DocumentSearch'
-import { computeProgressLabel, getPipelineProgress } from '../utils/lifecycle'
+import {
+  computeProgressLabel,
+  getPipelineProgress,
+  isTerminalLifecycle,
+  LIFECYCLE_LABELS,
+} from '../utils/lifecycle'
 
 describe('computeProgressLabel', () => {
   it('shows indexed out of discovered while discovery is still growing', () => {
@@ -52,6 +57,26 @@ describe('getPipelineProgress', () => {
     expect(states[5]).toBe('failed')
     expect(states[4]).toBe('complete')
     expect(summary).toContain('Indexing')
+  })
+
+  it('treats UNSUPPORTED as a terminal failed-style outcome with its own summary', () => {
+    const { summary } = getPipelineProgress('UNSUPPORTED', {
+      discovered_at: '2026-01-01T00:00:00Z',
+      submitted_at: null,
+      ready_at: null,
+      failed_at: '2026-01-01T00:02:00Z',
+    })
+    expect(summary).toContain('Unsupported')
+  })
+})
+
+describe('UNSUPPORTED lifecycle status', () => {
+  it('is labelled Unsupported', () => {
+    expect(LIFECYCLE_LABELS.UNSUPPORTED).toBe('Unsupported')
+  })
+
+  it('is terminal, like FAILED and DELETED', () => {
+    expect(isTerminalLifecycle('UNSUPPORTED')).toBe(true)
   })
 })
 

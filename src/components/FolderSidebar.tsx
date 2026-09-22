@@ -339,9 +339,17 @@ export default function FolderSidebar({
         ? 'ready'
         : doc.indexing_status === 'PARTIAL'
           ? 'partial'
-          : 'not-ready'
+          : doc.indexing_status === 'UNSUPPORTED'
+            ? 'unsupported'
+            : 'not-ready'
     const readinessLabel =
-      readiness === 'ready' ? 'Ready' : readiness === 'partial' ? 'Partial' : 'Not ready'
+      readiness === 'ready'
+        ? 'Ready'
+        : readiness === 'partial'
+          ? 'Partial'
+          : readiness === 'unsupported'
+            ? 'Unsupported'
+            : 'Not ready'
     const readinessExplanation = getReadinessTooltipExplanation(
       doc.indexing_status,
       doc.status_reason,
