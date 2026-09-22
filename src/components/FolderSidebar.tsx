@@ -62,14 +62,46 @@ function switcherIcon({ expanded, isLeaf }: AntTreeNodeProps) {
 // just elides under the antd Tree's own CSS with no way to read the rest.
 // Same fix, minus the file row's ready/open-in-LogicalDOC affordances
 // (a folder has neither): truncate visually, show the full name on hover.
-function buildFolderTitle(name: string) {
+//
+// Item 6: `isLoading` renders a small spinner beside the name while this
+// folder's contents are being fetched (loadingFolderIds) — the antd Tree's
+// own `loadData` spinner is unavailable here because `switcherIcon` above
+// already overrides the switcher and doesn't know about loadData's
+// per-node `loading` flag, so the loading affordance lives in the title
+// instead.
+function buildFolderTitle(name: string, isLoading = false) {
   return (
     <Tooltip title={name} mouseEnterDelay={0.2}>
-      <span className="block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
-        {name}
+      <span className="flex min-w-0 items-center gap-1.5">
+        <span className="block min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
+          {name}
+        </span>
+        {isLoading && <Spin size="small" />}
       </span>
     </Tooltip>
   )
+}
+
+const LOADING_PLACEHOLDER_KEY_PREFIX = 'loading-placeholder-'
+
+/** Item 6: shown as a folder's only child while its contents are still
+ * being fetched (loadData in flight) and nothing is cached for it yet, so
+ * expanding a big folder never looks empty while it loads. Non-selectable
+ * — it's not a real row. */
+function buildLoadingPlaceholder(folderId: number): DataNode {
+  return {
+    key: `${LOADING_PLACEHOLDER_KEY_PREFIX}${folderId}`,
+    title: (
+      <span className={`flex items-center gap-1.5 ${sidebar.caption} ${typeColor.muted}`}>
+        <Spin size="small" />
+        Loading files
+      </span>
+    ),
+    isLeaf: true,
+    selectable: false,
+    checkable: false,
+    disableCheckbox: true,
+  }
 }
 
 export default function FolderSidebar({
@@ -92,6 +124,7 @@ export default function FolderSidebar({
     sessionExpired,
     ensureFolderLoaded,
     refreshDocumentStatuses,
+    loadingFolderIds,
   } = browse
 
   const [isRefreshingStatus, setIsRefreshingStatus] = useState(false)
@@ -257,9 +290,11 @@ export default function FolderSidebar({
 
   // Per known folder: 'checked' | 'half' | 'none' | 'empty' from the latest
   // status of each file beneath it (documentMeta wins over the fetched copy
-  // so a file that became Ready after the fetch counts). 'empty' means no
-  // selectable file at all — its checkbox is disabled rather than shown as
-  // an unticked box next to a ticked parent.
+  // so a file that became Ready after the fetch counts — same precedence
+  // buildFolderChildren now applies before building the row's tooltip, so
+  // the checkbox and the tooltip never disagree about a document's current
+  // status). 'empty' means no selectable file at all — its checkbox is
+  // disabled rather than shown as an unticked box next to a ticked parent.
   const folderCheckStates = useMemo(() => {
     const states = new Map<number, 'checked' | 'half' | 'none' | 'empty'>()
     for (const [folderId, docs] of subtreeById) {
@@ -290,6 +325,13 @@ export default function FolderSidebar({
   // dot) above the full name; the tooltip filename underlines and opens
   // LogicalDOC. PARTIAL stays distinct from Ready — the file is queryable
   // but not fully indexed.
+  //
+  // Item 5 fix: this reads whatever `doc` it's handed — it doesn't reach
+  // into `cache` or `selection.documentMeta` itself. The caller
+  // (buildFolderChildren below) is what decides which copy is "latest" and
+  // must resolve the same copy the checkbox derivation (folderCheckStates
+  // above) uses, or the tooltip and the Summarise/Extract buttons can show
+  // two different statuses for a document that just changed.
   const buildDocLeaf = useCallback((doc: BrowseDocumentItem): DataNode => {
     const selectable = isDocumentSelectable(doc.indexing_status, doc.queryable)
     const readiness =
@@ -368,37 +410,66 @@ export default function FolderSidebar({
     (folderId: number): DataNode[] | undefined => {
       const entry = cache.get(folderId)
       if (!entry) return undefined
-      const subfolders: DataNode[] = entry.contents.folders.map((folder) => ({
-        key: `${FOLDER_KEY_PREFIX}${folder.folder_id}`,
-        title: buildFolderTitle(folder.name),
-        // Every listed child folder is reported has_children: true (its
-        // own children aren't known without a fetch) — always expandable
-        // via loadData, same as the previous folder picker.
-        // A folder whose files are already loaded must stay expandable
-        // whatever `has_children` says, or those files could never be seen.
-        isLeaf: !folder.has_children && !cache.get(folder.folder_id)?.contents.documents.length,
-        disableCheckbox: emptyFolderIds.has(folder.folder_id),
-        children: buildFolderChildren(folder.folder_id),
-      }))
-      const docs = entry.contents.documents.map(buildDocLeaf)
+      const subfolders: DataNode[] = entry.contents.folders.map((folder) => {
+        const childEntry = cache.get(folder.folder_id)
+        const childIsLoading = loadingFolderIds.has(folder.folder_id)
+        return {
+          key: `${FOLDER_KEY_PREFIX}${folder.folder_id}`,
+          title: buildFolderTitle(folder.name, childIsLoading),
+          // Every listed child folder is reported has_children: true (its
+          // own children aren't known without a fetch) — always expandable
+          // via loadData, same as the previous folder picker.
+          // A folder whose files are already loaded must stay expandable
+          // whatever `has_children` says, or those files could never be seen.
+          isLeaf: !folder.has_children && !childEntry?.contents.documents.length,
+          disableCheckbox: emptyFolderIds.has(folder.folder_id),
+          // Item 6: a folder still being fetched (loadData in flight) with
+          // nothing cached yet shows a "Loading files" placeholder row
+          // instead of no children at all, so a big folder never looks
+          // empty while it loads.
+          children: childEntry
+            ? buildFolderChildren(folder.folder_id)
+            : childIsLoading
+              ? [buildLoadingPlaceholder(folder.folder_id)]
+              : undefined,
+        }
+      })
+      // Item 5 fix: prefer selection.documentMeta over the cached copy,
+      // same precedence folderCheckStates above uses for the checkbox —
+      // otherwise a document patched by the fast status poll updates the
+      // checkbox (documentMeta) a render before it updates this row's
+      // tooltip (which used to read the cached `doc` straight from
+      // `cache`, and only picked up the patch once `cache` itself
+      // re-rendered from a *different* setState in the same poll tick).
+      // Reading the same map both places removes any chance of the two
+      // disagreeing, regardless of setState ordering.
+      const docs = entry.contents.documents.map((doc) =>
+        buildDocLeaf(selection.documentMeta.get(doc.document_id) ?? doc),
+      )
       return [...subfolders, ...docs]
     },
-    [cache, buildDocLeaf, emptyFolderIds],
+    [cache, buildDocLeaf, emptyFolderIds, loadingFolderIds, selection.documentMeta],
   )
 
   const fileTreeData = useMemo((): DataNode[] => {
     if (rootFolderId == null) return []
     const rootMeta = folderMeta.get(rootFolderId)
+    const rootIsLoading = loadingFolderIds.has(rootFolderId)
+    const rootEntry = cache.get(rootFolderId)
     return [
       {
         key: `${FOLDER_KEY_PREFIX}${rootFolderId}`,
-        title: buildFolderTitle(rootMeta?.name ?? 'All documents'),
+        title: buildFolderTitle(rootMeta?.name ?? 'All documents', rootIsLoading),
         isLeaf: rootMeta ? !rootMeta.has_children : false,
         disableCheckbox: emptyFolderIds.has(rootFolderId),
-        children: buildFolderChildren(rootFolderId),
+        children: rootEntry
+          ? buildFolderChildren(rootFolderId)
+          : rootIsLoading
+            ? [buildLoadingPlaceholder(rootFolderId)]
+            : undefined,
       },
     ]
-  }, [rootFolderId, folderMeta, buildFolderChildren, emptyFolderIds])
+  }, [rootFolderId, folderMeta, cache, buildFolderChildren, emptyFolderIds, loadingFolderIds])
 
   // Fetch the subtree of every folder the tree currently renders, so each
   // one's checkbox can be derived. Failures are silent here: the folder

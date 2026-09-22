@@ -318,34 +318,58 @@ export function useBrowseTree(
     [cache, onDocumentsLoaded],
   )
 
+  // Page-0 (folder-expansion) loads only, keyed by folder id: a folder the
+  // Tree is already fetching (via loadData, or any other caller) hands back
+  // the same in-flight promise instead of starting a second, redundant
+  // fetch — e.g. a second click on a folder that's still expanding, or a
+  // loadData call racing a checkbox click's ensureFolderLoaded. "Load more"
+  // (page > 0) isn't deduplicated this way; only one can run at a time
+  // anyway via loadingMoreFolderId.
+  const folderLoadInFlightRef = useRef<Map<number, Promise<BrowseFolderContentsResponse>>>(
+    new Map(),
+  )
+
   const loadFolder = useCallback(
-    async (folderId: number, page = 0) => {
+    (folderId: number, page = 0): Promise<BrowseFolderContentsResponse> => {
       if (page === 0) {
-        setLoadingFolderIds((prev) => new Set(prev).add(folderId))
-      } else {
-        setLoadingMoreFolderId(folderId)
+        const inflight = folderLoadInFlightRef.current.get(folderId)
+        if (inflight) return inflight
       }
 
-      try {
-        const response = await fetchFolderContents(folderId, page)
-        mergeFolderContents(folderId, response, page)
-        return response
-      } catch (err) {
-        if (err instanceof ApiError && err.status === 401) {
-          setSessionExpired(true)
-        }
-        throw err
-      } finally {
+      const promise = (async () => {
         if (page === 0) {
-          setLoadingFolderIds((prev) => {
-            const next = new Set(prev)
-            next.delete(folderId)
-            return next
-          })
+          setLoadingFolderIds((prev) => new Set(prev).add(folderId))
         } else {
-          setLoadingMoreFolderId(null)
+          setLoadingMoreFolderId(folderId)
         }
+
+        try {
+          const response = await fetchFolderContents(folderId, page)
+          mergeFolderContents(folderId, response, page)
+          return response
+        } catch (err) {
+          if (err instanceof ApiError && err.status === 401) {
+            setSessionExpired(true)
+          }
+          throw err
+        } finally {
+          if (page === 0) {
+            setLoadingFolderIds((prev) => {
+              const next = new Set(prev)
+              next.delete(folderId)
+              return next
+            })
+            folderLoadInFlightRef.current.delete(folderId)
+          } else {
+            setLoadingMoreFolderId(null)
+          }
+        }
+      })()
+
+      if (page === 0) {
+        folderLoadInFlightRef.current.set(folderId, promise)
       }
+      return promise
     },
     [mergeFolderContents],
   )
@@ -726,6 +750,10 @@ export function useBrowseTree(
     initError,
     sessionExpired,
     isActiveFolderLoading,
+    // Raw per-folder loading state (superset of isActiveFolderLoading),
+    // for FolderSidebar's unified tree to show a loading indicator on
+    // whichever folder node is being expanded, not just the active one.
+    loadingFolderIds,
     loadingMoreFolderId,
     handleSelectFolder,
     handleLoadTreeData,
