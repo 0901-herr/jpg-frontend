@@ -4,6 +4,7 @@ import React from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import DocumentChecklist from './DocumentChecklist'
 import { FEATURES } from '../config/features'
+import { SELECTION_LIMIT_ROW_HINT } from '../config/selection'
 import type { BrowseDocumentItem } from '../api/types/browse'
 
 // The category tag is gated by FEATURES.categoryView (OFF by default) —
@@ -243,6 +244,92 @@ describe('DocumentChecklist sidebar row layout', () => {
     )
 
     expect(screen.getByText('Uncategorized')).toBeInTheDocument()
+  })
+})
+
+describe('DocumentChecklist selection limit', () => {
+  it('disables unchecked rows once 500 documents are selected', () => {
+    const selectedIds = new Set(Array.from({ length: 500 }, (_, i) => String(i)))
+    const { container } = render(
+      <DocumentChecklist
+        documents={[doc({ document_id: 'new-doc', indexing_status: 'READY', queryable: true })]}
+        selectedIds={selectedIds}
+        onToggle={vi.fn()}
+        onSelectAll={vi.fn()}
+        onDeselectAll={vi.fn()}
+      />,
+    )
+
+    const row = screen.getByText('contract.pdf').closest('label')
+    expect(row).not.toBeNull()
+    expect(row?.querySelector('input[type="checkbox"]')).toBeDisabled()
+    expect(container.textContent).toContain('0/1')
+  })
+
+  it('shows the limit row hint on hover, and dims the row, for a status-selectable row disabled by the limit', async () => {
+    const user = userEvent.setup()
+    const selectedIds = new Set(Array.from({ length: 500 }, (_, i) => String(i)))
+    render(
+      <DocumentChecklist
+        documents={[doc({ document_id: 'new-doc', indexing_status: 'READY', queryable: true })]}
+        selectedIds={selectedIds}
+        onToggle={vi.fn()}
+        onSelectAll={vi.fn()}
+        onDeselectAll={vi.fn()}
+      />,
+    )
+
+    const row = screen.getByText('contract.pdf').closest('.flex.w-full.flex-col') as HTMLElement
+    expect(row.className).toContain('opacity-45')
+
+    await user.hover(screen.getByText('contract.pdf'))
+
+    const tooltips = await screen.findAllByRole('tooltip')
+    expect(tooltips.some((t) => t.textContent === SELECTION_LIMIT_ROW_HINT)).toBe(true)
+  })
+
+  it('does not show the limit row hint or dim an already-checked row once the limit is reached', () => {
+    const selectedIds = new Set(Array.from({ length: 500 }, (_, i) => String(i)))
+    selectedIds.add('already-selected')
+    render(
+      <DocumentChecklist
+        documents={[
+          doc({
+            document_id: 'already-selected',
+            indexing_status: 'READY',
+            queryable: true,
+          }),
+        ]}
+        selectedIds={selectedIds}
+        onToggle={vi.fn()}
+        onSelectAll={vi.fn()}
+        onDeselectAll={vi.fn()}
+      />,
+    )
+
+    const row = screen.getByText('contract.pdf').closest('.flex.w-full.flex-col') as HTMLElement
+    expect(row.className).not.toContain('opacity-45')
+    const checkbox = row.querySelector('input[type="checkbox"]')
+    expect(checkbox).not.toBeDisabled()
+  })
+
+  it('reports a rejected select-all action to the caller', async () => {
+    const user = userEvent.setup()
+    const onSelectionLimitExceeded = vi.fn()
+    render(
+      <DocumentChecklist
+        documents={[doc({ indexing_status: 'READY', queryable: true })]}
+        selectedIds={new Set()}
+        onToggle={vi.fn()}
+        onSelectAll={() => false}
+        onDeselectAll={vi.fn()}
+        onSelectionLimitExceeded={onSelectionLimitExceeded}
+      />,
+    )
+
+    await user.click(screen.getByRole('checkbox', { name: 'Select all' }))
+
+    expect(onSelectionLimitExceeded).toHaveBeenCalledOnce()
   })
 })
 

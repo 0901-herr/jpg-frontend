@@ -42,6 +42,11 @@ import { buildSummaryMessages } from '../utils/summaryMessages'
 import { buildMetadataExtractionAnswer } from '../utils/metadataExtractionMessage'
 import { buildCategorizeMessages } from '../utils/categorizeMessages'
 import { DEFAULT_QUERY_TIER } from '../utils/queryTier'
+import {
+  MAX_EXPLICIT_SELECTION,
+  MAX_SELECTED_FILE_PREVIEW,
+  SELECTION_LIMIT_MESSAGE,
+} from '../config/selection'
 import { toUserFacingMetadataExtractionError, toUserFacingQueryError } from '../utils/userFacingErrors'
 import type { QueryTier } from '../api/types/query'
 import {
@@ -666,6 +671,10 @@ export default function AppLayout() {
       if (!(await chatStore.verifyChatBeforeQuery(chatId))) return
 
       const selectedDocs = [...selection.selectedIds]
+      if (selectedDocs.length > MAX_EXPLICIT_SELECTION) {
+        message.warning(SELECTION_LIMIT_MESSAGE)
+        return
+      }
       // A shared queryable chat always uses the host's own scope — the
       // follower can't choose documents at all (owner decision,
       // 2026-09-16), so any leftover selection from the viewer's own chat
@@ -1645,12 +1654,14 @@ export default function AppLayout() {
                 selectedFiles={
                   isSharedChat
                     ? []
-                    : [...selection.selectedIds].map((documentId) => ({
-                        documentId,
-                        filename:
-                          selection.documentMeta.get(documentId)?.filename ??
-                          `Document ${documentId}`,
-                      }))
+                    : [...selection.selectedIds]
+                        .slice(0, MAX_SELECTED_FILE_PREVIEW)
+                        .map((documentId) => ({
+                          documentId,
+                          filename:
+                            selection.documentMeta.get(documentId)?.filename ??
+                            `Document ${documentId}`,
+                        }))
                 }
                 onClearSelection={selection.clearSelection}
                 onSend={layoutDemo ? () => undefined : handleSend}

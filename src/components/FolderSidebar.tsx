@@ -13,6 +13,7 @@ import type { BrowseTreeState } from '../hooks/useBrowseTree'
 import type { DocumentSelection } from '../hooks/useDocumentSelection'
 import { useBrowseCategories } from '../hooks/useBrowseCategories'
 import { FEATURES } from '../config/features'
+import { SELECTION_LIMIT_MESSAGE } from '../config/selection'
 import { fetchDocumentViewUrl, fetchSubtreeDocuments } from '../api/browse'
 import type { BrowseDocumentItem } from '../api/types/browse'
 import {
@@ -25,6 +26,7 @@ import { safeNewTabUrl } from '../utils/navigation'
 import BrowseViewToggle, { type BrowseViewMode } from './BrowseViewToggle'
 import CategoryTag from './CategoryTag'
 import DocumentChecklist from './DocumentChecklist'
+import SelectionLimitNotice from './SelectionLimitNotice'
 import {
   getReadinessTooltipExplanation,
   getSelectableDocumentIds,
@@ -560,8 +562,9 @@ export default function FolderSidebar({
         const ids = getSelectableDocumentIds(docs)
         if (ids.length === 0) {
           message.info('No files ready yet in this folder.')
-        } else {
-          selection.mergeSelection(ids)
+        } else if (!selection.mergeSelection(ids)) {
+          setFolderChecked(folderId, false)
+          message.warning(SELECTION_LIMIT_MESSAGE)
         }
       } catch {
         setFolderChecked(folderId, false)
@@ -595,7 +598,9 @@ export default function FolderSidebar({
       const key = String(info.node.key)
       const checked = info.checked
       if (key.startsWith(DOC_KEY_PREFIX)) {
-        selection.toggleDocument(key.slice(DOC_KEY_PREFIX.length), checked)
+        if (!selection.toggleDocument(key.slice(DOC_KEY_PREFIX.length), checked)) {
+          message.warning(SELECTION_LIMIT_MESSAGE)
+        }
         return
       }
       if (!key.startsWith(FOLDER_KEY_PREFIX)) return
@@ -723,6 +728,8 @@ export default function FolderSidebar({
             )}
           </div>
         </div>
+        <SelectionLimitNotice selectedCount={selection.selectedIds.size} />
+
         {/* No local overflow — parent sidebar scrolls Files + Chats together. */}
         <div className="flex flex-col -mx-2.5 px-2.5">
           {viewMode === 'folder' ? (
@@ -767,6 +774,7 @@ export default function FolderSidebar({
                 selection.selectAllSelectable(categoryViewDocuments, { replace: true })
               }
               onDeselectAll={() => selection.deselectAllInView(categoryViewDocuments)}
+              onSelectionLimitExceeded={() => message.warning(SELECTION_LIMIT_MESSAGE)}
             />
           )}
         </div>

@@ -107,4 +107,40 @@ describe('useDocumentSelection — default selection is empty, no auto-select', 
 
     expect(result.current).not.toHaveProperty('autoSelectIfPending')
   })
+
+  it('rejects a toggle that would exceed the explicit selection limit', () => {
+    const initial = new Set(Array.from({ length: 500 }, (_, i) => String(i)))
+    persistSelection(initial)
+    const { result } = renderHook(() => useDocumentSelection())
+
+    act(() => {
+      expect(result.current.toggleDocument('501', true)).toBe(false)
+    })
+
+    expect(result.current.selectedCount).toBe(500)
+    expect(result.current.selectedIds.has('501')).toBe(false)
+  })
+
+  it('rejects an oversized bulk selection without partially mutating state', () => {
+    const { result } = renderHook(() => useDocumentSelection())
+    const documents = Array.from({ length: 501 }, (_, i) => doc(String(i)))
+
+    act(() => {
+      expect(result.current.selectAllSelectable(documents, { replace: true })).toBe(false)
+    })
+
+    expect(result.current.selectedCount).toBe(0)
+  })
+
+  it('clears an oversized persisted selection instead of restoring it', () => {
+    localStorage.setItem(
+      'docu_selected_documents',
+      JSON.stringify(Array.from({ length: 501 }, (_, i) => String(i))),
+    )
+
+    const { result } = renderHook(() => useDocumentSelection())
+
+    expect(result.current.selectedCount).toBe(0)
+    expect(localStorage.getItem('docu_selected_documents')).toBeNull()
+  })
 })

@@ -124,6 +124,69 @@ function createSelectionFixture(overrides: Partial<DocumentSelection> = {}): Doc
   }
 }
 
+describe('FolderSidebar selection limit notice', () => {
+  beforeEach(() => {
+    vi.mocked(useBrowseCategoriesModule.useBrowseCategories).mockReturnValue({
+      serverCategories: {
+        categories: [{ name: 'Contracts', count: 1 }],
+        uncategorized_count: 0,
+        accessible_document_ids: ['doc-1'],
+        note: null,
+      },
+      categoriesLoading: false,
+    })
+  })
+
+  it('does not show the notice below the limit, in the folder view', async () => {
+    render(
+      <FolderSidebar
+        browse={createBrowseFixture()}
+        selection={createSelectionFixture({
+          selectedIds: new Set(Array.from({ length: 499 }, (_, i) => String(i))),
+        })}
+      />,
+    )
+
+    await screen.findByText('contract.pdf')
+    expect(document.querySelector('.docu-selection-limit-notice')).not.toBeInTheDocument()
+  })
+
+  it('shows the notice at exactly 500 selected, in the folder view', async () => {
+    render(
+      <FolderSidebar
+        browse={createBrowseFixture()}
+        selection={createSelectionFixture({
+          selectedIds: new Set(Array.from({ length: 500 }, (_, i) => String(i))),
+        })}
+      />,
+    )
+
+    await screen.findByText('contract.pdf')
+    expect(document.querySelector('.docu-selection-limit-notice')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'Selection limit reached: you can select up to 500 files at a time. Deselect some files to add others.',
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('shows the notice at exactly 500 selected, in the category checklist view too', async () => {
+    const user = userEvent.setup()
+    render(
+      <FolderSidebar
+        browse={createBrowseFixture()}
+        selection={createSelectionFixture({
+          selectedIds: new Set(Array.from({ length: 500 }, (_, i) => String(i))),
+        })}
+      />,
+    )
+
+    await user.click(screen.getByRole('tab', { name: 'Category' }))
+
+    expect(document.querySelector('.docu-selection-limit-notice')).toBeInTheDocument()
+  })
+})
+
 describe('FolderSidebar category note', () => {
   it('shows the not-categorised-yet note under the category selector when categories exist', async () => {
     vi.mocked(useBrowseCategoriesModule.useBrowseCategories).mockReturnValue({

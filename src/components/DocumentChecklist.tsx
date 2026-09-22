@@ -3,6 +3,11 @@ import { useMemo } from 'react'
 import type { BrowseDocumentItem } from '../api/types/browse'
 import { sidebar, typeColor } from '../styles/typography'
 import { FEATURES } from '../config/features'
+import {
+  MAX_EXPLICIT_SELECTION,
+  SELECTION_LIMIT_MESSAGE,
+  SELECTION_LIMIT_ROW_HINT,
+} from '../config/selection'
 import CategoryTag from './CategoryTag'
 import IndexingStatusBadge, {
   getDocumentSelectionHint,
@@ -16,9 +21,10 @@ interface DocumentChecklistProps {
   isLoading?: boolean
   hasMore?: boolean
   isLoadingMore?: boolean
-  onToggle: (documentId: string, checked: boolean) => void
-  onSelectAll: () => void
+  onToggle: (documentId: string, checked: boolean) => boolean | void
+  onSelectAll: () => boolean | void
   onDeselectAll: () => void
+  onSelectionLimitExceeded?: () => void
   onLoadMore?: () => void
 }
 
@@ -31,6 +37,7 @@ export default function DocumentChecklist({
   onToggle,
   onSelectAll,
   onDeselectAll,
+  onSelectionLimitExceeded,
   onLoadMore,
 }: DocumentChecklistProps) {
   const selectableIds = useMemo(() => getSelectableDocumentIds(documents), [documents])
@@ -41,6 +48,7 @@ export default function DocumentChecklist({
   const allSelected =
     selectableIds.length > 0 && selectedSelectableCount === selectableIds.length
   const someSelected = selectedSelectableCount > 0 && !allSelected
+  const selectionLimitReached = selectedIds.size >= MAX_EXPLICIT_SELECTION
 
   if (isLoading) {
     return (
@@ -65,7 +73,14 @@ export default function DocumentChecklist({
           <Checkbox
             checked={allSelected}
             indeterminate={someSelected}
-            onChange={() => (allSelected || someSelected ? onDeselectAll() : onSelectAll())}
+            onChange={() => {
+              if (allSelected || someSelected) {
+                onDeselectAll()
+              } else if (onSelectAll() === false) {
+                onSelectionLimitExceeded?.()
+              }
+            }}
+            title={selectionLimitReached ? SELECTION_LIMIT_MESSAGE : undefined}
             className={`${sidebar.body} !text-[#0d0d0d]`}
           >
             {allSelected || someSelected ? 'Deselect all' : 'Select all'}
@@ -84,18 +99,33 @@ export default function DocumentChecklist({
         // needs an explanation for why it can't be checked, and that
         // explanation belongs on the row itself (checkbox + filename), not
         // just the small status badge underneath (UX P1-2).
-        const selectionHint = selectable ? null : getDocumentSelectionHint(doc)
+        const statusHint = selectable ? null : getDocumentSelectionHint(doc)
+        // A row that IS selectable by status but is disabled because the
+        // 500-file limit is reached needs its own explanation too — a
+        // disabled antd Checkbox never fires onChange, so without this a
+        // click on that row does nothing, silently (owner requirement,
+        // 2026-09-23 demo prep). Status-based hint wins when both apply.
+        const limitHint =
+          selectable && !checked && selectionLimitReached ? SELECTION_LIMIT_ROW_HINT : null
+        const selectionHint = statusHint ?? limitHint
+        const dimmed = !selectable || limitHint != null
 
         const label = (
           <label
             className={`docu-document-row-primary flex min-w-0 items-center gap-2.5 ${
-              selectable ? 'cursor-pointer' : 'cursor-not-allowed'
+              selectable && (!selectionLimitReached || checked)
+                ? 'cursor-pointer'
+                : 'cursor-not-allowed'
             }`}
           >
             <Checkbox
               checked={checked}
-              disabled={!selectable}
-              onChange={(e) => onToggle(doc.document_id, e.target.checked)}
+              disabled={!selectable || (!checked && selectionLimitReached)}
+              onChange={(e) => {
+                if (onToggle(doc.document_id, e.target.checked) === false) {
+                  onSelectionLimitExceeded?.()
+                }
+              }}
               className="shrink-0"
             />
             <span
@@ -110,7 +140,7 @@ export default function DocumentChecklist({
         return (
           <div
             key={doc.document_id}
-            className={`flex w-full flex-col gap-0.5 py-2 ${!selectable ? 'opacity-45' : ''}`}
+            className={`flex w-full flex-col gap-0.5 py-2 ${dimmed ? 'opacity-45' : ''}`}
           >
             {selectionHint ? (
               <Tooltip title={selectionHint} mouseEnterDelay={0.2}>
