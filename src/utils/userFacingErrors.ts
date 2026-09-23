@@ -106,6 +106,12 @@ export function toUserFacingQueryError(
     lower.includes('rag query') ||
     lower.includes('connection closed') ||
     lower.includes('connection lost') ||
+    lower.includes('failed to fetch') ||
+    lower.includes('fetch failed') ||
+    lower.includes('networkerror') ||
+    lower.includes('network error') ||
+    lower.includes('load failed') ||
+    lower.includes('timed out') ||
     lower.includes('remoteprotocol') ||
     lower.includes('unavailable during query') ||
     lower.includes("couldn't get an answer right now")

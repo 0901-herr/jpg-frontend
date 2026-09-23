@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  QUERY_GENERIC_ERROR,
   FOLDER_LOAD_PERMISSION_ERROR,
   FOLDER_LOAD_SERVER_ERROR,
   METADATA_EXTRACTION_GENERIC_ERROR,
@@ -67,6 +68,13 @@ describe('toUserFacingQueryError', () => {
       }),
     ).toBe(QUERY_SERVER_ERROR)
   })
+
+  it.each(['Failed to fetch', 'TypeError: Failed to fetch', 'NetworkError when attempting to fetch'])(
+    'replaces browser network detail "%s" with plain retry guidance',
+    (detail) => {
+      expect(toUserFacingQueryError(detail)).toBe(QUERY_GENERIC_ERROR)
+    },
+  )
 })
 
 describe('toUserFacingFolderLoadError', () => {

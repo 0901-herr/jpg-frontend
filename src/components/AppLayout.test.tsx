@@ -529,6 +529,7 @@ describe('AppLayout — query error messages', () => {
       await screen.findByText('The chat owner has not chosen any files yet'),
     ).toBeInTheDocument()
   })
+
 })
 
 describe('AppLayout — shared link (?share=token)', () => {
@@ -1172,7 +1173,7 @@ describe('AppLayout — Extract metadata', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('removes the placeholder and re-enables the button on a contract error', async () => {
+  it('keeps an actionable metadata failure in the chat and re-enables the button', async () => {
     const user = userEvent.setup()
     let rejectExtract: ((err: unknown) => void) | undefined
     extractMetadata.mockImplementation(
@@ -1200,13 +1201,24 @@ describe('AppLayout — Extract metadata', () => {
       await Promise.resolve()
     })
 
-    // The thinking placeholder is gone, no answer was appended, and the
-    // user's request line is left in place.
+    // The thinking placeholder is replaced with a durable failure and a
+    // clear retry instruction; the user's request remains in the thread.
     expect(
       screen.queryByText('Extracting metadata. This can take up to a minute.'),
     ).not.toBeInTheDocument()
     expect(screen.getByText('Extract metadata from doc-1.pdf')).toBeInTheDocument()
     expect(screen.queryByText(/Extracted metadata —/)).not.toBeInTheDocument()
+    expect(screen.getByText("Couldn't extract metadata")).toBeInTheDocument()
+    expect(
+      screen.getByText(/This document isn't ready for that yet/),
+    ).toHaveTextContent('Select the file and choose Extract metadata to try again.')
+    expect(postChatMessage).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        role: 'assistant',
+        content: expect.stringContaining('Select the file and choose Extract metadata to try again.'),
+      }),
+    )
 
     // The composer is idle again — the button is enabled once more.
     expect(await screen.findByRole('button', { name: 'Extract metadata' })).toBeEnabled()

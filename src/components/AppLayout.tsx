@@ -862,7 +862,11 @@ export default function AppLayout() {
             if (controller.signal.aborted) return
             const httpStatus = err instanceof ApiError ? err.status : undefined
             const detail = friendlyQueryError(
-              err instanceof ApiError ? queryErrorRawMessage(err) : 'Validation failed',
+              err instanceof ApiError
+                ? queryErrorRawMessage(err)
+                : err instanceof Error
+                  ? err.message
+                  : undefined,
               httpStatus,
             )
             message.error(detail)
@@ -1401,18 +1405,30 @@ export default function AppLayout() {
           httpStatus === 401
             ? toUserFacingQueryError(undefined, { httpStatus })
             : toUserFacingMetadataExtractionError(err instanceof ApiError ? err.detail : undefined)
-        message.error(detail, 8)
-
-        // Remove the thinking placeholder — the failed request appended
-        // no answer, so nothing should linger where it was shown. The
-        // user's "Extract metadata from <filename>" message stays.
+        const failedAssistantMsg: ChatMessage = {
+          ...thinkingMsg,
+          content:
+            httpStatus === 401
+              ? `${detail}\n\nReopen Arche AI from LogicalDOC to sign in again.`
+              : `${detail}\n\nSelect the file and choose Extract metadata to try again.`,
+          status: 'error',
+          progressLabel: undefined,
+          errorTitle: "Couldn't extract metadata",
+        }
         setSessions((prev) =>
           prev.map((s) =>
             s.id === activeChatId
-              ? { ...s, messages: s.messages.filter((m) => m.id !== assistantId) }
+              ? {
+                  ...s,
+                  messages: s.messages.map((m) => (m.id === assistantId ? failedAssistantMsg : m)),
+                }
               : s,
           ),
         )
+        // Keep a durable explanation beside the request. The toolbar is
+        // re-enabled in `finally`, so the user can retry without losing
+        // track of what failed or why.
+        chatStore.recordAssistantMessage(activeChatId, failedAssistantMsg)
       } finally {
         if (extractAbortControllerRef.current === controller) {
           extractAbortControllerRef.current = null

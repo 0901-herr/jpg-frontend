@@ -111,9 +111,11 @@ function StreamingProgressLabel({ message }: { message: ChatMessage }) {
 function ErrorMessage({
   content,
   progressHint,
+  title,
 }: {
   content: string
   progressHint?: string
+  title?: string
 }) {
   return (
     <div
@@ -122,9 +124,9 @@ function ErrorMessage({
     >
       <p className="flex items-center gap-2 font-medium mb-1">
         <ChatInfoIcon className="shrink-0 text-[var(--docu-text-muted)]" aria-hidden />
-        Couldn&apos;t finish this answer
+        {title ?? "Couldn't finish this answer"}
       </p>
-      <p className="leading-relaxed">{content}</p>
+      <p className="leading-relaxed whitespace-pre-line">{content}</p>
       {progressHint && (
         <p className={`${type.caption} mt-2 ${typeColor.secondary}`}>Last step: {progressHint}</p>
       )}
@@ -267,7 +269,11 @@ function AnswerContent({ message }: { message: ChatMessage }) {
 function AssistantMessage({ message }: AssistantMessageProps) {
   if (message.status === 'error') {
     return (
-      <ErrorMessage content={message.content} progressHint={message.progressLabel} />
+      <ErrorMessage
+        content={message.content}
+        progressHint={message.progressLabel}
+        title={message.errorTitle}
+      />
     )
   }
 

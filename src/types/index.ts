@@ -26,6 +26,8 @@ export interface ChatMessage {
   status?: 'thinking' | 'streaming' | 'complete' | 'error'
   /** Live pipeline stage while status is thinking (from RAG progress SSE). */
   progressLabel?: string
+  /** Optional title for a durable in-thread failure. */
+  errorTitle?: string
   /** Raw stage name behind `progressLabel` (e.g. "generating") — lets the
    * component that renders the label decide when to append an elapsed-time
    * ticker without re-parsing the formatted sentence. */
