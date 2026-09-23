@@ -23,6 +23,7 @@ import {
   registerUnreachableToastDismiss,
   shouldShowUnreachableToast,
 } from '../utils/backendUnreachableNotice'
+import { isDefaultSessionTitle, titleFromQuestion } from '../utils/chatTitle'
 
 const SESSION_TITLE_MONTHS = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
@@ -981,6 +982,17 @@ export function useChatStore({
           )
         setSessions(patch)
         setSharedSessions(patch)
+      }
+      // Same rule the adapter applies on this POST: the owner's first
+      // question replaces the placeholder title. Mirrored locally so the
+      // sidebar row keeps this title after the chat is no longer loaded.
+      const title = titleFromQuestion(msg.content)
+      if (title) {
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.id === chatId && isDefaultSessionTitle(s.title) ? { ...s, title } : s,
+          ),
+        )
       }
       void postChatMessage(chatId, payload)
         .then(applyAuthor)
