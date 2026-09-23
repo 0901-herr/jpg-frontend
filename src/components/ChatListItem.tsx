@@ -7,18 +7,17 @@ import { FEATURES } from '../config/features'
 import { sidebar, typeColor } from '../styles/typography'
 import { listRow, sidebarNav } from '../styles/theme'
 import type { ChatProject, ChatSession } from '../types'
+import { isDefaultSessionTitle } from '../utils/chatTitle'
 
 const NO_PROJECT_KEY = '__no_project__'
 
-/** Default auto-title from `useChatStore` / the adapter (`Session 15 Sep 2026 (1)`).
- * While the title still matches this, the row prefers the first user question as
- * its label; once the user renames (or the title is otherwise customized), the
- * stored title wins so Rename actually changes what the sidebar shows. */
-const DEFAULT_SESSION_TITLE = /^Session \d{1,2} [A-Z][a-z]{2} \d{4} \(\d+\)$/
-
+/** While the title is still the placeholder (a chat whose first question
+ * has not been persisted yet), the row prefers the first user question as its
+ * label; once the adapter or the user sets a real title, the stored title
+ * wins so Rename actually changes what the sidebar shows. */
 export function chatRowLabel(chat: Pick<ChatSession, 'title' | 'messages'>): string {
   const firstUser = chat.messages.find((m) => m.role === 'user')?.content?.trim()
-  if (!DEFAULT_SESSION_TITLE.test(chat.title.trim())) {
+  if (!isDefaultSessionTitle(chat.title)) {
     return chat.title
   }
   return firstUser || chat.title

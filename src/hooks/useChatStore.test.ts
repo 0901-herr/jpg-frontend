@@ -1299,6 +1299,72 @@ describe('recordUserMessage', () => {
   })
 })
 
+describe('recordUserMessage auto-title', () => {
+  async function hydratedWithTitle(title: string) {
+    vi.mocked(chatApi.listChatSessions).mockResolvedValue({
+      sessions: [
+        {
+          id: 's1',
+          title,
+          project_id: null,
+          visibility: 'private',
+          share_token: null,
+          created_at: '2026-09-23T00:00:00Z',
+          updated_at: '2026-09-23T00:00:00Z',
+          message_count: 0,
+        },
+      ],
+      shared: [],
+    })
+    vi.mocked(chatApi.getChatSession).mockResolvedValue({
+      id: 's1',
+      title,
+      project_id: null,
+      visibility: 'private',
+      share_token: null,
+      created_at: '2026-09-23T00:00:00Z',
+      updated_at: '2026-09-23T00:00:00Z',
+      message_count: 0,
+      owner_username: 'tester',
+      is_owner: true,
+      can_query: true,
+      scope_document_ids: [],
+      messages: [],
+    })
+    vi.mocked(chatApi.postChatMessage).mockResolvedValue({
+      id: 'm1',
+      seq: 1,
+      role: 'user',
+      content: 'x',
+      author_username: 'tester',
+      created_at: '2026-09-23T00:00:00Z',
+    })
+    const { result } = renderHook(() => useChatStore(baseParams()))
+    await waitFor(() => expect(result.current.hydrated).toBe(true))
+    return result
+  }
+
+  it('replaces the placeholder title with the first question, like the adapter', async () => {
+    const result = await hydratedWithTitle('Session 23 Sep 2026 (1)')
+    act(() => {
+      result.current.recordUserMessage('s1', { id: 'm1', role: 'user', content: '  Who wrote\nthis journal? ' }, [])
+    })
+    expect(result.current.sessions.find((s) => s.id === 's1')?.title).toBe('Who wrote this journal?')
+    act(() => {
+      result.current.recordUserMessage('s1', { id: 'm2', role: 'user', content: 'Second question' }, [])
+    })
+    expect(result.current.sessions.find((s) => s.id === 's1')?.title).toBe('Who wrote this journal?')
+  })
+
+  it('never overwrites a title the user chose', async () => {
+    const result = await hydratedWithTitle('Test JY')
+    act(() => {
+      result.current.recordUserMessage('s1', { id: 'm1', role: 'user', content: 'Who wrote this journal?' }, [])
+    })
+    expect(result.current.sessions.find((s) => s.id === 's1')?.title).toBe('Test JY')
+  })
+})
+
 describe('messagesLoading', () => {
   it('tracks a chat id while ensureMessagesLoaded has an in-flight fetch, and clears it once settled', async () => {
     vi.mocked(chatApi.listChatSessions).mockResolvedValue({

@@ -1702,11 +1702,13 @@ describe('AppLayout — dated session names', () => {
     expect(titles).toContain(`select:Session ${datePart} (2)`)
   })
 
-  it('does not overwrite the dated title with the first question while a reply is in flight', async () => {
+  it('replaces the dated title with the first question as soon as it is sent', async () => {
     const user = userEvent.setup()
     render(<AppLayout />)
 
-    const initialTitle = screen.getByRole('button', { name: /^select:/ }).textContent
+    expect(screen.getByRole('button', { name: /^select:/ }).textContent).toMatch(
+      /^select:Session \d{1,2} [A-Z][a-z]{2} \d{4} \(1\)$/,
+    )
 
     const textarea = await screen.findByPlaceholderText(/ask a question/i)
     await user.type(textarea, 'What is in the contract?')
@@ -1714,10 +1716,12 @@ describe('AppLayout — dated session names', () => {
 
     await screen.findByRole('button', { name: 'Stop response' })
 
-    // The sidebar title is unchanged by sending a question — it was only
-    // ever overwritten (with the question text) once a reply completed,
-    // and dated titles are never overwritten at all now.
-    expect(screen.getByRole('button', { name: /^select:/ }).textContent).toBe(initialTitle)
+    // Same rule the adapter applies when it persists this message, so the
+    // sidebar keeps a meaningful name after the chat is unloaded or the
+    // page is refreshed (the list endpoint carries no messages).
+    expect(screen.getByRole('button', { name: /^select:/ }).textContent).toBe(
+      'select:What is in the contract?',
+    )
   })
 })
 
