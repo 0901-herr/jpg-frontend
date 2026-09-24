@@ -1,5 +1,13 @@
 @import 'tailwindcss';
 
+/* Tailwind v4 CSS-first theme: keep the `font-sans` utility (and any
+   future use of it) on the same humanist system-UI stack as
+   --docu-font-family below / FONT_FAMILY_SANS in
+   src/config/typography.ts, rather than Tailwind's own default stack. */
+@theme {
+  --font-sans: system-ui, -apple-system, 'Noto Sans', 'Helvetica Neue', Arial, sans-serif;
+}
+
 /* Round 6, Item B — root cause: on iOS Safari, 100vh is the height with
    the browser chrome collapsed, so a `100vh` shell is taller than the
    visible area and, with no `overflow` rule here, the *document itself*
@@ -40,6 +48,12 @@ body {
 
 body {
   font-family: var(--docu-font-family);
+  /* Explicit regular weight — never leave this to the UA default, a
+     lighter inherited weight, or a `font-light` utility (client
+     feedback: thin text). Headings/labels using `font-medium` are
+     unaffected — that utility overrides this on its own elements. */
+  font-weight: 400;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background-color: var(--docu-bg-page);
@@ -154,8 +168,13 @@ input.ant-input:focus-visible {
   --docu-sidebar-text: 0.875rem;
   --docu-body-text: 1rem;
 
-  --docu-font-family: ui-sans-serif, -apple-system, system-ui, 'Segoe UI', Roboto, 'Helvetica Neue',
-    Arial, sans-serif;
+  /* Humanist system-UI stack (client feedback: default text read as thin
+     and cramped). `system-ui` resolves to the platform's native UI font
+     (Segoe UI on Windows, San Francisco on macOS, Roboto on
+     Android/Chrome OS) without naming any vendor font directly. No
+     webfont is loaded. Kept in sync with FONT_FAMILY_SANS in
+     src/config/typography.ts (the antd ConfigProvider token). */
+  --docu-font-family: system-ui, -apple-system, 'Noto Sans', 'Helvetica Neue', Arial, sans-serif;
   --docu-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
     'Courier New', monospace;
 }
