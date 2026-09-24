@@ -874,22 +874,21 @@ button.docu-citation-page-chips:hover .docu-citation-chip-num {
      more open without being a size someone would notice as "bigger".
    - `letter-spacing: 0.01em` (~0.17px at 17px) is a comfortable-reading
      nudge, well short of it looking tracked-out.
-   - `font-weight: 450` is heavier than regular (400) without being
-     semibold; variable system fonts (San Francisco, Segoe UI Variable)
-     honour the exact value, others round to the nearest supported
-     weight (typically 400) — harmless fallback, never lighter than the
-     body default. */
+   - `font-weight: 500` (owner call, round 3) maps to SF Medium on macOS
+     and the variable Segoe UI on Windows 11 — heavier than regular (400)
+     without being semibold; on a static (non-variable) font it degrades
+     to 400 — harmless fallback, never lighter than the body default. */
 .docu-answer {
   font-size: 17px;
   line-height: 1.65;
   letter-spacing: 0.01em;
-  font-weight: 450;
+  font-weight: 500;
 }
 
 /* Markdown `**bold**` run-in labels (e.g. "Summary:") inside an answer —
-   explicit 600 rather than the browser's default bold (700), heavy
-   enough to read as a label against the 450 body weight above without
-   the full-weight jump. */
+   explicit 600 rather than the browser's default bold (700), still
+   visibly heavier than the 500 body weight above without the full-weight
+   jump. */
 .docu-answer strong {
   font-weight: 600;
 }
