@@ -20,7 +20,11 @@ export default function App() {
           colorBorder: '#ececec',
           colorBorderSecondary: '#f0f0f0',
           colorText: '#0d0d0d',
-          colorTextSecondary: '#676767',
+          // Darkened to Tailwind gray-700 (client feedback, round 2: text
+          // still read as thin/light). Kept in sync with
+          // --docu-text-secondary in src/index.css and typeColor.secondary
+          // in src/styles/typography.ts.
+          colorTextSecondary: '#374151',
           colorTextTertiary: '#8e8e8e',
           borderRadius: 10,
           borderRadiusLG: 12,

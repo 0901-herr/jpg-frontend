@@ -54,8 +54,14 @@ body {
      unaffected — that utility overrides this on its own elements. */
   font-weight: 400;
   line-height: 1.6;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  /* Client feedback (round 2): text still read as thin after the family
+     fix. `-webkit-font-smoothing: antialiased` / `-moz-osx-font-smoothing:
+     grayscale` thin out stroke weight on macOS WebKit/Gecko by switching
+     off subpixel anti-aliasing; the browser's own default ('auto',
+     platform subpixel rendering) renders noticeably heavier. Explicit
+     `auto` here (rather than just deleting the properties) documents that
+     this is a deliberate choice, not an oversight. */
+  -webkit-font-smoothing: auto;
   background-color: var(--docu-bg-page);
   color: var(--docu-text-primary);
 }
@@ -145,10 +151,16 @@ input.ant-input:focus-visible {
   --docu-border: #ececec;
   --docu-border-subtle: #f0f0f0;
 
-  /* Neutral ink — not pure black, mainstream AI-chat layouts use a soft
-     near-black for body text and a mid-grey for secondary text. */
-  --docu-text-primary: #1f1f1f;
-  --docu-text-secondary: #6b6b6b;
+  /* Client feedback (round 2): text still read as thin/light. Darkened
+     primary to Tailwind gray-900 (#111827) and secondary to gray-700
+     (#374151) — the darkest step still visually distinct from primary —
+     so nothing below AA contrast for body copy. --docu-text-muted (a
+     tertiary/decorative level — counts, timestamps, icons) is unchanged;
+     it was not reported as hard to read. Kept in sync with typeColor in
+     src/styles/typography.ts and the antd colorText* tokens in
+     src/App.tsx. */
+  --docu-text-primary: #111827;
+  --docu-text-secondary: #374151;
   --docu-text-muted: #767676;
 
   --docu-accent: #0084ff;
@@ -849,6 +861,39 @@ button.docu-citation-page-chips:hover .docu-citation-chip-num {
   background: #cfcfcf;
 }
 
+/* Answer body text (ChatMessage.tsx `.docu-answer` container). Client
+   feedback (round 2): still read as thin/small after the family, weight
+   and colour fixes. Scoped to `.docu-answer` only — not the whole app,
+   not `type.body`/`text-base` (still 16px elsewhere, e.g. citation
+   snippets in CitationList.tsx) — so headings, buttons and other body
+   text (sidebar, citations list) are unaffected. Unlayered, so it wins
+   over the `text-base leading-relaxed` Tailwind utilities already on the
+   element (same pattern as the antd-reset-vs-Tailwind fights elsewhere in
+   this file).
+   - 17px (one step up from the 16px base) with a 1.65 line-height reads
+     more open without being a size someone would notice as "bigger".
+   - `letter-spacing: 0.01em` (~0.17px at 17px) is a comfortable-reading
+     nudge, well short of it looking tracked-out.
+   - `font-weight: 450` is heavier than regular (400) without being
+     semibold; variable system fonts (San Francisco, Segoe UI Variable)
+     honour the exact value, others round to the nearest supported
+     weight (typically 400) — harmless fallback, never lighter than the
+     body default. */
+.docu-answer {
+  font-size: 17px;
+  line-height: 1.65;
+  letter-spacing: 0.01em;
+  font-weight: 450;
+}
+
+/* Markdown `**bold**` run-in labels (e.g. "Summary:") inside an answer —
+   explicit 600 rather than the browser's default bold (700), heavy
+   enough to read as a label against the 450 body weight above without
+   the full-weight jump. */
+.docu-answer strong {
+  font-weight: 600;
+}
+
 /* Answer Markdown — tables and lists (ChatMessage.tsx / markdownRenderers.tsx).
    Scoped to `.docu-answer` (the assistant-answer container) so it can
    never leak into the sidebar or any other plain table/list in the app.
@@ -1417,9 +1462,11 @@ button.docu-citation-page-chips:hover .docu-citation-chip-num {
 }
 
 /* Project name — gray at rest, black on row hover. Unlayered so antd's
-   `button { color }` reset can't keep the name stuck on inherited gray. */
+   `button { color }` reset can't keep the name stuck on inherited gray.
+   gray-700 floor (client feedback, round 2: sidebar text too light) —
+   matches typeColor.secondary in src/styles/typography.ts. */
 .docu-sidebar .docu-project-name {
-  color: #6b6b6b !important;
+  color: #374151 !important;
   transition: color 120ms ease;
 }
 

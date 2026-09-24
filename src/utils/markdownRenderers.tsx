@@ -189,7 +189,9 @@ export function createAnswerMarkdownComponents(content: string, sources: Source[
     li: citationAwareBlock('li', 'leading-relaxed', sources, numbers, 'li'),
     blockquote: citationAwareBlock(
       'blockquote',
-      `border-l-2 border-[#ececec] pl-3 text-[#6b6b6b] ${PARAGRAPH_SPACING}`,
+      // gray-700 floor (client feedback, round 2: text too light) —
+      // matches typeColor.secondary in src/styles/typography.ts.
+      `border-l-2 border-[#ececec] pl-3 text-[#374151] ${PARAGRAPH_SPACING}`,
       sources,
       numbers,
       'bq',

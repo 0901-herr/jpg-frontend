@@ -15,16 +15,19 @@ export const sidebar = {
   title: 'text-[15px]',
 } as const
 
-// Neutral ink, not pure black — mainstream AI-chat layouts use a soft
-// near-black for primary text and a mid-grey for secondary (client
-// feedback: UI polish pass). Keep in sync with --docu-text-primary /
-// --docu-text-secondary in src/index.css.
+// Darkened to Tailwind gray-900/-700 (client feedback, round 2: text
+// still read as thin/light after the font-family fix alone). primary/body
+// no lighter than gray-900; secondary/subtle no lighter than gray-700.
+// muted/caption (tertiary — counts, timestamps, icons) are unchanged;
+// they were not reported as hard to read. Keep in sync with
+// --docu-text-primary / --docu-text-secondary in src/index.css and
+// colorText/colorTextSecondary in src/App.tsx.
 export const typeColor = {
-  primary: 'text-[#1f1f1f]',
-  body: 'text-[#1f1f1f]',
-  secondary: 'text-[#6b6b6b]',
+  primary: 'text-[#111827]',
+  body: 'text-[#111827]',
+  secondary: 'text-[#374151]',
   muted: 'text-[#8e8e8e]',
-  subtle: 'text-[#6b6b6b]',
+  subtle: 'text-[#374151]',
   caption: 'text-[#8e8e8e]',
 } as const
 
