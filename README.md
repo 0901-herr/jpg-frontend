@@ -42,7 +42,6 @@ VITE_AUTH_BYPASS=true
 |----------|---------|
 | `VITE_API_BASE_URL` | API prefix (default `/api` — use proxy in dev) |
 | `VITE_AUTH_BYPASS=true` | Show chat UI without cookie login check (dev only) |
-| `VITE_ADMIN_API_KEY` | Optional — must match adapter `ADAPTER_QUERY_API_KEY` if set |
 | `VITE_FEATURE_CATEGORY_VIEW=true` | Build-time flag — turns the Folder/Category browse toggle back on (OFF by default; code stays in place, see `src/config/features.ts`) |
 | `VITE_FEATURE_CHAT_SHARING=false` | Build-time opt-out for chat sharing. Sharing is enabled by default. |
 | `VITE_CATEGORY_LABELS` | Optional — per-deployment category label overrides, as a JSON object string (e.g. `{"harvesting_record": "Harvesting Record"}`); unlisted categories fall back to a generic title-cased label |
@@ -102,7 +101,11 @@ There is **no app expiry** (kept until site data is cleared, private browsing en
 
 ## Admin dashboard
 
-Polls adapter admin API every few seconds when open.
+Polls adapter admin API every few seconds when open. Authorized by the
+signed-in LogicalDOC session (`ai_session` cookie) against the adapter's
+`ADAPTER_ADMIN_LOGICALDOC_USERNAMES` allow-list — there is no separate
+admin key on the frontend. `/admin/*` shows a friendly "not an admin" page
+for a logged-in user who isn't on that allow-list.
 
 | Tab | Shows |
 |-----|--------|
@@ -131,6 +134,6 @@ Requires Postgres populated by adapter ingestion.
 | "Sign in required" / session expired | New LD handoff link or enable dev bypass on adapter |
 | Empty folder tree | Check `/api/auth/me` — need valid `ai_session` |
 | Query errors | See adapter logs (`grep query_failed`); often RAG OOM on k3d |
-| Admin 401 | Set `VITE_ADMIN_API_KEY` if adapter requires query key |
+| Admin 401/403 | Log in as a LogicalDOC user on the adapter's `ADAPTER_ADMIN_LOGICALDOC_USERNAMES` allow-list |
 
 Full stack runbook: **[jpg-adapter/docs/runbooks/LOCAL_DEV.md](../jpg-adapter/docs/runbooks/LOCAL_DEV.md)**

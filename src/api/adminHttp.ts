@@ -1,4 +1,3 @@
-import { ADMIN_API_KEY, ADMIN_API_KEY_HEADER } from '../config/admin'
 import { ApiError } from './http'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
@@ -25,14 +24,13 @@ export async function adminRequest<T>(
   if (body !== undefined) {
     headers.set('Content-Type', 'application/json')
   }
-  if (ADMIN_API_KEY) {
-    headers.set(ADMIN_API_KEY_HEADER, ADMIN_API_KEY)
-  }
 
+  // Admin access is authorized server-side by the same `ai_session` cookie
+  // the chat API already sends — no client-held key. See config/admin.ts.
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers,
-    credentials: 'same-origin',
+    credentials: 'include',
     body: body !== undefined ? JSON.stringify(body) : undefined,
   })
 

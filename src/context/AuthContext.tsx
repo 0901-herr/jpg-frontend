@@ -22,6 +22,9 @@ function bypassSession(): AuthSession {
   return {
     username: DEV_USER.username,
     userId: DEV_USER.userId,
+    // Chat-only dev bypass — not an admin grant. Use VITE_ADMIN_MOCK to
+    // work on the admin dashboard with no backend (see config/admin.ts).
+    isAdmin: false,
   }
 }
 
