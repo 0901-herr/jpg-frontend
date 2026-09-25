@@ -285,8 +285,24 @@ describe('queue card (design doc §4.3, in-stream admission queue)', () => {
     rerender(
       <ChatMessageItem message={{ ...base, queuePosition: 1, queueAhead: 0, queueEtaSeconds: 20 }} />,
     )
-    expect(screen.getByText("You're #1 in line")).toBeInTheDocument()
+    expect(screen.getByText("You're next in line")).toBeInTheDocument()
     expect(screen.getByText('less than a minute')).toBeInTheDocument()
+  })
+
+  it('prefers "ahead" over "position" for the displayed number (design doc §4.1: ahead is the field the ETA is derived from)', () => {
+    render(
+      <ChatMessageItem
+        message={assistantMessage({
+          status: 'thinking',
+          progressStage: 'queued',
+          queuePosition: 1,
+          queueAhead: 4,
+          queueEtaSeconds: 240,
+        })}
+      />,
+    )
+
+    expect(screen.getByText("You're #5 in line")).toBeInTheDocument()
   })
 })
 

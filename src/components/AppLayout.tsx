@@ -178,6 +178,51 @@ function getShareTokenFromLocation(): string | null {
 // console's own mobile nav (P0-1, UI polish pass), which collapses the same
 // way at the same breakpoint.
 
+/** Every reason the active chat's composer disables its Send button right
+ * now (see the composer's own `disabled` prop below). Exported as a pure
+ * function — not left as an inline boolean expression — so the "Try
+ * again" retry affordance on an at-capacity message (queue-card fix round
+ * 1, Finding 1) can gate itself with the exact same logic instead of
+ * re-deriving a narrower subset, and so the specific combination that
+ * matters for that fix (`pendingAnswer` alone, every other flag false —
+ * the "reload/reconnect mid-generation for a newer turn while an older
+ * turn's message is still retryable" scenario) has a direct, deterministic
+ * test. That real end-to-end combination is hard to reproduce through the
+ * full app today, because `retryable`/`errorTitle` don't yet survive a
+ * server round-trip (a separate, not-yet-fixed gap — see the fix report's
+ * Minor #2 note) — a unit test of this function proves the guard itself,
+ * independent of that gap. */
+export interface ActiveChatBlockedInput {
+  sessionExpired: boolean
+  messagesLoading: boolean
+  beingCreated: boolean
+  pendingAnswer: boolean
+}
+
+export function isActiveChatBlocked({
+  sessionExpired,
+  messagesLoading,
+  beingCreated,
+  pendingAnswer,
+}: ActiveChatBlockedInput): boolean {
+  return sessionExpired || messagesLoading || beingCreated || pendingAnswer
+}
+
+/** Whether the active chat may start a NEW query right now, from either the
+ * composer's Send button or a transcript "Try again" retry — the union of
+ * `isActiveChatBlocked` above and `isResponding`. `isResponding` is kept as
+ * a separate flag here (not folded into `isActiveChatBlocked` itself)
+ * because it means something different for each caller: for the composer
+ * it swaps Send for a working Stop button rather than disabling anything;
+ * for retry there is no Stop affordance at all, so it simply must stay
+ * inert. Folding it into the shared "blocked" boolean would make the
+ * composer unable to tell "disabled" from "showing Stop" apart. */
+export function canStartQueryInActiveChat(
+  input: ActiveChatBlockedInput & { isResponding: boolean },
+): boolean {
+  return !input.isResponding && !isActiveChatBlocked(input)
+}
+
 export default function AppLayout() {
   // `App.useApp()` rather than the static `message` import from 'antd' —
   // see App.tsx's comment on the `<AntApp>` provider this reads from.
@@ -1187,6 +1232,25 @@ export default function AppLayout() {
   // `isResponding` — there's nothing to abort here.
   const isActiveChatPendingAnswer = pendingAnswerChatIds.has(activeChatId)
 
+  // Queue-card fix round 1, Finding 1: `isActiveChatBlocked`/
+  // `canStartQueryInActiveChat` (defined above the component) are the
+  // shared source of truth for the composer's own `disabled` prop below
+  // AND the "Try again" retry affordance — see their doc comments for why
+  // this state combination in particular (an older retryable message +
+  // `isActiveChatPendingAnswer` for a newer turn) needed a guard, not just
+  // `isActiveChatResponding`.
+  const activeChatBlockedInput: ActiveChatBlockedInput = {
+    sessionExpired: browse.sessionExpired,
+    messagesLoading: isActiveChatMessagesLoading,
+    beingCreated: isActiveChatBeingCreated,
+    pendingAnswer: isActiveChatPendingAnswer,
+  }
+  const activeChatBlocked = isActiveChatBlocked(activeChatBlockedInput)
+  const canRetryInActiveChat = canStartQueryInActiveChat({
+    ...activeChatBlockedInput,
+    isResponding: isActiveChatResponding,
+  })
+
   const summarizeDisabledReason = useMemo(
     () =>
       isSharedChat
@@ -1695,13 +1759,16 @@ export default function AppLayout() {
                           <ChatMessageItem
                             message={pair.assistant}
                             onRetry={
-                              // Guards against a double-send while this
-                              // chat already has a fresh request in flight
-                              // — a stale "Try again" button can only exist
-                              // on an earlier, already-settled turn, but
-                              // this keeps it inert rather than relying on
-                              // `handleSend`'s own defensive re-abort.
-                              pair.assistant.retryable && !isActiveChatResponding
+                              // Fix round 1, Finding 1: gated by the same
+                              // `canRetryInActiveChat` the composer's own
+                              // Send button uses — a stale "Try again" on an
+                              // earlier, already-settled turn must go inert
+                              // in every state Send itself is inert in
+                              // (reload/reconnect mid-generation for a
+                              // later turn in this chat included), not just
+                              // while this chat has its own abortable
+                              // stream.
+                              pair.assistant.retryable && canRetryInActiveChat
                                 ? () => {
                                     void handleSend(pair.assistant!.question ?? pair.user.content)
                                   }
@@ -1760,14 +1827,7 @@ export default function AppLayout() {
                 toolActionPending={
                   layoutDemo ? false : isSummarizing || isExtracting || isCategorizing
                 }
-                disabled={
-                  layoutDemo
-                    ? false
-                    : browse.sessionExpired ||
-                      isActiveChatMessagesLoading ||
-                      isActiveChatBeingCreated ||
-                      isActiveChatPendingAnswer
-                }
+                disabled={layoutDemo ? false : activeChatBlocked}
                 disabledReason={
                   layoutDemo
                     ? undefined

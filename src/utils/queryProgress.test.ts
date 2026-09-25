@@ -313,19 +313,34 @@ describe('readFiniteNumber', () => {
 })
 
 describe('formatQueueLine (queue card, design doc §4.3)', () => {
-  it('renders "You\'re #N in line" from a 1-indexed position', () => {
+  it('renders "You\'re #N in line" from position and ahead agreeing (ahead === position - 1)', () => {
     expect(formatQueueLine(3, 2)).toBe("You're #3 in line")
-    expect(formatQueueLine(1, 0)).toBe("You're #1 in line")
+    expect(formatQueueLine(5, 4)).toBe("You're #5 in line")
   })
 
-  it('rounds a fractional position', () => {
+  it('says "You\'re next in line" rather than "#1" when ahead is 0 (or a position-only 1)', () => {
+    expect(formatQueueLine(1, 0)).toBe("You're next in line")
+    expect(formatQueueLine(undefined, 0)).toBe("You're next in line")
+    expect(formatQueueLine(1, undefined)).toBe("You're next in line")
+  })
+
+  it('rounds a fractional position (fallback path, ahead absent)', () => {
     expect(formatQueueLine(3.4, undefined)).toBe("You're #3 in line")
   })
 
-  it('falls back to "ahead" when position is missing, zero, or negative', () => {
-    expect(formatQueueLine(undefined, 4)).toBe('4 people ahead of you')
-    expect(formatQueueLine(0, 1)).toBe('1 person ahead of you')
-    expect(formatQueueLine(-1, 0)).toBe("You're next in line")
+  it('prefers "ahead" over "position" when both are present — ahead is the field the ETA is derived from (design doc §4.1), so it is trusted as the source of truth for the displayed number', () => {
+    // A stale/inconsistent `position` (would read "#1") is overridden by a
+    // valid `ahead` (reads "#5") rather than the two racing for which one
+    // wins — this also proves the fallback isn't silently used whenever
+    // `position` happens to be present too.
+    expect(formatQueueLine(1, 4)).toBe("You're #5 in line")
+  })
+
+  it('falls back to "position" — rendered the same "You\'re #N in line" way, not a different sentence shape — when "ahead" is missing or unusable', () => {
+    expect(formatQueueLine(5, undefined)).toBe("You're #5 in line")
+    expect(formatQueueLine(2, -1)).toBe("You're #2 in line")
+    expect(formatQueueLine(2, Number.NaN)).toBe("You're #2 in line")
+    expect(formatQueueLine(2, '1')).toBe("You're #2 in line")
   })
 
   it('renders undefined when neither field is usable (missing, negative, non-numeric)', () => {

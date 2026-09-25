@@ -200,29 +200,39 @@ export function formatRouteLabel(strategy: string | undefined): string | undefin
   return labels[strategy] ?? humanizeStage(strategy.replace(/_/g, ' '))
 }
 
-/** "You're #3 in line" from a `queued` progress event's own `position`
- * field (design doc §4.1/§4.3, this request's 1-indexed place in the
- * admission queue) — falls back to `ahead` (how many requests are ahead of
- * this one) when `position` itself is missing or unusable, since the
- * contract sends both but either can be absent on an older engine or a
- * transient telemetry gap. Missing, non-finite, or out-of-range values (a
- * position under 1, a negative `ahead`) render nothing rather than a
- * garbled or nonsensical line — the queue card simply omits this line
- * (owner rule: defensive, never crash; §6 "ETA omitted, position still
- * sent" extends the same way to a completely unusable field). */
+/** "You're #3 in line" from a `queued` progress event's `position`/`ahead`
+ * fields (design doc §4.1/§4.3). The engine defines `position` as this
+ * request's 1-indexed place in the admission queue and `ahead` as the
+ * count of requests ahead of it — i.e. `ahead === position - 1` whenever
+ * both are present and consistent. `ahead` is preferred as the source of
+ * truth (review fix round 1, Finding minor: it's the field the ETA
+ * calculation itself is defined from — design doc §4.1's
+ * `eta_seconds = ahead × ewma_service_seconds / effective_slots` — so
+ * trusting it for the displayed number keeps the position line and the ETA
+ * line internally consistent even if a future engine ever sent a
+ * momentarily-stale `position`); `position` is the fallback for an older
+ * engine or a transient gap where only one field arrived. Either source is
+ * folded into the same 1-indexed "you are #N" number and rendered through
+ * one consistent phrasing — never a different sentence shape depending on
+ * which field happened to be present. Missing, non-finite, or
+ * out-of-range values (a position under 1, a negative `ahead`) render
+ * nothing rather than a garbled or nonsensical line — the queue card
+ * simply omits this line (owner rule: defensive, never crash; §6 "ETA
+ * omitted, position still sent" extends the same way to a completely
+ * unusable field). */
 export function formatQueueLine(position: unknown, ahead: unknown): string | undefined {
-  const pos = typeof position === 'number' ? position : undefined
-  if (pos != null && Number.isFinite(pos) && pos >= 1) {
-    return `You're #${Math.round(pos)} in line`
-  }
   const aheadCount = typeof ahead === 'number' ? ahead : undefined
-  if (aheadCount != null && Number.isFinite(aheadCount) && aheadCount >= 0) {
-    const rounded = Math.round(aheadCount)
-    return rounded === 0
-      ? "You're next in line"
-      : `${rounded} ${rounded === 1 ? 'person' : 'people'} ahead of you`
-  }
-  return undefined
+  const effectivePosition =
+    aheadCount != null && Number.isFinite(aheadCount) && aheadCount >= 0
+      ? aheadCount + 1
+      : (() => {
+          const pos = typeof position === 'number' ? position : undefined
+          return pos != null && Number.isFinite(pos) && pos >= 1 ? pos : undefined
+        })()
+
+  if (effectivePosition == null) return undefined
+  const rounded = Math.round(effectivePosition)
+  return rounded <= 1 ? "You're next in line" : `You're #${rounded} in line`
 }
 
 /** Rounds a raw `eta_seconds` into a friendly, round-number phrase ("about 4

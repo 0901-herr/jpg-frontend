@@ -260,7 +260,9 @@ vi.mock('./Sidebar', () => ({
 }))
 
 // Imported after the mocks above so AppLayout picks up the mocked modules.
-const { default: AppLayout } = await import('./AppLayout')
+const { default: AppLayout, canStartQueryInActiveChat, isActiveChatBlocked } = await import(
+  './AppLayout'
+)
 
 // AppLayout renders antd Tooltip/Dropdown popups (rc-trigger), which measure
 // the scrollbar via getComputedStyle(el, '::-webkit-scrollbar') when a popup
@@ -583,7 +585,10 @@ describe('AppLayout — queue card and at-capacity retry (design doc §4.1/§4.3
       })
     })
 
-    expect(await screen.findByText("You're #1 in line")).toBeInTheDocument()
+    // ahead: 0 reads "You're next in line", not "#1" (position/ahead
+    // semantics fix round 1: `ahead` is preferred and folded into the same
+    // 1-indexed number as `position`, so ahead=0 here === position=1).
+    expect(await screen.findByText("You're next in line")).toBeInTheDocument()
     expect(screen.getByText('less than a minute')).toBeInTheDocument()
   })
 
@@ -674,6 +679,74 @@ describe('AppLayout — queue card and at-capacity retry (design doc §4.1/§4.3
     expect(await screen.findByText('Here is the answer.')).toBeInTheDocument()
     // Retrying resent the original question as a fresh turn.
     expect(lastSendQueryRequest?.message).toBe('What is in the contract?')
+  })
+})
+
+// Fix round 1, Finding 1: `isActiveChatBlocked`/`canStartQueryInActiveChat`
+// are the exact shared gate the composer's Send button and the "Try again"
+// retry affordance both use (AppLayout.tsx, above the component). Unit-
+// tested directly here rather than only through a full end-to-end replay,
+// because the specific combination the fix targets — an older *retryable*
+// message coexisting with `isActiveChatPendingAnswer` for a newer turn
+// (e.g. a reload/reconnect mid-generation) — cannot currently be reproduced
+// through the real store end-to-end: `retryable`/`errorTitle` don't yet
+// survive a server round-trip (`useChatStore.ts`'s `mapMessageDto` doesn't
+// carry them, and `recordAssistantMessage`'s POST payload doesn't send
+// them either — a separate, not-yet-fixed gap, see the fix report's Minor
+// #2 note), so any fixture built through `getChatSession` necessarily
+// loses the retryable flag before `isActiveChatPendingAnswer` could ever
+// see it. This test instead proves the GUARD itself is correct for that
+// exact state combination — independent of whether today's persistence
+// layer can produce it — so retry is provably disabled the moment that
+// separate gap is closed, with no further guard-logic change needed.
+describe('AppLayout — isActiveChatBlocked / canStartQueryInActiveChat (fix round 1, Finding 1: shared Send/retry gate)', () => {
+  const baseline = {
+    sessionExpired: false,
+    messagesLoading: false,
+    beingCreated: false,
+    pendingAnswer: false,
+  }
+
+  it('allows a new query (Send or retry) when nothing blocks the active chat', () => {
+    expect(isActiveChatBlocked(baseline)).toBe(false)
+    expect(canStartQueryInActiveChat({ ...baseline, isResponding: false })).toBe(true)
+  })
+
+  it('the pending-answer-after-reload state alone — no local stream, nothing else blocking — disables both Send and retry', () => {
+    // This is exactly "a chat has an older retryable at-capacity message
+    // and is currently in the isActiveChatPendingAnswer state for a
+    // different, newer turn (e.g. after a reload mid-generation)" from the
+    // review: pendingAnswer is the only true flag, isResponding is false
+    // (no local abort controller — a stale retry button that only checked
+    // `!isActiveChatResponding`, the pre-fix guard, would have stayed
+    // enabled here).
+    const input = { ...baseline, pendingAnswer: true }
+    expect(isActiveChatBlocked(input)).toBe(true)
+    expect(canStartQueryInActiveChat({ ...input, isResponding: false })).toBe(false)
+  })
+
+  it('each individual blocking flag disables a new query on its own', () => {
+    expect(canStartQueryInActiveChat({ ...baseline, sessionExpired: true, isResponding: false })).toBe(
+      false,
+    )
+    expect(
+      canStartQueryInActiveChat({ ...baseline, messagesLoading: true, isResponding: false }),
+    ).toBe(false)
+    expect(
+      canStartQueryInActiveChat({ ...baseline, beingCreated: true, isResponding: false }),
+    ).toBe(false)
+    expect(
+      canStartQueryInActiveChat({ ...baseline, pendingAnswer: true, isResponding: false }),
+    ).toBe(false)
+  })
+
+  it('isResponding alone (no other flag) also disables a new query, but is not part of isActiveChatBlocked itself', () => {
+    // isResponding swaps the composer's Send for a working Stop button
+    // rather than disabling anything — it must still block retry (there is
+    // no Stop affordance for a transcript message) without being folded
+    // into the composer's own `disabled` boolean.
+    expect(isActiveChatBlocked(baseline)).toBe(false)
+    expect(canStartQueryInActiveChat({ ...baseline, isResponding: true })).toBe(false)
   })
 })
 
@@ -824,6 +897,62 @@ describe('AppLayout — shared link (?share=token)', () => {
         }),
       )
     })
+  })
+
+  it('shows the at-capacity retry affordance inside a shared queryable (follower) chat, and retry resends through the same shared scope (minor fix round 1)', async () => {
+    const user = userEvent.setup()
+    initialSelectedIds = new Set()
+    window.history.pushState({}, '', '/chat?share=tok789')
+    getSharedChatSession.mockResolvedValueOnce({
+      id: 'shared-4',
+      title: 'Shared Queryable Chat',
+      project_id: null,
+      visibility: 'query',
+      share_token: null,
+      created_at: '2026-09-01T00:00:00Z',
+      updated_at: '2026-09-01T00:00:00Z',
+      message_count: 0,
+      owner_username: 'alice',
+      is_owner: false,
+      can_query: true,
+      scope_document_ids: ['doc-9', 'doc-10'],
+      messages: [],
+    })
+
+    render(<AppLayout />)
+
+    const textarea = await screen.findByPlaceholderText('Ask about the shared files')
+    await user.type(textarea, 'What do these say?')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    // Same "reject only once the placeholder has actually landed" pattern
+    // as the non-shared at-capacity test above — see its own comment for
+    // why setting the rejection before the click would be a race.
+    await waitFor(() => expect(lastSendQueryRequest?.callbacks?.onProgress).toBeDefined())
+    act(() => {
+      pendingSendQueryCalls
+        .find((c) => c.request === lastSendQueryRequest)
+        ?.reject(new AtCapacityError({ queued: 12, maxQueue: 20, retryAfterSeconds: 90 }))
+    })
+
+    expect(await screen.findByText("We're at capacity right now")).toBeInTheDocument()
+    const retryButton = screen.getByRole('button', { name: /Try again/i })
+
+    nextSendQueryResolution = {
+      messageId: 'shared-retry',
+      content: 'Here is the shared answer.',
+      thinkingSeconds: 1,
+    }
+    await user.click(retryButton)
+
+    expect(await screen.findByText('Here is the shared answer.')).toBeInTheDocument()
+    // Retry re-derives the shared scope fresh (same `handleSend` code path,
+    // not a resend of stale request data) — same question, the chat's own
+    // scope documents, and `omitDocuments: true` (a follower never sends
+    // their own selection).
+    expect(lastSendQueryRequest?.message).toBe('What do these say?')
+    expect(lastSendQueryRequest?.documents).toEqual(['doc-9', 'doc-10'])
+    expect(lastSendQueryRequest?.omitDocuments).toBe(true)
   })
 
   it('disables the composer with a distinct placeholder when the host has not chosen any files yet', async () => {
