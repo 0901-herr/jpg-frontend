@@ -1,13 +1,34 @@
-import { App as AntApp, ConfigProvider } from 'antd'
+import { App as AntApp, ConfigProvider, Spin } from 'antd'
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import AppLayout from './components/AppLayout'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { AuthProvider } from './context/AuthContext'
-import AdminLayout from './pages/admin/AdminLayout'
-import { AdminIndexRedirect, AdminRoute } from './pages/admin/AdminRoute'
-import IngestionOverviewPage from './pages/admin/IngestionOverviewPage'
 import QueryProvider from './providers/QueryProvider'
 import { FONT_FAMILY_SANS } from './config/typography'
+
+// Admin dashboard (antd Table, admin-only icon set, mock data) is rarely
+// visited by end users — split it into its own chunk so chat-only users
+// don't pay for it on first load (audit FE-02). One Suspense boundary
+// above the whole /admin subtree covers every lazy chunk below it, since
+// AdminLayout/IngestionOverviewPage render through AdminRoute's own
+// <Outlet /> — still inside this same boundary.
+const AdminLayout = lazy(() => import('./pages/admin/AdminLayout'))
+const AdminRoute = lazy(() =>
+  import('./pages/admin/AdminRoute').then((m) => ({ default: m.AdminRoute })),
+)
+const AdminIndexRedirect = lazy(() =>
+  import('./pages/admin/AdminRoute').then((m) => ({ default: m.AdminIndexRedirect })),
+)
+const IngestionOverviewPage = lazy(() => import('./pages/admin/IngestionOverviewPage'))
+
+function AdminLoadingFallback() {
+  return (
+    <div className="flex min-h-screen items-center justify-center">
+      <Spin size="large" />
+    </div>
+  )
+}
 
 export default function App() {
   return (
@@ -93,7 +114,13 @@ export default function App() {
                   <Route path="/chat/demo/composer" element={<AppLayout />} />
                   <Route path="/chat/demo/share" element={<AppLayout />} />
                 </Route>
-                <Route element={<AdminRoute />}>
+                <Route
+                  element={
+                    <Suspense fallback={<AdminLoadingFallback />}>
+                      <AdminRoute />
+                    </Suspense>
+                  }
+                >
                   <Route path="/admin" element={<AdminIndexRedirect />} />
                   <Route element={<AdminLayout />}>
                     <Route path="/admin/ingestion" element={<IngestionOverviewPage />} />
