@@ -1,11 +1,11 @@
 @import 'tailwindcss';
 
 /* Tailwind v4 CSS-first theme: keep the `font-sans` utility (and any
-   future use of it) on the same humanist system-UI stack as
+   future use of it) on the same ChatGPT-style system-UI stack as
    --docu-font-family below / FONT_FAMILY_SANS in
    src/config/typography.ts, rather than Tailwind's own default stack. */
 @theme {
-  --font-sans: system-ui, -apple-system, 'Noto Sans', 'Helvetica Neue', Arial, sans-serif;
+  --font-sans: ui-sans-serif, -apple-system, system-ui, 'Segoe UI', Helvetica, 'Apple Color Emoji', Arial, sans-serif, 'Segoe UI Emoji', 'Segoe UI Symbol';
 }
 
 /* Round 6, Item B — root cause: on iOS Safari, 100vh is the height with
@@ -54,14 +54,12 @@ body {
      unaffected — that utility overrides this on its own elements. */
   font-weight: 400;
   line-height: 1.6;
-  /* Client feedback (round 2): text still read as thin after the family
-     fix. `-webkit-font-smoothing: antialiased` / `-moz-osx-font-smoothing:
-     grayscale` thin out stroke weight on macOS WebKit/Gecko by switching
-     off subpixel anti-aliasing; the browser's own default ('auto',
-     platform subpixel rendering) renders noticeably heavier. Explicit
-     `auto` here (rather than just deleting the properties) documents that
-     this is a deliberate choice, not an oversight. */
-  -webkit-font-smoothing: auto;
+  /* Client feedback (round 4): answers read heavy and odd. Match the
+     ChatGPT portal — grayscale antialiasing on macOS, which renders the
+     system font at its designed (lighter) stroke; contrast comes from the
+     near-black ink below rather than from heavier rendering. */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   background-color: var(--docu-bg-page);
   color: var(--docu-text-primary);
 }
@@ -186,7 +184,7 @@ input.ant-input:focus-visible {
      Android/Chrome OS) without naming any vendor font directly. No
      webfont is loaded. Kept in sync with FONT_FAMILY_SANS in
      src/config/typography.ts (the antd ConfigProvider token). */
-  --docu-font-family: system-ui, -apple-system, 'Noto Sans', 'Helvetica Neue', Arial, sans-serif;
+  --docu-font-family: ui-sans-serif, -apple-system, system-ui, 'Segoe UI', Helvetica, 'Apple Color Emoji', Arial, sans-serif, 'Segoe UI Emoji', 'Segoe UI Symbol';
   --docu-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
     'Courier New', monospace;
 }
@@ -862,33 +860,21 @@ button.docu-citation-page-chips:hover .docu-citation-chip-num {
 }
 
 /* Answer body text (ChatMessage.tsx `.docu-answer` container). Client
-   feedback (round 2): still read as thin/small after the family, weight
-   and colour fixes. Scoped to `.docu-answer` only — not the whole app,
-   not `type.body`/`text-base` (still 16px elsewhere, e.g. citation
-   snippets in CitationList.tsx) — so headings, buttons and other body
-   text (sidebar, citations list) are unaffected. Unlayered, so it wins
-   over the `text-base leading-relaxed` Tailwind utilities already on the
-   element (same pattern as the antd-reset-vs-Tailwind fights elsewhere in
-   this file).
-   - 17px (one step up from the 16px base) with a 1.65 line-height reads
-     more open without being a size someone would notice as "bigger".
-   - `letter-spacing: 0.01em` (~0.17px at 17px) is a comfortable-reading
-     nudge, well short of it looking tracked-out.
-   - `font-weight: 500` (owner call, round 3) maps to SF Medium on macOS
-     and the variable Segoe UI on Windows 11 — heavier than regular (400)
-     without being semibold; on a static (non-variable) font it degrades
-     to 400 — harmless fallback, never lighter than the body default. */
+   feedback (round 4): the 17px / weight-500 / subpixel rendering read as
+   heavy and odd. Matches the ChatGPT portal's answer text instead:
+   system UI font at 16px, regular weight (400), 1.75 line-height (28px),
+   no extra tracking. Legibility comes from the near-black
+   --docu-text-primary ink and the generous line-height. Scoped to
+   `.docu-answer`; unlayered so it wins over the `text-base
+   leading-relaxed` Tailwind utilities already on the element. */
 .docu-answer {
-  font-size: 17px;
-  line-height: 1.65;
-  letter-spacing: 0.01em;
-  font-weight: 500;
+  font-size: 16px;
+  line-height: 1.75;
+  font-weight: 400;
 }
 
 /* Markdown `**bold**` run-in labels (e.g. "Summary:") inside an answer —
-   explicit 600 rather than the browser's default bold (700), still
-   visibly heavier than the 500 body weight above without the full-weight
-   jump. */
+   600 rather than the browser's default bold (700), as ChatGPT does. */
 .docu-answer strong {
   font-weight: 600;
 }
@@ -909,7 +895,7 @@ button.docu-citation-page-chips:hover .docu-citation-chip-num {
 
 .docu-answer th {
   padding: 0.4em 0.6em;
-  font-weight: 700;
+  font-weight: 600;
   background: #f6f6f6;
 }
 
