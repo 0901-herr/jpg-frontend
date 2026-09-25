@@ -48,6 +48,22 @@ function readNumber(payload: Record<string, unknown>, key: string): number | und
   return typeof v === 'number' ? v : undefined
 }
 
+/** A finite number pulled off an SSE payload field, or `undefined` for
+ * anything else (missing key, wrong type, `NaN`, `Infinity`) — the shared
+ * first-line guard behind every queue/ETA field read off the wire (owner
+ * rule: defensive, never crash — a garbled or absent field must never reach
+ * `Math.round`/arithmetic downstream). Negative values are deliberately NOT
+ * filtered here; callers that only accept non-negative fields (queue
+ * position, ETA) enforce that themselves in `formatQueuePosition`/
+ * `formatFriendlyEta` below. */
+export function readFiniteNumber(
+  payload: Record<string, unknown> | undefined,
+  key: string,
+): number | undefined {
+  const v = payload?.[key]
+  return typeof v === 'number' && Number.isFinite(v) ? v : undefined
+}
+
 /** Documents in scope for the query, used to personalize the "retrieving"
  * label — optional, since the caller may not have this context yet (e.g.
  * before scope validation resolves). The "generating" stage deliberately
@@ -182,6 +198,57 @@ export function formatRouteLabel(strategy: string | undefined): string | undefin
     agent: 'Working through your question',
   }
   return labels[strategy] ?? humanizeStage(strategy.replace(/_/g, ' '))
+}
+
+/** "You're #3 in line" from a `queued` progress event's `position`/`ahead`
+ * fields (design doc §4.1/§4.3). The engine defines `position` as this
+ * request's 1-indexed place in the admission queue and `ahead` as the
+ * count of requests ahead of it — i.e. `ahead === position - 1` whenever
+ * both are present and consistent. `ahead` is preferred as the source of
+ * truth (review fix round 1, Finding minor: it's the field the ETA
+ * calculation itself is defined from — design doc §4.1's
+ * `eta_seconds = ahead × ewma_service_seconds / effective_slots` — so
+ * trusting it for the displayed number keeps the position line and the ETA
+ * line internally consistent even if a future engine ever sent a
+ * momentarily-stale `position`); `position` is the fallback for an older
+ * engine or a transient gap where only one field arrived. Either source is
+ * folded into the same 1-indexed "you are #N" number and rendered through
+ * one consistent phrasing — never a different sentence shape depending on
+ * which field happened to be present. Missing, non-finite, or
+ * out-of-range values (a position under 1, a negative `ahead`) render
+ * nothing rather than a garbled or nonsensical line — the queue card
+ * simply omits this line (owner rule: defensive, never crash; §6 "ETA
+ * omitted, position still sent" extends the same way to a completely
+ * unusable field). */
+export function formatQueueLine(position: unknown, ahead: unknown): string | undefined {
+  const aheadCount = typeof ahead === 'number' ? ahead : undefined
+  const effectivePosition =
+    aheadCount != null && Number.isFinite(aheadCount) && aheadCount >= 0
+      ? aheadCount + 1
+      : (() => {
+          const pos = typeof position === 'number' ? position : undefined
+          return pos != null && Number.isFinite(pos) && pos >= 1 ? pos : undefined
+        })()
+
+  if (effectivePosition == null) return undefined
+  const rounded = Math.round(effectivePosition)
+  return rounded <= 1 ? "You're next in line" : `You're #${rounded} in line`
+}
+
+/** Rounds a raw `eta_seconds` into a friendly, round-number phrase ("about 4
+ * min") rather than a literal second count, which would read as a far more
+ * precise promise than a CPU-bound queue estimate can keep. Missing,
+ * non-finite, or non-positive values (no service-time sample yet — design
+ * doc §6: "Guard/ETA failures ... ETA omitted, position still sent; never
+ * blocks") render nothing, never "about 0 min" or a negative duration. */
+export function formatFriendlyEta(etaSeconds: unknown): string | undefined {
+  const n = typeof etaSeconds === 'number' ? etaSeconds : undefined
+  if (n == null || !Number.isFinite(n) || n <= 0) return undefined
+  if (n < 60) return 'less than a minute'
+  const minutes = Math.round(n / 60)
+  if (minutes < 60) return `about ${minutes} min`
+  const hours = Math.round(minutes / 60)
+  return `about ${hours} ${plural(hours, 'hour')}`
 }
 
 export function isLateQueryStage(stage: string | undefined): boolean {

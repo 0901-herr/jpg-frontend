@@ -3,6 +3,7 @@ import {
   QUERY_GENERIC_ERROR,
   FOLDER_LOAD_PERMISSION_ERROR,
   FOLDER_LOAD_SERVER_ERROR,
+  formatAtCapacityMessage,
   METADATA_EXTRACTION_GENERIC_ERROR,
   QUERY_ALMOST_DONE_ERROR,
   QUERY_NO_HOST_SCOPE_ERROR,
@@ -14,6 +15,22 @@ import {
   toUserFacingMetadataExtractionError,
   toUserFacingQueryError,
 } from './userFacingErrors'
+
+describe('formatAtCapacityMessage', () => {
+  it('folds in a friendly-rounded retry wait when the engine sent one', () => {
+    expect(formatAtCapacityMessage(240)).toBe(
+      "So many people are asking questions right now that we can't take any more. Try again in about 4 min.",
+    )
+  })
+
+  it('falls back to a generic wait when no retry-after value is usable', () => {
+    const generic =
+      "So many people are asking questions right now that we can't take any more. Please try again shortly."
+    expect(formatAtCapacityMessage(undefined)).toBe(generic)
+    expect(formatAtCapacityMessage(-5)).toBe(generic)
+    expect(formatAtCapacityMessage(Number.NaN)).toBe(generic)
+  })
+})
 
 describe('toUserFacingQueryError', () => {
   it('uses almost-done message when failure follows assembly stage', () => {

@@ -7,6 +7,7 @@ import path from 'node:path'
 import React, { type ReactElement, useState } from 'react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../api/http'
+import { AtCapacityError } from '../api/query'
 import type {
   DocumentCategorizeResponse,
   MetadataExtractionResponse,
@@ -259,7 +260,9 @@ vi.mock('./Sidebar', () => ({
 }))
 
 // Imported after the mocks above so AppLayout picks up the mocked modules.
-const { default: AppLayout } = await import('./AppLayout')
+const { default: AppLayout, canStartQueryInActiveChat, isActiveChatBlocked } = await import(
+  './AppLayout'
+)
 
 // AppLayout renders antd Tooltip/Dropdown popups (rc-trigger), which measure
 // the scrollbar via getComputedStyle(el, '::-webkit-scrollbar') when a popup
@@ -532,6 +535,221 @@ describe('AppLayout — query error messages', () => {
 
 })
 
+describe('AppLayout — queue card and at-capacity retry (design doc §4.1/§4.3)', () => {
+  beforeEach(() => {
+    currentSignal = null
+    nextSendQueryRejection = null
+    nextSendQueryResolution = null
+    initialSelectedIds = new Set(['doc-1'])
+    initialDocumentMeta = defaultDocumentMeta()
+    validateQueryScope.mockResolvedValue({
+      total_files: 1,
+      ready_files: 1,
+      indexing_files: 0,
+      failed_files: 0,
+      missing_files: 0,
+      accessible_document_ids: ['doc-1'],
+    })
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('shows a calm queue card with position and a friendly ETA while queued, live-updating as the position changes', async () => {
+    const user = userEvent.setup()
+    render(<AppLayout />)
+
+    const textarea = await screen.findByPlaceholderText(/ask a question/i)
+    await user.type(textarea, 'What is in the contract?')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    await waitFor(() => expect(lastSendQueryRequest?.callbacks?.onProgress).toBeDefined())
+
+    act(() => {
+      lastSendQueryRequest?.callbacks?.onProgress?.('queued', {
+        position: 3,
+        ahead: 2,
+        eta_seconds: 240,
+      })
+    })
+
+    expect(await screen.findByText("You're #3 in line")).toBeInTheDocument()
+    expect(screen.getByText('about 4 min')).toBeInTheDocument()
+
+    act(() => {
+      lastSendQueryRequest?.callbacks?.onProgress?.('queued', {
+        position: 1,
+        ahead: 0,
+        eta_seconds: 40,
+      })
+    })
+
+    // ahead: 0 reads "You're next in line", not "#1" (position/ahead
+    // semantics fix round 1: `ahead` is preferred and folded into the same
+    // 1-indexed number as `position`, so ahead=0 here === position=1).
+    expect(await screen.findByText("You're next in line")).toBeInTheDocument()
+    expect(screen.getByText('less than a minute')).toBeInTheDocument()
+  })
+
+  it('hides the queue card once a later, non-queued progress event arrives', async () => {
+    const user = userEvent.setup()
+    render(<AppLayout />)
+
+    const textarea = await screen.findByPlaceholderText(/ask a question/i)
+    await user.type(textarea, 'What is in the contract?')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    await waitFor(() => expect(lastSendQueryRequest?.callbacks?.onProgress).toBeDefined())
+
+    act(() => {
+      lastSendQueryRequest?.callbacks?.onProgress?.('queued', { position: 2, ahead: 1, eta_seconds: 90 })
+    })
+    expect(await screen.findByText("You're #2 in line")).toBeInTheDocument()
+
+    act(() => {
+      lastSendQueryRequest?.callbacks?.onProgress?.('retrieving', {})
+    })
+
+    expect(screen.queryByText(/in line/)).not.toBeInTheDocument()
+    expect(await screen.findByText(/^Searching/)).toBeInTheDocument()
+  })
+
+  it('hides the queue card once the first token streams in', async () => {
+    const user = userEvent.setup()
+    render(<AppLayout />)
+
+    const textarea = await screen.findByPlaceholderText(/ask a question/i)
+    await user.type(textarea, 'What is in the contract?')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    await waitFor(() => expect(lastSendQueryRequest?.callbacks?.onProgress).toBeDefined())
+
+    act(() => {
+      lastSendQueryRequest?.callbacks?.onProgress?.('queued', { position: 2, ahead: 1, eta_seconds: 90 })
+    })
+    expect(await screen.findByText("You're #2 in line")).toBeInTheDocument()
+
+    act(() => {
+      lastSendQueryRequest?.callbacks?.onDelta?.('The answer starts here')
+    })
+
+    await waitFor(() => expect(screen.queryByText(/in line/)).not.toBeInTheDocument())
+  })
+
+  it('shows a polite, titled at-capacity message with a "Try again" button instead of a raw error, and resubmits the question on click', async () => {
+    const user = userEvent.setup()
+
+    render(<AppLayout />)
+
+    const textarea = await screen.findByPlaceholderText(/ask a question/i)
+    await user.type(textarea, 'What is in the contract?')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    // Rejects the in-flight call only once the thinking placeholder has
+    // actually landed (same pattern the queue-card tests above use for
+    // onProgress) — setting `nextSendQueryRejection` before the click would
+    // let the mock's mutateAsync settle before React has committed the
+    // placeholder from `updateChatMessages`, which would make
+    // `updateAssistantMessage`'s own last-message lookup a genuine race
+    // rather than exercising the real catch-block behavior.
+    await waitFor(() => expect(lastSendQueryRequest?.callbacks?.onProgress).toBeDefined())
+    act(() => {
+      pendingSendQueryCalls
+        .find((c) => c.request === lastSendQueryRequest)
+        ?.reject(new AtCapacityError({ queued: 80, maxQueue: 80, retryAfterSeconds: 240 }))
+    })
+
+    expect(await screen.findByText("We're at capacity right now")).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        "So many people are asking questions right now that we can't take any more. Try again in about 4 min.",
+      ),
+    ).toBeInTheDocument()
+
+    nextSendQueryResolution = {
+      messageId: 'm-retry',
+      content: 'Here is the answer.',
+      thinkingSeconds: 1,
+    }
+
+    const retryButton = screen.getByRole('button', { name: /Try again/i })
+    await user.click(retryButton)
+
+    expect(await screen.findByText('Here is the answer.')).toBeInTheDocument()
+    // Retrying resent the original question as a fresh turn.
+    expect(lastSendQueryRequest?.message).toBe('What is in the contract?')
+  })
+})
+
+// Fix round 1, Finding 1: `isActiveChatBlocked`/`canStartQueryInActiveChat`
+// are the exact shared gate the composer's Send button and the "Try again"
+// retry affordance both use (AppLayout.tsx, above the component). Unit-
+// tested directly here rather than only through a full end-to-end replay,
+// because the specific combination the fix targets — an older *retryable*
+// message coexisting with `isActiveChatPendingAnswer` for a newer turn
+// (e.g. a reload/reconnect mid-generation) — cannot currently be reproduced
+// through the real store end-to-end: `retryable`/`errorTitle` don't yet
+// survive a server round-trip (`useChatStore.ts`'s `mapMessageDto` doesn't
+// carry them, and `recordAssistantMessage`'s POST payload doesn't send
+// them either — a separate, not-yet-fixed gap, see the fix report's Minor
+// #2 note), so any fixture built through `getChatSession` necessarily
+// loses the retryable flag before `isActiveChatPendingAnswer` could ever
+// see it. This test instead proves the GUARD itself is correct for that
+// exact state combination — independent of whether today's persistence
+// layer can produce it — so retry is provably disabled the moment that
+// separate gap is closed, with no further guard-logic change needed.
+describe('AppLayout — isActiveChatBlocked / canStartQueryInActiveChat (fix round 1, Finding 1: shared Send/retry gate)', () => {
+  const baseline = {
+    sessionExpired: false,
+    messagesLoading: false,
+    beingCreated: false,
+    pendingAnswer: false,
+  }
+
+  it('allows a new query (Send or retry) when nothing blocks the active chat', () => {
+    expect(isActiveChatBlocked(baseline)).toBe(false)
+    expect(canStartQueryInActiveChat({ ...baseline, isResponding: false })).toBe(true)
+  })
+
+  it('the pending-answer-after-reload state alone — no local stream, nothing else blocking — disables both Send and retry', () => {
+    // This is exactly "a chat has an older retryable at-capacity message
+    // and is currently in the isActiveChatPendingAnswer state for a
+    // different, newer turn (e.g. after a reload mid-generation)" from the
+    // review: pendingAnswer is the only true flag, isResponding is false
+    // (no local abort controller — a stale retry button that only checked
+    // `!isActiveChatResponding`, the pre-fix guard, would have stayed
+    // enabled here).
+    const input = { ...baseline, pendingAnswer: true }
+    expect(isActiveChatBlocked(input)).toBe(true)
+    expect(canStartQueryInActiveChat({ ...input, isResponding: false })).toBe(false)
+  })
+
+  it('each individual blocking flag disables a new query on its own', () => {
+    expect(canStartQueryInActiveChat({ ...baseline, sessionExpired: true, isResponding: false })).toBe(
+      false,
+    )
+    expect(
+      canStartQueryInActiveChat({ ...baseline, messagesLoading: true, isResponding: false }),
+    ).toBe(false)
+    expect(
+      canStartQueryInActiveChat({ ...baseline, beingCreated: true, isResponding: false }),
+    ).toBe(false)
+    expect(
+      canStartQueryInActiveChat({ ...baseline, pendingAnswer: true, isResponding: false }),
+    ).toBe(false)
+  })
+
+  it('isResponding alone (no other flag) also disables a new query, but is not part of isActiveChatBlocked itself', () => {
+    // isResponding swaps the composer's Send for a working Stop button
+    // rather than disabling anything — it must still block retry (there is
+    // no Stop affordance for a transcript message) without being folded
+    // into the composer's own `disabled` boolean.
+    expect(isActiveChatBlocked(baseline)).toBe(false)
+    expect(canStartQueryInActiveChat({ ...baseline, isResponding: true })).toBe(false)
+  })
+})
+
 describe('AppLayout — shared link (?share=token)', () => {
   beforeEach(() => {
     window.localStorage.clear()
@@ -679,6 +897,62 @@ describe('AppLayout — shared link (?share=token)', () => {
         }),
       )
     })
+  })
+
+  it('shows the at-capacity retry affordance inside a shared queryable (follower) chat, and retry resends through the same shared scope (minor fix round 1)', async () => {
+    const user = userEvent.setup()
+    initialSelectedIds = new Set()
+    window.history.pushState({}, '', '/chat?share=tok789')
+    getSharedChatSession.mockResolvedValueOnce({
+      id: 'shared-4',
+      title: 'Shared Queryable Chat',
+      project_id: null,
+      visibility: 'query',
+      share_token: null,
+      created_at: '2026-09-01T00:00:00Z',
+      updated_at: '2026-09-01T00:00:00Z',
+      message_count: 0,
+      owner_username: 'alice',
+      is_owner: false,
+      can_query: true,
+      scope_document_ids: ['doc-9', 'doc-10'],
+      messages: [],
+    })
+
+    render(<AppLayout />)
+
+    const textarea = await screen.findByPlaceholderText('Ask about the shared files')
+    await user.type(textarea, 'What do these say?')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    // Same "reject only once the placeholder has actually landed" pattern
+    // as the non-shared at-capacity test above — see its own comment for
+    // why setting the rejection before the click would be a race.
+    await waitFor(() => expect(lastSendQueryRequest?.callbacks?.onProgress).toBeDefined())
+    act(() => {
+      pendingSendQueryCalls
+        .find((c) => c.request === lastSendQueryRequest)
+        ?.reject(new AtCapacityError({ queued: 12, maxQueue: 20, retryAfterSeconds: 90 }))
+    })
+
+    expect(await screen.findByText("We're at capacity right now")).toBeInTheDocument()
+    const retryButton = screen.getByRole('button', { name: /Try again/i })
+
+    nextSendQueryResolution = {
+      messageId: 'shared-retry',
+      content: 'Here is the shared answer.',
+      thinkingSeconds: 1,
+    }
+    await user.click(retryButton)
+
+    expect(await screen.findByText('Here is the shared answer.')).toBeInTheDocument()
+    // Retry re-derives the shared scope fresh (same `handleSend` code path,
+    // not a resend of stale request data) — same question, the chat's own
+    // scope documents, and `omitDocuments: true` (a follower never sends
+    // their own selection).
+    expect(lastSendQueryRequest?.message).toBe('What do these say?')
+    expect(lastSendQueryRequest?.documents).toEqual(['doc-9', 'doc-10'])
+    expect(lastSendQueryRequest?.omitDocuments).toBe(true)
   })
 
   it('disables the composer with a distinct placeholder when the host has not chosen any files yet', async () => {

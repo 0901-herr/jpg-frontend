@@ -1,4 +1,4 @@
-import { Avatar, Typography } from 'antd'
+import { Avatar, Button, Typography } from 'antd'
 import { useMemo, useRef } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -8,9 +8,10 @@ import { createAnswerMarkdownComponents, createStreamingTailPlugin } from '../ut
 import { useElapsedSeconds } from '../hooks/useElapsedSeconds'
 import { useProgressTicker } from '../hooks/useProgressTicker'
 import { progressTickerLabel } from '../utils/queryProgress'
-import { ChatInfoIcon } from '../icons/chat'
+import { ChatInfoIcon, ChatRefreshIcon } from '../icons/chat'
 import type { ChatMessage, CoverageInfo, Source } from '../types'
 import CitationList from './CitationList'
+import QueueCard from './QueueCard'
 import { answerHasInlineCitation, stripAbstainedCitationMarkers } from '../utils/citations'
 
 const { Text } = Typography
@@ -112,10 +113,17 @@ function ErrorMessage({
   content,
   progressHint,
   title,
+  onRetry,
 }: {
   content: string
   progressHint?: string
   title?: string
+  /** Renders a "Try again" affordance under the message when present — set
+   * only for a durable failure retrying can plausibly fix (currently the
+   * admission queue's `at_capacity` event; see `ChatMessage.retryable`'s
+   * own doc comment for why a plain stream/network error stays without
+   * one). */
+  onRetry?: () => void
 }) {
   return (
     <div
@@ -130,12 +138,24 @@ function ErrorMessage({
       {progressHint && (
         <p className={`${type.caption} mt-2 ${typeColor.secondary}`}>Last step: {progressHint}</p>
       )}
+      {onRetry && (
+        <Button
+          size="small"
+          icon={<ChatRefreshIcon />}
+          onClick={onRetry}
+          className="mt-3"
+        >
+          Try again
+        </Button>
+      )}
     </div>
   )
 }
 
 interface AssistantMessageProps {
   message: ChatMessage
+  /** Wired only when `message.retryable` — see `ErrorMessage`'s own prop. */
+  onRetry?: () => void
 }
 
 function formatThoughtDuration(seconds: number): string {
@@ -266,13 +286,14 @@ function AnswerContent({ message }: { message: ChatMessage }) {
   )
 }
 
-function AssistantMessage({ message }: AssistantMessageProps) {
+function AssistantMessage({ message, onRetry }: AssistantMessageProps) {
   if (message.status === 'error') {
     return (
       <ErrorMessage
         content={message.content}
         progressHint={message.progressLabel}
         title={message.errorTitle}
+        onRetry={message.retryable ? onRetry : undefined}
       />
     )
   }
@@ -281,7 +302,15 @@ function AssistantMessage({ message }: AssistantMessageProps) {
     return (
       <div className="space-y-2">
         <CoverageNotice coverage={message.coverage} />
-        <ThinkingIndicator message={message} />
+        {message.progressStage === 'queued' ? (
+          <QueueCard
+            position={message.queuePosition}
+            ahead={message.queueAhead}
+            etaSeconds={message.queueEtaSeconds}
+          />
+        ) : (
+          <ThinkingIndicator message={message} />
+        )}
       </div>
     )
   }
@@ -366,12 +395,17 @@ interface ChatMessageItemProps {
   /** Viewer display name — fallback only when `message.authorUsername` is
    * still missing (just-sent, not yet confirmed by the server). */
   currentUsername?: string
+  /** Retries this exact assistant turn — only ever rendered (as a "Try
+   * again" button) when `message.retryable` is set; a no-op prop otherwise.
+   * `AppLayout.tsx` wires this to resending the original question. */
+  onRetry?: () => void
 }
 
 export default function ChatMessageItem({
   message,
   showDivider,
   currentUsername,
+  onRetry,
 }: ChatMessageItemProps) {
   const authorName = message.authorUsername ?? currentUsername ?? 'You'
 
@@ -427,7 +461,7 @@ export default function ChatMessageItem({
         </div>
       ) : (
         <div className="mb-2 max-w-[min(48rem,100%)]">
-          <AssistantMessage message={message} />
+          <AssistantMessage message={message} onRetry={onRetry} />
         </div>
       )}
       {showDivider && <hr className="my-8 border-0 border-t border-[#ececec]" />}

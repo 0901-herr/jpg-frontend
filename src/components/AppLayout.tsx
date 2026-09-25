@@ -16,6 +16,7 @@ import {
   validateQueryScope,
 } from '../api/browse'
 import { ApiError } from '../api/http'
+import { AtCapacityError } from '../api/query'
 import type { Citation } from '../api/types/query'
 import { AUTH_BYPASS, DEV_USER } from '../config/auth'
 import { useAuth } from '../context/AuthContext'
@@ -31,7 +32,12 @@ import { useVisualViewportHeight } from '../hooks/useVisualViewportHeight'
 import { type, typeColor } from '../styles/typography'
 import { citationsToSources, mergeCitations } from '../utils/citations'
 import { appendStreamDelta } from '../utils/appendStreamDelta'
-import { formatProgressStage, formatRouteLabel, resolveProgressScope } from '../utils/queryProgress'
+import {
+  formatProgressStage,
+  formatRouteLabel,
+  readFiniteNumber,
+  resolveProgressScope,
+} from '../utils/queryProgress'
 import { getSummarizeDisabledReason, isSummaryReady } from '../utils/summaryGate'
 import {
   getExtractMetadataDisabledReason,
@@ -47,7 +53,12 @@ import {
   MAX_SELECTED_FILE_PREVIEW,
   SELECTION_LIMIT_MESSAGE,
 } from '../config/selection'
-import { toUserFacingMetadataExtractionError, toUserFacingQueryError } from '../utils/userFacingErrors'
+import {
+  formatAtCapacityMessage,
+  QUERY_AT_CAPACITY_TITLE,
+  toUserFacingMetadataExtractionError,
+  toUserFacingQueryError,
+} from '../utils/userFacingErrors'
 import type { QueryTier } from '../api/types/query'
 import {
   isCitationDemoEnabled,
@@ -166,6 +177,51 @@ function getShareTokenFromLocation(): string | null {
 // brief. `NARROW_LAYOUT_QUERY` (config/layout.ts) is shared with the admin
 // console's own mobile nav (P0-1, UI polish pass), which collapses the same
 // way at the same breakpoint.
+
+/** Every reason the active chat's composer disables its Send button right
+ * now (see the composer's own `disabled` prop below). Exported as a pure
+ * function — not left as an inline boolean expression — so the "Try
+ * again" retry affordance on an at-capacity message (queue-card fix round
+ * 1, Finding 1) can gate itself with the exact same logic instead of
+ * re-deriving a narrower subset, and so the specific combination that
+ * matters for that fix (`pendingAnswer` alone, every other flag false —
+ * the "reload/reconnect mid-generation for a newer turn while an older
+ * turn's message is still retryable" scenario) has a direct, deterministic
+ * test. That real end-to-end combination is hard to reproduce through the
+ * full app today, because `retryable`/`errorTitle` don't yet survive a
+ * server round-trip (a separate, not-yet-fixed gap — see the fix report's
+ * Minor #2 note) — a unit test of this function proves the guard itself,
+ * independent of that gap. */
+export interface ActiveChatBlockedInput {
+  sessionExpired: boolean
+  messagesLoading: boolean
+  beingCreated: boolean
+  pendingAnswer: boolean
+}
+
+export function isActiveChatBlocked({
+  sessionExpired,
+  messagesLoading,
+  beingCreated,
+  pendingAnswer,
+}: ActiveChatBlockedInput): boolean {
+  return sessionExpired || messagesLoading || beingCreated || pendingAnswer
+}
+
+/** Whether the active chat may start a NEW query right now, from either the
+ * composer's Send button or a transcript "Try again" retry — the union of
+ * `isActiveChatBlocked` above and `isResponding`. `isResponding` is kept as
+ * a separate flag here (not folded into `isActiveChatBlocked` itself)
+ * because it means something different for each caller: for the composer
+ * it swaps Send for a working Stop button rather than disabling anything;
+ * for retry there is no Stop affordance at all, so it simply must stay
+ * inert. Folding it into the shared "blocked" boolean would make the
+ * composer unable to tell "disabled" from "showing Stop" apart. */
+export function canStartQueryInActiveChat(
+  input: ActiveChatBlockedInput & { isResponding: boolean },
+): boolean {
+  return !input.isResponding && !isActiveChatBlocked(input)
+}
 
 export default function AppLayout() {
   // `App.useApp()` rather than the static `message` import from 'antd' —
@@ -931,11 +987,23 @@ export default function AppLayout() {
               },
               onProgress: (stage, payload) => {
                 lastProgressStage = stage
+                // The queue card (ChatMessage.tsx's QueueCard) only ever
+                // shows for the `queued` stage — every other stage clears
+                // these three back to `undefined`, which is what makes the
+                // card disappear the instant a later progress event (e.g.
+                // `retrieving`, once a slot is acquired) arrives. Raw reads
+                // only (`readFiniteNumber` just checks "is this a finite
+                // number at all") — `QueueCard`'s own formatters apply the
+                // stricter sign/range checks a queue position or ETA needs.
+                const isQueued = stage === 'queued'
                 updateAssistantMessage(chatId, (msg) => ({
                   ...msg,
                   status: msg.content ? 'streaming' : 'thinking',
                   progressLabel: formatProgressStage(stage, payload, progressContext()),
                   progressStage: stage,
+                  queuePosition: isQueued ? readFiniteNumber(payload, 'position') : undefined,
+                  queueAhead: isQueued ? readFiniteNumber(payload, 'ahead') : undefined,
+                  queueEtaSeconds: isQueued ? readFiniteNumber(payload, 'eta_seconds') : undefined,
                 }))
               },
               onRoute: (strategy) => {
@@ -1053,6 +1121,31 @@ export default function AppLayout() {
             return
           }
 
+          if (err instanceof AtCapacityError) {
+            // The admission queue is full (design doc §4.1/§4.3) — a
+            // distinct, retryable case, not a generic failure: no toast (a
+            // calm in-bubble message is the whole point), a fixed title,
+            // and `retryable: true` so ChatMessage's ErrorMessage renders
+            // the "Try again" button. The queue-card fields are cleared too
+            // — this message is no longer `thinking`, so they'd otherwise
+            // just linger unused in state.
+            const errored = updateAssistantMessage(chatId, (msg) => ({
+              ...msg,
+              content: formatAtCapacityMessage(err.info.retryAfterSeconds),
+              status: 'error',
+              errorTitle: QUERY_AT_CAPACITY_TITLE,
+              retryable: true,
+              liveText: '',
+              queuePosition: undefined,
+              queueAhead: undefined,
+              queueEtaSeconds: undefined,
+              progressLabel: undefined,
+              thinkingSeconds: elapsedSeconds(),
+            }))
+            if (errored) assistantPersistPromise = chatStore.recordAssistantMessage(chatId, errored)
+            return
+          }
+
           const httpStatus = err instanceof ApiError ? err.status : undefined
           const detail = friendlyQueryError(queryErrorRawMessage(err), httpStatus)
           message.error(detail, 8)
@@ -1138,6 +1231,25 @@ export default function AppLayout() {
   // Gates the composer to `disabled` (see the composer JSX below), never
   // `isResponding` — there's nothing to abort here.
   const isActiveChatPendingAnswer = pendingAnswerChatIds.has(activeChatId)
+
+  // Queue-card fix round 1, Finding 1: `isActiveChatBlocked`/
+  // `canStartQueryInActiveChat` (defined above the component) are the
+  // shared source of truth for the composer's own `disabled` prop below
+  // AND the "Try again" retry affordance — see their doc comments for why
+  // this state combination in particular (an older retryable message +
+  // `isActiveChatPendingAnswer` for a newer turn) needed a guard, not just
+  // `isActiveChatResponding`.
+  const activeChatBlockedInput: ActiveChatBlockedInput = {
+    sessionExpired: browse.sessionExpired,
+    messagesLoading: isActiveChatMessagesLoading,
+    beingCreated: isActiveChatBeingCreated,
+    pendingAnswer: isActiveChatPendingAnswer,
+  }
+  const activeChatBlocked = isActiveChatBlocked(activeChatBlockedInput)
+  const canRetryInActiveChat = canStartQueryInActiveChat({
+    ...activeChatBlockedInput,
+    isResponding: isActiveChatResponding,
+  })
 
   const summarizeDisabledReason = useMemo(
     () =>
@@ -1643,7 +1755,27 @@ export default function AppLayout() {
                         className={`min-w-0 ${isLastTurn ? 'docu-chat-last-turn min-h-[min(72vh,calc(100dvh-var(--docu-composer-height,13rem)))]' : ''}`}
                       >
                         <ChatMessageItem message={pair.user} currentUsername={currentUsername} />
-                        {pair.assistant && <ChatMessageItem message={pair.assistant} />}
+                        {pair.assistant && (
+                          <ChatMessageItem
+                            message={pair.assistant}
+                            onRetry={
+                              // Fix round 1, Finding 1: gated by the same
+                              // `canRetryInActiveChat` the composer's own
+                              // Send button uses — a stale "Try again" on an
+                              // earlier, already-settled turn must go inert
+                              // in every state Send itself is inert in
+                              // (reload/reconnect mid-generation for a
+                              // later turn in this chat included), not just
+                              // while this chat has its own abortable
+                              // stream.
+                              pair.assistant.retryable && canRetryInActiveChat
+                                ? () => {
+                                    void handleSend(pair.assistant!.question ?? pair.user.content)
+                                  }
+                                : undefined
+                            }
+                          />
+                        )}
                       </div>
                     )
                   })
@@ -1695,14 +1827,7 @@ export default function AppLayout() {
                 toolActionPending={
                   layoutDemo ? false : isSummarizing || isExtracting || isCategorizing
                 }
-                disabled={
-                  layoutDemo
-                    ? false
-                    : browse.sessionExpired ||
-                      isActiveChatMessagesLoading ||
-                      isActiveChatBeingCreated ||
-                      isActiveChatPendingAnswer
-                }
+                disabled={layoutDemo ? false : activeChatBlocked}
                 disabledReason={
                   layoutDemo
                     ? undefined
