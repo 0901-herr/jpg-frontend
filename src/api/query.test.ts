@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { citationRefForSegment, joinAnswerSegment, sendMessage } from './query'
+import { AtCapacityError, citationRefForSegment, joinAnswerSegment, sendMessage } from './query'
 import { apiPostStream, ApiError } from './http'
 import type { SseEvent } from './http'
 import type { Citation } from './types/query'
@@ -652,6 +652,80 @@ describe('sendMessage error handling', () => {
         documents: ['doc1'],
       }),
     ).rejects.toThrow(QUERY_PERMISSION_DENIED_ERROR)
+  })
+})
+
+describe('sendMessage at_capacity handling', () => {
+  it('fires onAtCapacity with the parsed payload and rejects with an AtCapacityError, never onError', async () => {
+    scriptedEvents = [
+      {
+        event: 'error',
+        data: { error: 'at_capacity', queued: 80, max_queue: 80, retry_after_seconds: 240 },
+      },
+    ]
+    const onAtCapacity = vi.fn()
+    const onError = vi.fn()
+
+    const promise = sendMessage({
+      chatId: 'c1',
+      message: 'q',
+      documents: ['doc1'],
+      callbacks: { onAtCapacity, onError },
+    })
+
+    await expect(promise).rejects.toBeInstanceOf(AtCapacityError)
+    expect(onAtCapacity).toHaveBeenCalledWith({ queued: 80, maxQueue: 80, retryAfterSeconds: 240 })
+    expect(onError).not.toHaveBeenCalled()
+  })
+
+  it('drops a negative or non-numeric field instead of propagating garbage (defensive, never crash)', async () => {
+    scriptedEvents = [
+      {
+        event: 'error',
+        data: { error: 'at_capacity', queued: -1, max_queue: 'lots', retry_after_seconds: Number.NaN },
+      },
+    ]
+    const onAtCapacity = vi.fn()
+
+    await expect(
+      sendMessage({
+        chatId: 'c1',
+        message: 'q',
+        documents: ['doc1'],
+        callbacks: { onAtCapacity },
+      }),
+    ).rejects.toBeInstanceOf(AtCapacityError)
+
+    expect(onAtCapacity).toHaveBeenCalledWith({
+      queued: undefined,
+      maxQueue: undefined,
+      retryAfterSeconds: undefined,
+    })
+  })
+
+  it('still routes a differently-coded error event to onError as before, not onAtCapacity', async () => {
+    scriptedEvents = [
+      { event: 'error', data: { error: 'llm_transport_error', message: 'The model timed out.' } },
+    ]
+    const onAtCapacity = vi.fn()
+    const onError = vi.fn()
+    let caught: unknown
+
+    try {
+      await sendMessage({
+        chatId: 'c1',
+        message: 'q',
+        documents: ['doc1'],
+        callbacks: { onAtCapacity, onError },
+      })
+    } catch (err) {
+      caught = err
+    }
+
+    expect(caught).toBeInstanceOf(Error)
+    expect(caught).not.toBeInstanceOf(AtCapacityError)
+    expect(onAtCapacity).not.toHaveBeenCalled()
+    expect(onError).toHaveBeenCalled()
   })
 })
 

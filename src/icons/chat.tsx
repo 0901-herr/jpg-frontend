@@ -54,6 +54,10 @@ export const ChatMetadataIcon = appIcon(AssignmentOutlinedIcon, 16)
 // (ChatInput.tsx's composer blocked-reason line, ChatMessage.tsx's error
 // callout) rather than a loud coloured alert box.
 export const ChatInfoIcon = appIcon(InfoOutlinedIcon, 16)
+// Quiet inline queue card (ChatMessage.tsx's QueueCard) — same 16px note-
+// icon size as ChatInfoIcon, a clock face rather than an "i" since this is
+// a wait, not an explanation.
+export const ChatQueueIcon = appIcon(ScheduleOutlinedIcon, 16)
 // Mobile top bar hamburger (AppLayout.tsx) — opens the sidebar Drawer below
 // 768px.
 export const ChatMenuIcon = appIcon(MenuIcon, 20)

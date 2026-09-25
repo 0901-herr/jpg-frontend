@@ -23,6 +23,17 @@ export interface CoverageEvent {
   failed_files?: number
 }
 
+/** The in-stream `at_capacity` SSE event's own fields (design doc
+ * §4.1/§4.3) — the admission queue is full, distinct from every other
+ * `error` event. All optional/defensive: `parseAtCapacityInfo` in
+ * `api/query.ts` reads whatever numbers are present and leaves the rest
+ * `undefined` rather than guessing. */
+export interface AtCapacityInfo {
+  queued?: number
+  maxQueue?: number
+  retryAfterSeconds?: number
+}
+
 export interface StreamQueryCallbacks {
   onCoverage?: (coverage: CoverageEvent) => void
   /** `payload` is the full progress event data (stage included) — e.g.
@@ -49,6 +60,14 @@ export interface StreamQueryCallbacks {
   onAbstention?: (payload: { reason?: string; message?: string }) => void
   onDone?: (payload: { duration_ms?: number }) => void
   onError?: (message: string) => void
+  /** Fires for the in-stream `at_capacity` error event instead of `onError`
+   * — the admission queue is full, not a transient failure, so callers
+   * render a distinct, retryable message rather than the generic error
+   * copy `onError` drives. `streamQuery` still throws afterward (an
+   * `AtCapacityError` carrying the same payload) so the stream always
+   * settles through one code path, but this callback is the one meant to
+   * drive the UI. */
+  onAtCapacity?: (info: AtCapacityInfo) => void
 }
 
 /** Per-query accuracy tier — maps to rag-engine accuracy_tier once the adapter forwards it. */

@@ -48,6 +48,22 @@ function readNumber(payload: Record<string, unknown>, key: string): number | und
   return typeof v === 'number' ? v : undefined
 }
 
+/** A finite number pulled off an SSE payload field, or `undefined` for
+ * anything else (missing key, wrong type, `NaN`, `Infinity`) — the shared
+ * first-line guard behind every queue/ETA field read off the wire (owner
+ * rule: defensive, never crash — a garbled or absent field must never reach
+ * `Math.round`/arithmetic downstream). Negative values are deliberately NOT
+ * filtered here; callers that only accept non-negative fields (queue
+ * position, ETA) enforce that themselves in `formatQueuePosition`/
+ * `formatFriendlyEta` below. */
+export function readFiniteNumber(
+  payload: Record<string, unknown> | undefined,
+  key: string,
+): number | undefined {
+  const v = payload?.[key]
+  return typeof v === 'number' && Number.isFinite(v) ? v : undefined
+}
+
 /** Documents in scope for the query, used to personalize the "retrieving"
  * label — optional, since the caller may not have this context yet (e.g.
  * before scope validation resolves). The "generating" stage deliberately
@@ -182,6 +198,47 @@ export function formatRouteLabel(strategy: string | undefined): string | undefin
     agent: 'Working through your question',
   }
   return labels[strategy] ?? humanizeStage(strategy.replace(/_/g, ' '))
+}
+
+/** "You're #3 in line" from a `queued` progress event's own `position`
+ * field (design doc §4.1/§4.3, this request's 1-indexed place in the
+ * admission queue) — falls back to `ahead` (how many requests are ahead of
+ * this one) when `position` itself is missing or unusable, since the
+ * contract sends both but either can be absent on an older engine or a
+ * transient telemetry gap. Missing, non-finite, or out-of-range values (a
+ * position under 1, a negative `ahead`) render nothing rather than a
+ * garbled or nonsensical line — the queue card simply omits this line
+ * (owner rule: defensive, never crash; §6 "ETA omitted, position still
+ * sent" extends the same way to a completely unusable field). */
+export function formatQueueLine(position: unknown, ahead: unknown): string | undefined {
+  const pos = typeof position === 'number' ? position : undefined
+  if (pos != null && Number.isFinite(pos) && pos >= 1) {
+    return `You're #${Math.round(pos)} in line`
+  }
+  const aheadCount = typeof ahead === 'number' ? ahead : undefined
+  if (aheadCount != null && Number.isFinite(aheadCount) && aheadCount >= 0) {
+    const rounded = Math.round(aheadCount)
+    return rounded === 0
+      ? "You're next in line"
+      : `${rounded} ${rounded === 1 ? 'person' : 'people'} ahead of you`
+  }
+  return undefined
+}
+
+/** Rounds a raw `eta_seconds` into a friendly, round-number phrase ("about 4
+ * min") rather than a literal second count, which would read as a far more
+ * precise promise than a CPU-bound queue estimate can keep. Missing,
+ * non-finite, or non-positive values (no service-time sample yet — design
+ * doc §6: "Guard/ETA failures ... ETA omitted, position still sent; never
+ * blocks") render nothing, never "about 0 min" or a negative duration. */
+export function formatFriendlyEta(etaSeconds: unknown): string | undefined {
+  const n = typeof etaSeconds === 'number' ? etaSeconds : undefined
+  if (n == null || !Number.isFinite(n) || n <= 0) return undefined
+  if (n < 60) return 'less than a minute'
+  const minutes = Math.round(n / 60)
+  if (minutes < 60) return `about ${minutes} min`
+  const hours = Math.round(minutes / 60)
+  return `about ${hours} ${plural(hours, 'hour')}`
 }
 
 export function isLateQueryStage(stage: string | undefined): boolean {

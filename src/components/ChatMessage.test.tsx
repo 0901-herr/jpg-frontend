@@ -199,6 +199,134 @@ describe('AnswerContent Markdown rendering', () => {
   })
 })
 
+describe('queue card (design doc §4.3, in-stream admission queue)', () => {
+  it('shows position and a friendly ETA in an aria-live="polite" status region while queued', () => {
+    render(
+      <ChatMessageItem
+        message={assistantMessage({
+          status: 'thinking',
+          progressStage: 'queued',
+          queuePosition: 3,
+          queueAhead: 2,
+          queueEtaSeconds: 240,
+        })}
+      />,
+    )
+
+    const status = screen.getByRole('status')
+    expect(status).toHaveAttribute('aria-live', 'polite')
+    expect(screen.getByText("You're #3 in line")).toBeInTheDocument()
+    expect(screen.getByText('about 4 min')).toBeInTheDocument()
+  })
+
+  it('falls back to a generic line and omits the ETA when the fields are missing or garbage — never "#undefined" or "about NaN min"', () => {
+    render(
+      <ChatMessageItem
+        message={assistantMessage({
+          status: 'thinking',
+          progressStage: 'queued',
+          queuePosition: undefined,
+          queueAhead: -1,
+          queueEtaSeconds: Number.NaN,
+        })}
+      />,
+    )
+
+    expect(screen.getByText("You're in the queue")).toBeInTheDocument()
+    expect(screen.queryByText(/undefined/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/NaN/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^about /)).not.toBeInTheDocument()
+  })
+
+  it('replaces the plain-text progress ticker while queued — no "Waiting for a free slot" text shown alongside the card', () => {
+    render(
+      <ChatMessageItem
+        message={assistantMessage({
+          status: 'thinking',
+          progressStage: 'queued',
+          progressLabel: 'Waiting for a free slot (2 questions ahead)',
+          queuePosition: 3,
+          queueAhead: 2,
+          queueEtaSeconds: 240,
+        })}
+      />,
+    )
+
+    expect(screen.queryByText(/Waiting for a free slot/)).not.toBeInTheDocument()
+  })
+
+  it('does not render the queue card for a non-queued thinking stage — the plain ticker still shows', () => {
+    render(
+      <ChatMessageItem
+        message={assistantMessage({
+          status: 'thinking',
+          progressStage: 'classifying',
+          progressLabel: 'Understanding your question',
+        })}
+      />,
+    )
+
+    expect(screen.getByText('Understanding your question')).toBeInTheDocument()
+    expect(screen.queryByText(/in line/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('updates live as the message re-renders with a new position/ETA', () => {
+    const base = assistantMessage({
+      status: 'thinking',
+      progressStage: 'queued',
+      queuePosition: 5,
+      queueAhead: 4,
+      queueEtaSeconds: 300,
+    })
+    const { rerender } = render(<ChatMessageItem message={base} />)
+    expect(screen.getByText("You're #5 in line")).toBeInTheDocument()
+
+    rerender(
+      <ChatMessageItem message={{ ...base, queuePosition: 1, queueAhead: 0, queueEtaSeconds: 20 }} />,
+    )
+    expect(screen.getByText("You're #1 in line")).toBeInTheDocument()
+    expect(screen.getByText('less than a minute')).toBeInTheDocument()
+  })
+})
+
+describe('at-capacity error retry affordance', () => {
+  it('renders a "Try again" button for a retryable at-capacity message and calls onRetry on click', async () => {
+    const user = userEvent.setup()
+    const onRetry = vi.fn()
+    render(
+      <ChatMessageItem
+        message={assistantMessage({
+          status: 'error',
+          content: "So many people are asking questions right now that we can't take any more.",
+          errorTitle: "We're at capacity right now",
+          retryable: true,
+        })}
+        onRetry={onRetry}
+      />,
+    )
+
+    expect(screen.getByText("We're at capacity right now")).toBeInTheDocument()
+    const button = screen.getByRole('button', { name: /Try again/i })
+    await user.click(button)
+    expect(onRetry).toHaveBeenCalledTimes(1)
+  })
+
+  it('renders no retry button for a plain, non-retryable error', () => {
+    render(
+      <ChatMessageItem
+        message={assistantMessage({
+          status: 'error',
+          content: 'The search service is busy right now. Wait a few seconds and try again.',
+        })}
+        onRetry={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: /Try again/i })).not.toBeInTheDocument()
+  })
+})
+
 describe('interrupted answer note', () => {
   it('renders the partial answer plus an italic "Answer interrupted." note', () => {
     render(

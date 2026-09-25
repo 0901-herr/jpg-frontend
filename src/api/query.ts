@@ -1,5 +1,6 @@
 import { ApiError, apiPostStream, consumeSseStream } from './http'
 import type {
+  AtCapacityInfo,
   Citation,
   CoverageEvent,
   QueryRequest,
@@ -180,6 +181,39 @@ function dispatchNestedMessageEvent(
   return false
 }
 
+/** Thrown once a stream's terminal `error` event is `{"error":"at_capacity",
+ * ...}` (design doc §4.1) — a distinct type from a plain `Error` so
+ * `handleSend`'s catch block can render the calm, retryable at-capacity
+ * message instead of running the generic error-mapping path, while still
+ * settling `sendMessage`'s promise the same way every other stream failure
+ * does. */
+export class AtCapacityError extends Error {
+  info: AtCapacityInfo
+  constructor(info: AtCapacityInfo) {
+    super('at_capacity')
+    this.name = 'AtCapacityError'
+    this.info = info
+  }
+}
+
+/** Defensive read of the `at_capacity` error event's own fields — any
+ * field that isn't a finite number (missing, wrong type, NaN, negative) is
+ * simply left `undefined` rather than propagating garbage into the UI
+ * (owner rule: defensive, never crash). */
+function parseAtCapacityInfo(data: unknown): AtCapacityInfo {
+  const obj = asRecord(data)
+  if (!obj) return {}
+  const finite = (key: string): number | undefined => {
+    const v = readNumber(obj, key)
+    return v != null && Number.isFinite(v) && v >= 0 ? v : undefined
+  }
+  return {
+    queued: finite('queued'),
+    maxQueue: finite('max_queue'),
+    retryAfterSeconds: finite('retry_after_seconds'),
+  }
+}
+
 function extractErrorMessage(data: unknown): string {
   const obj = asRecord(data)
   if (!obj) {
@@ -262,6 +296,11 @@ async function streamQuery(
   // never written, not real sources — drop them, and ignore any further
   // `citation` events for the rest of this stream.
   let abstained = false
+  // Set only for a terminal `error` event whose `error` field is
+  // `"at_capacity"` — thrown as an `AtCapacityError` after the stream loop
+  // below finishes, instead of the plain `Error` every other stream failure
+  // throws (see `AtCapacityError`'s own doc comment).
+  let atCapacityInfo: AtCapacityInfo | undefined
 
   try {
     await consumeSseStream(
@@ -468,6 +507,13 @@ async function streamQuery(
           }
           case 'error': {
             terminalEvent = true
+            const obj = asRecord(data)
+            const code = obj ? readString(obj, 'error') : undefined
+            if (code === 'at_capacity') {
+              atCapacityInfo = parseAtCapacityInfo(data)
+              callbacks.onAtCapacity?.(atCapacityInfo)
+              return true
+            }
             streamError = extractErrorMessage(data)
             callbacks.onError?.(streamError)
             return true
@@ -489,6 +535,10 @@ async function streamQuery(
   if (!terminalEvent && !signal?.aborted) {
     callbacks.onError?.(QUERY_INCOMPLETE_ERROR)
     throw new Error(QUERY_INCOMPLETE_ERROR)
+  }
+
+  if (atCapacityInfo) {
+    throw new AtCapacityError(atCapacityInfo)
   }
 
   if (streamError) {

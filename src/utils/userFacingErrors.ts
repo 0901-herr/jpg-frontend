@@ -1,3 +1,5 @@
+import { formatFriendlyEta } from './queryProgress'
+
 /** Plain-language fallbacks when the client detects a failure before SSE error arrives. */
 export const QUERY_GENERIC_ERROR =
   'The search service is busy right now. Wait a few seconds and try again.'
@@ -21,6 +23,22 @@ export const QUERY_NO_HOST_SCOPE_ERROR = 'The chat owner has not chosen any file
 
 export const QUERY_SERVER_ERROR =
   'Something went wrong on our side. Wait a moment and try again.'
+
+/** In-thread title for the in-stream `at_capacity` event (design doc
+ * §4.1/§4.3) — the admission queue itself is full, a distinct, reassuring
+ * case from every other query failure `ErrorMessage` renders. */
+export const QUERY_AT_CAPACITY_TITLE = "We're at capacity right now"
+
+/** Body copy for `QUERY_AT_CAPACITY_TITLE` — folds in the engine's own
+ * `retry_after_seconds` (rounded the same friendly way as the live queue
+ * card) when it sent one; omits it entirely rather than showing a garbled
+ * or negative wait when the field is missing or unusable. */
+export function formatAtCapacityMessage(retryAfterSeconds?: number): string {
+  const wait = formatFriendlyEta(retryAfterSeconds)
+  return wait
+    ? `So many people are asking questions right now that we can't take any more. Try again in ${wait}.`
+    : "So many people are asking questions right now that we can't take any more. Please try again shortly."
+}
 
 export interface QueryErrorContext {
   /** Last friendly progress label shown to the user, if any. */

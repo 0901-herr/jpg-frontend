@@ -16,6 +16,7 @@ import {
   validateQueryScope,
 } from '../api/browse'
 import { ApiError } from '../api/http'
+import { AtCapacityError } from '../api/query'
 import type { Citation } from '../api/types/query'
 import { AUTH_BYPASS, DEV_USER } from '../config/auth'
 import { useAuth } from '../context/AuthContext'
@@ -31,7 +32,12 @@ import { useVisualViewportHeight } from '../hooks/useVisualViewportHeight'
 import { type, typeColor } from '../styles/typography'
 import { citationsToSources, mergeCitations } from '../utils/citations'
 import { appendStreamDelta } from '../utils/appendStreamDelta'
-import { formatProgressStage, formatRouteLabel, resolveProgressScope } from '../utils/queryProgress'
+import {
+  formatProgressStage,
+  formatRouteLabel,
+  readFiniteNumber,
+  resolveProgressScope,
+} from '../utils/queryProgress'
 import { getSummarizeDisabledReason, isSummaryReady } from '../utils/summaryGate'
 import {
   getExtractMetadataDisabledReason,
@@ -47,7 +53,12 @@ import {
   MAX_SELECTED_FILE_PREVIEW,
   SELECTION_LIMIT_MESSAGE,
 } from '../config/selection'
-import { toUserFacingMetadataExtractionError, toUserFacingQueryError } from '../utils/userFacingErrors'
+import {
+  formatAtCapacityMessage,
+  QUERY_AT_CAPACITY_TITLE,
+  toUserFacingMetadataExtractionError,
+  toUserFacingQueryError,
+} from '../utils/userFacingErrors'
 import type { QueryTier } from '../api/types/query'
 import {
   isCitationDemoEnabled,
@@ -931,11 +942,23 @@ export default function AppLayout() {
               },
               onProgress: (stage, payload) => {
                 lastProgressStage = stage
+                // The queue card (ChatMessage.tsx's QueueCard) only ever
+                // shows for the `queued` stage — every other stage clears
+                // these three back to `undefined`, which is what makes the
+                // card disappear the instant a later progress event (e.g.
+                // `retrieving`, once a slot is acquired) arrives. Raw reads
+                // only (`readFiniteNumber` just checks "is this a finite
+                // number at all") — `QueueCard`'s own formatters apply the
+                // stricter sign/range checks a queue position or ETA needs.
+                const isQueued = stage === 'queued'
                 updateAssistantMessage(chatId, (msg) => ({
                   ...msg,
                   status: msg.content ? 'streaming' : 'thinking',
                   progressLabel: formatProgressStage(stage, payload, progressContext()),
                   progressStage: stage,
+                  queuePosition: isQueued ? readFiniteNumber(payload, 'position') : undefined,
+                  queueAhead: isQueued ? readFiniteNumber(payload, 'ahead') : undefined,
+                  queueEtaSeconds: isQueued ? readFiniteNumber(payload, 'eta_seconds') : undefined,
                 }))
               },
               onRoute: (strategy) => {
@@ -1050,6 +1073,31 @@ export default function AppLayout() {
               thinkingSeconds: elapsedSeconds(),
             }))
             if (stopped) assistantPersistPromise = chatStore.recordAssistantMessage(chatId, stopped)
+            return
+          }
+
+          if (err instanceof AtCapacityError) {
+            // The admission queue is full (design doc §4.1/§4.3) — a
+            // distinct, retryable case, not a generic failure: no toast (a
+            // calm in-bubble message is the whole point), a fixed title,
+            // and `retryable: true` so ChatMessage's ErrorMessage renders
+            // the "Try again" button. The queue-card fields are cleared too
+            // — this message is no longer `thinking`, so they'd otherwise
+            // just linger unused in state.
+            const errored = updateAssistantMessage(chatId, (msg) => ({
+              ...msg,
+              content: formatAtCapacityMessage(err.info.retryAfterSeconds),
+              status: 'error',
+              errorTitle: QUERY_AT_CAPACITY_TITLE,
+              retryable: true,
+              liveText: '',
+              queuePosition: undefined,
+              queueAhead: undefined,
+              queueEtaSeconds: undefined,
+              progressLabel: undefined,
+              thinkingSeconds: elapsedSeconds(),
+            }))
+            if (errored) assistantPersistPromise = chatStore.recordAssistantMessage(chatId, errored)
             return
           }
 
@@ -1643,7 +1691,24 @@ export default function AppLayout() {
                         className={`min-w-0 ${isLastTurn ? 'docu-chat-last-turn min-h-[min(72vh,calc(100dvh-var(--docu-composer-height,13rem)))]' : ''}`}
                       >
                         <ChatMessageItem message={pair.user} currentUsername={currentUsername} />
-                        {pair.assistant && <ChatMessageItem message={pair.assistant} />}
+                        {pair.assistant && (
+                          <ChatMessageItem
+                            message={pair.assistant}
+                            onRetry={
+                              // Guards against a double-send while this
+                              // chat already has a fresh request in flight
+                              // — a stale "Try again" button can only exist
+                              // on an earlier, already-settled turn, but
+                              // this keeps it inert rather than relying on
+                              // `handleSend`'s own defensive re-abort.
+                              pair.assistant.retryable && !isActiveChatResponding
+                                ? () => {
+                                    void handleSend(pair.assistant!.question ?? pair.user.content)
+                                  }
+                                : undefined
+                            }
+                          />
+                        )}
                       </div>
                     )
                   })

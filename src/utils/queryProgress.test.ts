@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
+  formatFriendlyEta,
   formatProgressStage,
+  formatQueueLine,
   formatRouteLabel,
   isLateQueryStage,
   listNames,
   progressTickerLabel,
+  readFiniteNumber,
   resolveProgressScope,
   type ProgressScopeDocument,
 } from './queryProgress'
@@ -292,6 +295,70 @@ describe('progressTickerLabel', () => {
       folders: [],
     }
     expect(progressTickerLabel(1, ctx)).not.toMatch(/…|\.\.\./)
+  })
+})
+
+describe('readFiniteNumber', () => {
+  it('reads a finite number field', () => {
+    expect(readFiniteNumber({ position: 3 }, 'position')).toBe(3)
+  })
+
+  it('returns undefined for a missing key, a wrong type, NaN, or Infinity', () => {
+    expect(readFiniteNumber({}, 'position')).toBeUndefined()
+    expect(readFiniteNumber({ position: '3' }, 'position')).toBeUndefined()
+    expect(readFiniteNumber({ position: Number.NaN }, 'position')).toBeUndefined()
+    expect(readFiniteNumber({ position: Number.POSITIVE_INFINITY }, 'position')).toBeUndefined()
+    expect(readFiniteNumber(undefined, 'position')).toBeUndefined()
+  })
+})
+
+describe('formatQueueLine (queue card, design doc §4.3)', () => {
+  it('renders "You\'re #N in line" from a 1-indexed position', () => {
+    expect(formatQueueLine(3, 2)).toBe("You're #3 in line")
+    expect(formatQueueLine(1, 0)).toBe("You're #1 in line")
+  })
+
+  it('rounds a fractional position', () => {
+    expect(formatQueueLine(3.4, undefined)).toBe("You're #3 in line")
+  })
+
+  it('falls back to "ahead" when position is missing, zero, or negative', () => {
+    expect(formatQueueLine(undefined, 4)).toBe('4 people ahead of you')
+    expect(formatQueueLine(0, 1)).toBe('1 person ahead of you')
+    expect(formatQueueLine(-1, 0)).toBe("You're next in line")
+  })
+
+  it('renders undefined when neither field is usable (missing, negative, non-numeric)', () => {
+    expect(formatQueueLine(undefined, undefined)).toBeUndefined()
+    expect(formatQueueLine(undefined, -1)).toBeUndefined()
+    expect(formatQueueLine('3', '2')).toBeUndefined()
+    expect(formatQueueLine(Number.NaN, Number.NaN)).toBeUndefined()
+  })
+})
+
+describe('formatFriendlyEta (queue card, design doc §4.3)', () => {
+  it('rounds to a friendly minute phrase', () => {
+    expect(formatFriendlyEta(240)).toBe('about 4 min')
+    expect(formatFriendlyEta(210)).toBe('about 4 min')
+  })
+
+  it('says "less than a minute" under 60 seconds', () => {
+    expect(formatFriendlyEta(45)).toBe('less than a minute')
+    expect(formatFriendlyEta(1)).toBe('less than a minute')
+  })
+
+  it('switches to hours once past 60 minutes', () => {
+    expect(formatFriendlyEta(130 * 60)).toBe('about 2 hours')
+    expect(formatFriendlyEta(60 * 60)).toBe('about 1 hour')
+  })
+
+  it('renders undefined for missing, zero, negative, non-finite or non-numeric values — never "about 0 min" or a negative duration', () => {
+    expect(formatFriendlyEta(undefined)).toBeUndefined()
+    expect(formatFriendlyEta(0)).toBeUndefined()
+    expect(formatFriendlyEta(-30)).toBeUndefined()
+    expect(formatFriendlyEta(Number.NaN)).toBeUndefined()
+    expect(formatFriendlyEta(Number.POSITIVE_INFINITY)).toBeUndefined()
+    expect(formatFriendlyEta('240')).toBeUndefined()
   })
 })
 

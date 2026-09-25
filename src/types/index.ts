@@ -71,6 +71,24 @@ export interface ChatMessage {
    * preceding user message in the session. Only query answers set this;
    * summary/categorize/metadata chat messages leave it unset. */
   question?: string
+  /** Position/ahead/ETA from the most recent `queued` progress event
+   * (design doc §4.1/§4.3) — raw wire values, unrounded and unvalidated;
+   * `QueueCard` handles a missing, negative, or non-finite number
+   * defensively rather than trusting it. Set only while `progressStage ===
+   * 'queued'`; every other progress event (or the first streamed token,
+   * which flips `status` away from `'thinking'`) is a fresh `onProgress`
+   * call that overwrites all three back to `undefined`, which is what
+   * makes the queue card disappear. */
+  queuePosition?: number
+  queueAhead?: number
+  queueEtaSeconds?: number
+  /** True for a durable in-thread failure the user can retry inline —
+   * currently only the admission-queue's `at_capacity` event (design doc
+   * §4.1/§4.3). Drives the "Try again" affordance in `ErrorMessage`; a
+   * plain stream/network error stays retry-less (retrying it usually can't
+   * help, and the owner rule against excessive guards cuts the other way
+   * too — no affordance that implies retrying will fix something it can't). */
+  retryable?: boolean
   /** The display name of whoever asked this turn — set server-side from
    * the acting user and echoed on every message DTO (`author_username`).
    * Rendered top-right above user bubbles. Prefer this over the viewer's

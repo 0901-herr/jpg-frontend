@@ -7,6 +7,7 @@ import path from 'node:path'
 import React, { type ReactElement, useState } from 'react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../api/http'
+import { AtCapacityError } from '../api/query'
 import type {
   DocumentCategorizeResponse,
   MetadataExtractionResponse,
@@ -530,6 +531,150 @@ describe('AppLayout — query error messages', () => {
     ).toBeInTheDocument()
   })
 
+})
+
+describe('AppLayout — queue card and at-capacity retry (design doc §4.1/§4.3)', () => {
+  beforeEach(() => {
+    currentSignal = null
+    nextSendQueryRejection = null
+    nextSendQueryResolution = null
+    initialSelectedIds = new Set(['doc-1'])
+    initialDocumentMeta = defaultDocumentMeta()
+    validateQueryScope.mockResolvedValue({
+      total_files: 1,
+      ready_files: 1,
+      indexing_files: 0,
+      failed_files: 0,
+      missing_files: 0,
+      accessible_document_ids: ['doc-1'],
+    })
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('shows a calm queue card with position and a friendly ETA while queued, live-updating as the position changes', async () => {
+    const user = userEvent.setup()
+    render(<AppLayout />)
+
+    const textarea = await screen.findByPlaceholderText(/ask a question/i)
+    await user.type(textarea, 'What is in the contract?')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    await waitFor(() => expect(lastSendQueryRequest?.callbacks?.onProgress).toBeDefined())
+
+    act(() => {
+      lastSendQueryRequest?.callbacks?.onProgress?.('queued', {
+        position: 3,
+        ahead: 2,
+        eta_seconds: 240,
+      })
+    })
+
+    expect(await screen.findByText("You're #3 in line")).toBeInTheDocument()
+    expect(screen.getByText('about 4 min')).toBeInTheDocument()
+
+    act(() => {
+      lastSendQueryRequest?.callbacks?.onProgress?.('queued', {
+        position: 1,
+        ahead: 0,
+        eta_seconds: 40,
+      })
+    })
+
+    expect(await screen.findByText("You're #1 in line")).toBeInTheDocument()
+    expect(screen.getByText('less than a minute')).toBeInTheDocument()
+  })
+
+  it('hides the queue card once a later, non-queued progress event arrives', async () => {
+    const user = userEvent.setup()
+    render(<AppLayout />)
+
+    const textarea = await screen.findByPlaceholderText(/ask a question/i)
+    await user.type(textarea, 'What is in the contract?')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    await waitFor(() => expect(lastSendQueryRequest?.callbacks?.onProgress).toBeDefined())
+
+    act(() => {
+      lastSendQueryRequest?.callbacks?.onProgress?.('queued', { position: 2, ahead: 1, eta_seconds: 90 })
+    })
+    expect(await screen.findByText("You're #2 in line")).toBeInTheDocument()
+
+    act(() => {
+      lastSendQueryRequest?.callbacks?.onProgress?.('retrieving', {})
+    })
+
+    expect(screen.queryByText(/in line/)).not.toBeInTheDocument()
+    expect(await screen.findByText(/^Searching/)).toBeInTheDocument()
+  })
+
+  it('hides the queue card once the first token streams in', async () => {
+    const user = userEvent.setup()
+    render(<AppLayout />)
+
+    const textarea = await screen.findByPlaceholderText(/ask a question/i)
+    await user.type(textarea, 'What is in the contract?')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    await waitFor(() => expect(lastSendQueryRequest?.callbacks?.onProgress).toBeDefined())
+
+    act(() => {
+      lastSendQueryRequest?.callbacks?.onProgress?.('queued', { position: 2, ahead: 1, eta_seconds: 90 })
+    })
+    expect(await screen.findByText("You're #2 in line")).toBeInTheDocument()
+
+    act(() => {
+      lastSendQueryRequest?.callbacks?.onDelta?.('The answer starts here')
+    })
+
+    await waitFor(() => expect(screen.queryByText(/in line/)).not.toBeInTheDocument())
+  })
+
+  it('shows a polite, titled at-capacity message with a "Try again" button instead of a raw error, and resubmits the question on click', async () => {
+    const user = userEvent.setup()
+
+    render(<AppLayout />)
+
+    const textarea = await screen.findByPlaceholderText(/ask a question/i)
+    await user.type(textarea, 'What is in the contract?')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    // Rejects the in-flight call only once the thinking placeholder has
+    // actually landed (same pattern the queue-card tests above use for
+    // onProgress) — setting `nextSendQueryRejection` before the click would
+    // let the mock's mutateAsync settle before React has committed the
+    // placeholder from `updateChatMessages`, which would make
+    // `updateAssistantMessage`'s own last-message lookup a genuine race
+    // rather than exercising the real catch-block behavior.
+    await waitFor(() => expect(lastSendQueryRequest?.callbacks?.onProgress).toBeDefined())
+    act(() => {
+      pendingSendQueryCalls
+        .find((c) => c.request === lastSendQueryRequest)
+        ?.reject(new AtCapacityError({ queued: 80, maxQueue: 80, retryAfterSeconds: 240 }))
+    })
+
+    expect(await screen.findByText("We're at capacity right now")).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        "So many people are asking questions right now that we can't take any more. Try again in about 4 min.",
+      ),
+    ).toBeInTheDocument()
+
+    nextSendQueryResolution = {
+      messageId: 'm-retry',
+      content: 'Here is the answer.',
+      thinkingSeconds: 1,
+    }
+
+    const retryButton = screen.getByRole('button', { name: /Try again/i })
+    await user.click(retryButton)
+
+    expect(await screen.findByText('Here is the answer.')).toBeInTheDocument()
+    // Retrying resent the original question as a fresh turn.
+    expect(lastSendQueryRequest?.message).toBe('What is in the contract?')
+  })
 })
 
 describe('AppLayout — shared link (?share=token)', () => {
