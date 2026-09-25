@@ -6,6 +6,7 @@ function toSession(user: CurrentUser): AuthSession {
   return {
     username: user.username || user.user_id,
     userId: user.user_id,
+    isAdmin: user.is_admin === true,
   }
 }
 

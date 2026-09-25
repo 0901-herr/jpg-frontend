@@ -1,8 +1,9 @@
-/** Admin dashboard — uses adapter query API key, separate from chat cookie auth. */
-
-export const ADMIN_API_KEY = import.meta.env.VITE_ADMIN_API_KEY ?? ''
-export const ADMIN_API_KEY_HEADER =
-  import.meta.env.VITE_ADMIN_API_KEY_HEADER ?? 'X-Adapter-Query-Key'
+/** Admin dashboard — authorized by the signed-in LogicalDOC session cookie
+ * (same `ai_session` cookie the chat API already uses), gated on `is_admin`
+ * from `GET /api/auth/me`. There is no client-held admin secret: the adapter
+ * decides admin access server-side from the session's username against its
+ * own allow-list (`require_admin` in jpg-adapter), so a client-visible key
+ * can never be extracted from the bundle. */
 
 /**
  * Build-time flag: serve the admin dashboard entirely from an in-memory
@@ -16,8 +17,3 @@ export const ADMIN_MOCK = import.meta.env.VITE_ADMIN_MOCK === 'true'
 export const ADMIN_OVERVIEW_POLL_MS = 8_000
 export const ADMIN_OVERVIEW_POLL_ACTIVE_MS = 3_000
 export const ADMIN_DOCUMENT_POLL_MS = 5_000
-
-export function isAdminConfigured(): boolean {
-  // Dev: adapter allows admin without key when ADAPTER_QUERY_API_KEY is unset
-  return true
-}

@@ -18,3 +18,7 @@ dist
 
 # Vite
 .vite
+
+# Playwright live-probe scratch dir (screenshots, session cookies/tokens) —
+# never commit or include in a handover package
+.tmp-pw/

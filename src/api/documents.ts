@@ -1,4 +1,4 @@
-import { apiFetchBlob, apiGet } from './http'
+import { apiGet } from './http'
 import type { BrowseDocumentsParams, DocumentListResponse } from './types/documents'
 
 export async function browseDocuments(
@@ -12,8 +12,4 @@ export async function browseDocuments(
 
   const qs = search.toString()
   return apiGet<DocumentListResponse>(`/documents/browse${qs ? `?${qs}` : ''}`)
-}
-
-export async function fetchDocumentFile(docId: string): Promise<Blob> {
-  return apiFetchBlob(`/documents/${encodeURIComponent(docId)}/file`)
 }
