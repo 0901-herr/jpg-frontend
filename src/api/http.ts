@@ -104,23 +104,6 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   return (await response.json()) as T
 }
 
-export async function apiFetchBlob(path: string, auth = true): Promise<Blob> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    credentials: resolveCredentials(auth),
-  })
-
-  if (response.status === 401) {
-    handleUnauthorized(auth)
-  }
-
-  if (!response.ok) {
-    const { detail, code } = await parseErrorBody(response)
-    throw new ApiError(detail ?? response.statusText, response.status, detail, code)
-  }
-
-  return response.blob()
-}
-
 export async function apiGet<T>(path: string, auth = true, signal?: AbortSignal): Promise<T> {
   return apiRequest<T>(path, { method: 'GET', auth, signal })
 }
