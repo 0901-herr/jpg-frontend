@@ -54,12 +54,10 @@ body {
      unaffected — that utility overrides this on its own elements. */
   font-weight: 400;
   line-height: 1.6;
-  /* Client feedback (round 4): answers read heavy and odd. Match the
-     ChatGPT portal — grayscale antialiasing on macOS, which renders the
-     system font at its designed (lighter) stroke; contrast comes from the
-     near-black ink below rather than from heavier rendering. */
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  /* Client feedback (round 5): grayscale antialiasing made the ChatGPT
+     stack read too thin; the browser default ('auto') renders the system
+     font with fuller strokes on macOS. */
+  -webkit-font-smoothing: auto;
   background-color: var(--docu-bg-page);
   color: var(--docu-text-primary);
 }
@@ -860,17 +858,18 @@ button.docu-citation-page-chips:hover .docu-citation-chip-num {
 }
 
 /* Answer body text (ChatMessage.tsx `.docu-answer` container). Client
-   feedback (round 4): the 17px / weight-500 / subpixel rendering read as
-   heavy and odd. Matches the ChatGPT portal's answer text instead:
-   system UI font at 16px, regular weight (400), 1.75 line-height (28px),
-   no extra tracking. Legibility comes from the near-black
-   --docu-text-primary ink and the generous line-height. Scoped to
-   `.docu-answer`; unlayered so it wins over the `text-base
+   feedback: weight 500 / 17px read heavy (round 3), the ChatGPT-style
+   400 read too thin (round 4). Round 5 keeps the ChatGPT stack, size and
+   1.75 line-height but sets weight 450 — honoured by the variable system
+   fonts (San Francisco, Segoe UI Variable), rounding to 400 on static
+   fonts — and a near-black #0d0d0d ink (ChatGPT's own text colour).
+   Scoped to `.docu-answer`; unlayered so it wins over the `text-base
    leading-relaxed` Tailwind utilities already on the element. */
 .docu-answer {
   font-size: 16px;
   line-height: 1.75;
-  font-weight: 400;
+  font-weight: 450;
+  color: #0d0d0d;
 }
 
 /* Markdown `**bold**` run-in labels (e.g. "Summary:") inside an answer —
